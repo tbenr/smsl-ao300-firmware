@@ -46,8 +46,8 @@ RAM_KEY   = 0x6F       # secondary key var cleared by stock routine
 RAM_INPUT = 0x47       # current input number (1..6)
 RAM_POWER = 0x4F       # 0 = standby, nonzero = on
 RAM_PAGE  = 0x45       # 1 = home screen
-RAM_OSD0  = 0x27       # OSD timer lo (stock sets 0 on a Source press)
-RAM_OSD1  = 0x28       # OSD timer hi (stock sets 0xC8 on a Source press)
+RAM_OSD0  = 0x27       # OSD timer high byte (stock sets 0 on a Source press)
+RAM_OSD1  = 0x28       # OSD timer low byte (stock sets 0xC8 on a Source press)
 
 CMD_LO = 0x10          # first direct-select NEC command
 NINPUTS = 6            # number of inputs (commands CMD_LO .. CMD_LO+NINPUTS-1)
