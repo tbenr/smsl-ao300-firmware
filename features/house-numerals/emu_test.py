@@ -171,8 +171,113 @@ def test_name_ptr():
         check("input %d -> no name (C=1)" % inp, e.C == 1)
 
 
+def expect_volume(e, v, acc):
+    """Number box and position line as hn_draw_volume leaves them for volume v."""
+    g = glyphs()
+    v = min(v, 60)
+    tens, ones = divmod(v, 10)
+    ok = scaled_match(e, 244, 42, g[ones])
+    ok = ok and ((not ink_in(e, 184, 42, 60, 64)) if tens == 0 else scaled_match(e, 184, 42, g[tens]))
+    w = 4 * v
+    return ok and all(px(e, x, y) == (acc if x < 40 + w else bp.TRACK)
+                      for x in range(40, 280) for y in range(136, 139))
+
+
+def test_draw_volume():
+    print("\nhn_draw_volume (the 0x5936 hook): every step, three themes")
+    for theme, acc in (((0xFF, 0xFF), bp.ORANGE), ((0xF8, 0x00), 0xF800), ((0x33, 0xBF), 0x33BF)):
+        bad = []
+        for v in range(61):
+            e = emu(theme)
+            e.iram[0x2B] = 1
+            e.setR(7, v)
+            e.call(0x5936)
+            if not (expect_volume(e, v, acc) and (e.iram[0x48], e.iram[0x49]) == theme):
+                bad.append(v)
+        check("theme %02X%02X: steps 0-60, accent %04X, theme restored" % (theme + (acc,)), not bad, str(bad[:5]))
+    e = emu(); e.iram[0x2B] = 1; e.setR(7, 25); e.call(0x5936)
+    check("only the number box and the line are drawn", stray(e, [(184, 42, 120, 64), (40, 136, 240, 3)]) == 0)
+    check("XDATA 0x05 = 2 as stock", e.xram[5] == 2)
+    e = emu(); e.iram[0x2B] = 2; e.iram[0x52] = 33; e.setR(7, 10); e.call(0x5936)
+    check("headphone output draws RAM 0x52 (33), as stock", expect_volume(e, 33, bp.ORANGE))
+    e = emu(); e.iram[0x2B] = 1; e.setR(7, 75); e.call(0x5936)
+    check("a value above 60 is drawn as 60", expect_volume(e, 60, bp.ORANGE))
+    e = emu(); e.iram[0x2B] = 1
+    e.setR(7, 45); e.call(0x5936)
+    e.setR(7, 44); e.call(0x5936)
+    check("redraw 45 -> 44 leaves nothing behind", expect_volume(e, 44, bp.ORANGE))
+    e.setR(7, 4); e.call(0x5936)
+    check("redraw 44 -> 4 blanks the tens digit", expect_volume(e, 4, bp.ORANGE))
+
+
+def test_volpage():
+    print("\nhn_volpage (page 2 renderer, jump-table entry 0x2143)")
+    e = emu()
+    e.iram[0x47], e.iram[0x2B], e.iram[0x31] = 2, 1, 25
+    e.iram[0x22] |= 0x08
+    e.iram[0x32] = e.iram[0x46] = 1
+    e.call(LAB["hn_volpage"])
+    ref = emu()
+    for k, ch in enumerate("OPTICAL"):
+        stock_small(ref, ch, 16 + 14 * k, 30)
+    check("input name in white at 16,30", ink_in(e, 16, 30, 98, 24) and
+          all(px(e, x, y) == px(ref, x, y) for x in range(16, 114) for y in range(30, 54)))
+    check("divider 1x104 at 140,14", all(px(e, 140, y) == bp.DIVIDER for y in range(14, 118)))
+    ref = emu((bp.ORANGE >> 8, bp.ORANGE & 0xFF))
+    for k, ch in enumerate("VOL"):
+        stock_small(ref, ch, 158 + 14 * k, 14)
+    check("VOL in the accent at 158,14",
+          all(px(e, x, y) == px(ref, x, y) for x in range(158, 200) for y in range(14, 38)))
+    check("number and line for 25", expect_volume(e, 25, bp.ORANGE))
+    check("nothing else drawn", stray(e, [(16, 30, 98, 24), (140, 14, 1, 104), (158, 14, 42, 24),
+                                           (184, 42, 120, 64), (40, 136, 240, 3)]) == 0)
+    check("render flags cleared as by 0x22FA",
+          not e.iram[0x22] & 0x08 and e.iram[0x32] == 0 and e.iram[0x46] == 0)
+    check("theme colour restored", (e.iram[0x48], e.iram[0x49]) == (0xFF, 0xFF))
+    e.lcd.save_png(os.path.join(HERE, "build", "unit_volpage.png"))
+    e = emu()
+    e.iram[0x47], e.iram[0x2B], e.iram[0x31] = 7, 1, 5
+    e.call(LAB["hn_volpage"])
+    check("input 7 (no name): name area empty, number drawn",
+          not ink_in(e, 0, 0, 140, 130) and expect_volume(e, 5, bp.ORANGE))
+
+
+def test_wipe():
+    print("\nhn_clear (the 0x2106 hook): edge wipe into page 2")
+    fills, seen = [], set()
+
+    def on_fill(em):
+        fills.append((((em.R(2) << 8) | em.R(3)), em.R(1), (em.R(6) << 8) | em.R(7)))
+    e = emu()
+    e.lcd.gram = [0xFFFF] * len(e.lcd.gram)
+    e.iram[0x59] = 2
+    e.hooks[LAB["hn_fill"]] = on_fill
+    for addr in (0x5CBC, 0x5CCB, 0x51EE):
+        e.hooks[addr] = lambda em, addr=addr: seen.add(addr)
+    c0 = e.cycles
+    e.call(LAB["hn_clear"])
+    ms = (e.cycles - c0) * 1000 / CLOCK_HZ
+    edges = [x for x, w, c in fills if c == bp.ORANGE and w == 2]
+    blacks = [x for x, w, c in fills if c == 0 and w == 2]
+    check("edge steps from x 318 to 0, 2 px at a time", edges == list(range(318, -1, -2)), str(edges[:3]))
+    check("black 2 px behind the edge, then over x 0", blacks == list(range(318, 0, -2)) + [0], str(blacks[:3]))
+    check("screen fully black afterwards", not ink_in(e, 0, 0, W, H))
+    check("text buffers cleared as by ui_clear_screen", {0x5CBC, 0x5CCB} <= seen and 0x51EE not in seen)
+    check("wipe takes 30-200 ms", 30 <= ms <= 200, "(%.0f ms)" % ms)
+    check("page argument 0x59 kept, theme restored",
+          e.iram[0x59] == 2 and (e.iram[0x48], e.iram[0x49]) == (0xFF, 0xFF))
+    fills.clear(); seen.clear()
+    e = emu()
+    e.iram[0x59] = 3
+    e.hooks[LAB["hn_fill"]] = on_fill
+    e.hooks[0x51EE] = lambda em: seen.add(0x51EE)
+    e.call(LAB["hn_clear"])
+    check("other pages: stock clear, no wipe", 0x51EE in seen and not fills)
+
+
 GROUPS = {
-    "unit": [image_diff, test_fill, test_digit2x, test_text, test_name_ptr],
+    "unit": [image_diff, test_fill, test_digit2x, test_text, test_name_ptr,
+             test_draw_volume, test_volpage, test_wipe],
     "tour": [],
     "sweep": [],
 }

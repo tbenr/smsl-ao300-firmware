@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build the "House Numerals" image for the SMSL AO300 (on top of fast-lcd).
 
-A reduced first build of study 3 in features/volume-screen/volume_studies.html:
+A reduced first build of study 3 in features/ui-theme/ui_themes.html:
 
   home      stock content; on page 1 the input name and the status line are
             left-aligned at x 16 (hooks in big_text_render 0x2A25 and
@@ -73,7 +73,11 @@ HN_VOL = 0x010D                     # volume being drawn (0..60)
 HN_WX = 0x010E                      # wipe position (hi, lo)
 
 # (address, original bytes, new opcode, target label); the new bytes are opcode + target
-HOOKS = []
+HOOKS = [
+    (0x2106, bytes([0x12, 0x5D, 0x42]), 0x12, "hn_clear"),        # lcall ui_clear_screen
+    (0x2143, bytes([0x02, 0x21, 0x67]), 0x02, "hn_volpage"),      # page 2 jump-table entry
+    (0x5936, bytes([0xAB, 0x07, 0xE5]), 0x02, "hn_draw_volume"),  # volpage_draw_volume entry
+]
 
 VERSION_TEXT = "v1.4 tbenr hn"
 VERSION_PTR_ADDR = 0x22CA
@@ -331,9 +335,138 @@ def build_primitives(a):
     a.i("ret", 0x22)
 
 
+def build_volume_page(a):
+    a.comment("hn_draw_volume: replaces volpage_draw_volume 0x5936 (R7 speaker volume)")
+    a.L("hn_draw_volume")
+    a.i("mov A,0x2B", 0xE5, 0x2B)
+    a.i("xrl A,#1", 0x64, 0x01)
+    a.i("jz hdv_spk", 0x60, rel("hdv_spk"))
+    a.i("mov R7,0x52       ; headphone volume, as stock", 0xAF, 0x52)
+    a.L("hdv_spk")
+    a.i("mov R0,#5", 0x78, 0x05)
+    a.i("mov A,#2", 0x74, 0x02)
+    a.i("movx @R0,A        ; stock leaves the digit count 2 in XDATA 0x05", 0xF2)
+    a.i("mov A,R7", 0xEF)
+    a.i("cjne A,#61,hdv_c", 0xB4, 61, rel("hdv_c"))
+    a.L("hdv_c")
+    a.i("jc hdv_ok", 0x40, rel("hdv_ok"))
+    a.i("mov A,#60", 0x74, 60)
+    a.L("hdv_ok")
+    mov_dptr(a, HN_VOL)
+    a.i("movx @DPTR,A", 0xF0)
+    call(a, "hn_begin")
+    call(a, "hn_white")
+    mov_dptr(a, HN_VOL)
+    a.i("movx A,@DPTR", 0xE0)
+    a.i("mov B,#10", 0x75, 0xF0, 10)
+    a.i("div AB            ; A tens, B ones", 0x84)
+    a.i("push B", 0xC0, 0xF0)
+    a.i("jnz hdv_tens", 0x70, rel("hdv_tens"))
+    rect(a, 184, 60, 42, 64, 0x0000)
+    call(a, "hn_fill", "blank tens digit")
+    a.i("sjmp hdv_ones", 0x80, rel("hdv_ones"))
+    a.L("hdv_tens")
+    a.i("mov R3,A", 0xFB); movr(a, 5, 184); movr(a, 7, 42)
+    call(a, "hn_digit2x")
+    a.L("hdv_ones")
+    a.i("pop ACC", 0xD0, 0xE0)
+    a.i("mov R3,A", 0xFB); movr(a, 5, 244); movr(a, 7, 42)
+    call(a, "hn_digit2x")
+    mov_dptr(a, HN_VOL)
+    a.i("movx A,@DPTR", 0xE0)
+    a.i("rl A", 0x23)
+    a.i("rl A              ; filled width = 4 px per step (<= 240)", 0x23)
+    a.i("jz hdv_rest", 0x60, rel("hdv_rest"))
+    a.i("push ACC", 0xC0, 0xE0)
+    a.i("mov R1,A", 0xF9)
+    call(a, "hn_accent")
+    movr(a, 2, 0); movr(a, 3, 40); movr(a, 5, 136); movr(a, 4, 3)
+    call(a, "hn_fill", "filled part of the line")
+    a.i("pop ACC", 0xD0, 0xE0)
+    a.L("hdv_rest")
+    a.i("cjne A,#240,hdv_r2", 0xB4, 240, rel("hdv_r2"))
+    a.i("sjmp hdv_done", 0x80, rel("hdv_done"))
+    a.L("hdv_r2")
+    a.i("mov R0,A", 0xF8)
+    a.i("add A,#40", 0x24, 40); a.i("mov R3,A", 0xFB)
+    a.i("clr A", 0xE4); a.i("addc A,#0", 0x34, 0x00); a.i("mov R2,A          ; x = 40 + filled", 0xFA)
+    a.i("clr C", 0xC3); a.i("mov A,#240", 0x74, 240); a.i("subb A,R0", 0x98); a.i("mov R1,A", 0xF9)
+    movr(a, 5, 136); movr(a, 4, 3); movr(a, 6, TRACK >> 8); movr(a, 7, TRACK & 0xFF)
+    call(a, "hn_fill", "rest of the line")
+    a.L("hdv_done")
+    jump(a, "hn_end")
+
+    a.comment("hn_volpage: page 2 renderer (replaces 0x2167)")
+    a.L("hn_volpage")
+    call(a, "hn_begin")
+    call(a, "hn_white")
+    call(a, "hn_name_ptr")
+    a.i("jc hvp_noname", 0x40, rel("hvp_noname"))
+    movr(a, 4, 0); movr(a, 5, 16); movr(a, 7, 30)
+    call(a, "hn_text", "input name")
+    a.L("hvp_noname")
+    rect(a, 140, 1, 14, 104, DIVIDER)
+    call(a, "hn_fill", "divider")
+    call(a, "hn_accent")
+    movr(a, 2, STR_VOL >> 8); movr(a, 3, STR_VOL & 0xFF); movr(a, 4, 0); movr(a, 5, 158); movr(a, 7, 14)
+    call(a, "hn_text", "VOL")
+    call(a, "hn_end")
+    a.i("mov R7,0x31", 0xAF, 0x31)
+    call(a, "hn_draw_volume")
+    jump(a, RENDER_DONE, "clears 0x22.3, 0x32, 0x46 like every page")
+
+    a.comment("hn_clear: replaces lcall ui_clear_screen at 0x2106; page in 0x59")
+    a.L("hn_clear")
+    a.i("mov A,0x59", 0xE5, 0x59)
+    a.i("cjne A,#2,hc_stock", 0xB4, 0x02, rel("hc_stock"))
+    call(a, CLEAR_SMALL_BUF, "as ui_clear_screen")
+    call(a, CLEAR_BIG_BUF)
+    call(a, "hn_begin")
+    mov_dptr(a, HN_WX)
+    a.i("mov A,#0x01", 0x74, 0x01); a.i("movx @DPTR,A", 0xF0); a.i("inc DPTR", 0xA3)
+    a.i("mov A,#0x3E       ; x = 318", 0x74, 0x3E); a.i("movx @DPTR,A", 0xF0)
+    a.L("hc_step")
+    call(a, "hn_accent")
+    call(a, "hc_load")
+    movr(a, 1, 2); movr(a, 5, 0); movr(a, 4, 170)
+    call(a, "hn_fill", "2-px edge at x")
+    call(a, "hc_load")
+    a.i("mov A,R2", 0xEA)
+    a.i("jz hc_black       ; x < 256", 0x60, rel("hc_black"))
+    a.i("cjne R3,#0x3E,hc_black", 0xBB, 0x3E, rel("hc_black"))
+    a.i("sjmp hc_dec       ; x = 318: nothing right of the edge yet", 0x80, rel("hc_dec"))
+    a.L("hc_black")
+    a.i("mov A,R3", 0xEB); a.i("add A,#2", 0x24, 2); a.i("mov R3,A", 0xFB)
+    a.i("clr A", 0xE4); a.i("addc A,R2", 0x3A); a.i("mov R2,A", 0xFA)
+    movr(a, 1, 2); movr(a, 5, 0); movr(a, 4, 170); movr(a, 6, 0); movr(a, 7, 0)
+    call(a, "hn_fill", "black where the edge was")
+    a.L("hc_dec")
+    call(a, "hc_load")
+    a.i("mov A,R2", 0xEA); a.i("orl A,R3", 0x4B)
+    a.i("jz hc_last", 0x60, rel("hc_last"))
+    a.i("clr C", 0xC3)
+    a.i("mov A,R3", 0xEB); a.i("subb A,#2", 0x94, 2); a.i("mov R3,A", 0xFB)
+    a.i("mov A,R2", 0xEA); a.i("subb A,#0", 0x94, 0); a.i("mov R2,A", 0xFA)
+    mov_dptr(a, HN_WX)
+    xstore(a, "R2", "R3")
+    jump(a, "hc_step")
+    a.L("hc_last")
+    rect(a, 0, 2, 0, 170, 0x0000)
+    call(a, "hn_fill", "the edge leaves at x 0")
+    jump(a, "hn_end")
+    a.L("hc_stock")
+    jump(a, UI_CLEAR_SCREEN, "other pages: stock clear")
+    a.L("hc_load")
+    mov_dptr(a, HN_WX)
+    a.i("movx A,@DPTR", 0xE0); a.i("mov R2,A", 0xFA); a.i("inc DPTR", 0xA3)
+    a.i("movx A,@DPTR", 0xE0); a.i("mov R3,A", 0xFB)
+    a.i("ret", 0x22)
+
+
 def build(a):
     build_data(a)
     build_primitives(a)
+    build_volume_page(a)
 
 
 def assemble():
