@@ -95,6 +95,11 @@ def image_diff():
         new = bytes([op, LAB[target] >> 8, LAB[target] & 0xFF])
         check("hook 0x%04X -> %s" % (addr, target), NEW[addr:addr + 3] == new, NEW[addr:addr + 3].hex(" "))
         want |= {addr + k for k in range(3) if orig[k] != new[k]}
+    for s in bp.VOL_ENTRY_SITES:
+        new = bp.vol_entry_bytes(LAB["hn_enter_vol"])
+        check("volume entry 0x%04X -> lcall hn_enter_vol ; sjmp 0x%04X" % (s, s + len(bp.VOL_ENTRY_ORIG)),
+              NEW[s:s + 5] == new, NEW[s:s + 5].hex(" "))
+        want |= {s + k for k in range(5) if bp.VOL_ENTRY_ORIG[k] != new[k]}
     changed = {i for i in range(len(BASE)) if BASE[i] != NEW[i]} - {vp + 1, vp + 3}
     check("inside the base image only the hooks changed (plus version pointer)", changed == want,
           str(sorted("%04X" % i for i in changed ^ want)))
@@ -275,6 +280,36 @@ def test_wipe():
     check("other pages: stock clear, no wipe", 0x51EE in seen and not fills)
 
 
+def test_enter_vol():
+    print("\nhn_enter_vol (the four volume-key sites)")
+    ref = emu()
+    ref.iram[0x47] = 3
+    ref.call(LAB["hn_vol_static"])
+    e = emu()
+    e.lcd.gram = [0xFFFF] * len(e.lcd.gram)
+    e.iram[0x47] = 3
+    edges = []
+    e.hooks[LAB["hn_fill"]] = lambda em: edges.append((em.R(2) << 8) | em.R(3)) \
+        if (em.R(1), (em.R(6) << 8) | em.R(7)) == (2, bp.ORANGE) else None
+    e.call(LAB["hn_enter_vol"])
+    check("edge wipe from x 318 to 0 first", edges == list(range(318, -1, -2)), str(edges[:3]))
+    same = all(px(e, x, y) == px(ref, x, y) for x in range(W) for y in range(H))
+    check("then name, divider and VOL on black, as hn_vol_static draws them",
+          same and ink_in(e, 16, 30, 98, 24))
+    check("theme colour restored", (e.iram[0x48], e.iram[0x49]) == (0xFF, 0xFF))
+    for s in bp.VOL_ENTRY_SITES:
+        e = emu()
+        e.iram[0x47] = 1
+        seen = []
+        e.hooks[LAB["hn_enter_vol"]] = lambda em: seen.append(em.cycles)
+        e.hooks[0x3A53] = lambda em: seen.append("caption")
+        e.pc = s
+        e.push(0x00); e.push(0x00)                 # a return address the run never reaches
+        e.run(s + len(bp.VOL_ENTRY_ORIG), 2_000_000)
+        check("site 0x%04X: hn_enter_vol called, stock caption skipped" % s,
+              len(seen) == 1 and seen[0] != "caption" and e.pc == s + len(bp.VOL_ENTRY_ORIG))
+
+
 def test_home_tail():
     print("\nhn_home_tail (home_refresh's tail, 0x5C99)")
     for theme, acc in (((0xFF, 0xFF), bp.ORANGE), ((0x07, 0xE0), 0x07E0)):
@@ -327,33 +362,13 @@ def accent_of(amp):
     return bp.ORANGE if (hi, lo) == (0xFF, 0xFF) else (hi << 8) | lo
 
 
-def current_volume(amp):
-    return amp.e.iram[0x52] if amp.e.iram[0x2B] == 2 else amp.e.iram[0x31]
-
-
-VOL_BOXES = [(184, 42, 120, 64), (40, 136, 240, 3)]      # our number box, position line
-STOCK_DIGIT_BAND = (0, 0, W, 110)                        # stock's own centred, un-doubled
-                                                          # digit: page 2 draws nothing
-                                                          # else up here (no icons on this
-                                                          # screen -- see tour_vol_up.png)
-
-
-def volume_checks(step, new, ref):
-    """Pressing a volume key shows the quick number+line toast (hn_draw_volume, 0x5936),
-    not the full hn_volpage screen (0x2143) -- that jump-table entry is a separate,
-    menu-driven page. Confirmed by tour_vol_up.png: no input name / VOL heading / divider,
-    just the number and position line over an otherwise fast-lcd-identical screen. Below
-    that, fast-lcd draws its own (un-doubled, centred) digit in the same band -- excluded
-    here since its x position moves with the value -- and the "volume" caption, which is
-    untouched by the patch and must still match fast-lcd exactly."""
-    v, acc = current_volume(new), accent_of(new)
-    boxes = VOL_BOXES + [STOCK_DIGIT_BAND]
-    outside = all(new.lcd.screen_pixel(x, y) == ref.lcd.screen_pixel(x, y)
-                  for x in range(W) for y in range(H)
-                  if not any(bx <= x < bx + bw and by <= y < by + bh for bx, by, bw, bh in boxes))
-    check("%-12s volume: number and line as hn_draw_volume draws it" % step,
-          new.page == 2 and expect_volume(new, v, acc))
-    check("%-12s volume: caption below identical to fast-lcd" % step, outside)
+def volpage_reference(amp):
+    """What hn_volpage draws for this amp's state, on a black screen."""
+    e = emu((amp.e.iram[0x48], amp.e.iram[0x49]))
+    for a in (0x31, 0x47, 0x2B, 0x52):
+        e.iram[a] = amp.e.iram[a]
+    e.call(LAB["hn_volpage"])
+    return e.lcd.gram
 
 
 def home_checks(step, new, ref):
@@ -406,7 +421,8 @@ def tour():
         if kind == "home":
             home_checks(step, new, ref)
         elif kind == "vol":
-            volume_checks(step, new, ref)
+            check("%-12s volume page exactly as hn_volpage draws it" % step,
+                  new.page == 2 and new.lcd.gram == volpage_reference(new))
         else:
             check("%-12s screen identical to fast-lcd" % step, new.lcd.gram == ref.lcd.gram)
         if step == "vol_up":
@@ -484,7 +500,7 @@ def test_align():
 
 GROUPS = {
     "unit": [image_diff, test_fill, test_digit2x, test_text, test_name_ptr,
-             test_draw_volume, test_volpage, test_wipe, test_home_tail, test_align],
+             test_draw_volume, test_volpage, test_wipe, test_enter_vol, test_home_tail, test_align],
     "tour": [tour],
     "sweep": [],
 }

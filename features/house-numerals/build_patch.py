@@ -12,7 +12,10 @@ A reduced first build of study 3 in features/ui-theme/ui_themes.html:
             (jump-table entry 0x2143) shows the input name, a divider, "VOL",
             the volume in the stock big digits at 2x and a 240-px position line.
             volpage_draw_volume 0x5936 is replaced, so knob and remote steps
-            redraw only the number and the line.
+            redraw only the number and the line. Page 2 is actually entered from
+            the four volume-key sites (0x0D33, 0x0DB3, 0x0E5A, 0x0F02), not through
+            the page renderer alone; those sites get `lcall hn_enter_vol ; sjmp`
+            past the stock "volume" caption, straight into the same static page.
 
 Accent: the theme colour (RAM 0x48:0x49), SMSL orange 0xFC43 on the White theme.
 Everything goes through the fast pixel path of fast-lcd; hn_fill and hn_digit2x
@@ -81,6 +84,17 @@ HOOKS = [
     (0x3A82, bytes([0xE4, 0x78, 0x02]), 0x02, "hn_align_small"),  # small_text_render: same
     (0x5C99, bytes([0x02, 0x59, 0x16]), 0x02, "hn_home_tail"),    # home_refresh: ljmp home_draw_volume
 ]
+
+# where the volume keys open page 2 themselves (after `mov 0x45,#0x02`); 22 stock bytes each:
+# lcall ui_clear_screen, load "volume", small_text_render at y 135. The first 5 become
+# `lcall hn_enter_vol ; sjmp site+0x16`.
+VOL_ENTRY_SITES = (0x0D33, 0x0DB3, 0x0E5A, 0x0F02)
+VOL_ENTRY_ORIG = bytes.fromhex("125d427bff7a937947e4fdff124d3a7f877e00123a53")
+
+
+def vol_entry_bytes(target):
+    return bytes([0x12, target >> 8, target & 0xFF, 0x80, len(VOL_ENTRY_ORIG) - 5])
+
 
 VERSION_TEXT = "v1.4 tbenr hn"
 VERSION_PTR_ADDR = 0x22CA
@@ -399,8 +413,8 @@ def build_volume_page(a):
     a.L("hdv_done")
     jump(a, "hn_end")
 
-    a.comment("hn_volpage: page 2 renderer (replaces 0x2167)")
-    a.L("hn_volpage")
+    a.comment("hn_vol_static: the parts of the volume page that don't depend on the volume")
+    a.L("hn_vol_static")
     call(a, "hn_begin")
     call(a, "hn_white")
     call(a, "hn_name_ptr")
@@ -413,15 +427,26 @@ def build_volume_page(a):
     call(a, "hn_accent")
     movr(a, 2, STR_VOL >> 8); movr(a, 3, STR_VOL & 0xFF); movr(a, 4, 0); movr(a, 5, 158); movr(a, 7, 14)
     call(a, "hn_text", "VOL")
-    call(a, "hn_end")
+    jump(a, "hn_end")
+
+    a.comment("hn_volpage: page 2 renderer (replaces 0x2167)")
+    a.L("hn_volpage")
+    call(a, "hn_vol_static")
     a.i("mov R7,0x31", 0xAF, 0x31)
     call(a, "hn_draw_volume")
     jump(a, RENDER_DONE, "clears 0x22.3, 0x32, 0x46 like every page")
+
+    a.comment("hn_enter_vol: where a volume key opens page 2 (4 sites): wipe, then the static page")
+    a.L("hn_enter_vol")
+    call(a, "hn_wipe")
+    jump(a, "hn_vol_static")
 
     a.comment("hn_clear: replaces lcall ui_clear_screen at 0x2106; page in 0x59")
     a.L("hn_clear")
     a.i("mov A,0x59", 0xE5, 0x59)
     a.i("cjne A,#2,hc_stock", 0xB4, 0x02, rel("hc_stock"))
+    a.comment("hn_wipe: clear the text buffers, then the accent edge from x 318 to 0")
+    a.L("hn_wipe")
     call(a, CLEAR_SMALL_BUF, "as ui_clear_screen")
     call(a, CLEAR_BIG_BUF)
     call(a, "hn_begin")
@@ -520,6 +545,8 @@ def main():
         raise SystemExit("base image is not the fast-lcd build (sha %s)" % sha)
     for addr, orig, _, _ in HOOKS:
         assert img[addr:addr + 3] == orig, "bytes at 0x%04X not as expected" % addr
+    for s in VOL_ENTRY_SITES:
+        assert img[s:s + len(VOL_ENTRY_ORIG)] == VOL_ENTRY_ORIG, "volume entry at 0x%04X not as expected" % s
     for inp, addr, text in INPUT_NAMES:
         assert img[addr:addr + len(text) + 1] == text.encode() + b"\0", "input name %d moved" % inp
     assert len(img) <= CODE_ADDR
@@ -534,6 +561,12 @@ def main():
         t = labels[target]
         img[addr:addr + 3] = bytes([op, t >> 8, t & 0xFF])
         lines.append("; 0x%04X: %s -> %02x %02x %02x  (%s)" % (addr, orig.hex(" "), op, t >> 8, t & 0xFF, target))
+
+    for s in VOL_ENTRY_SITES:
+        new = vol_entry_bytes(labels["hn_enter_vol"])
+        lines.append("; 0x%04X: %s -> %s  (lcall hn_enter_vol ; sjmp 0x%04X)" %
+                     (s, VOL_ENTRY_ORIG[:5].hex(" "), new.hex(" "), s + len(VOL_ENTRY_ORIG)))
+        img[s:s + 5] = new
 
     assert len(VERSION_TEXT) <= VERSION_MAX_LEN
     assert img[VERSION_PTR_ADDR] == 0x7A and img[VERSION_PTR_ADDR + 2] == 0x79
