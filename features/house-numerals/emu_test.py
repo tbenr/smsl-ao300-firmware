@@ -6,7 +6,6 @@
   python3 emu_test.py sweep   all 256 IR commands in five states, against fast-lcd
   python3 emu_test.py         all three
 """
-import copy
 import multiprocessing as mp
 import os
 import sys
@@ -17,7 +16,7 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(ROOT, "tools", "emu"))
 sys.path.insert(0, HERE)
 from emu8051 import Emu8051                                     # noqa: E402
-from ao300 import Amp, CLOCK_HZ, NEC_POWER, NEC_MENU, NEC_DOWN, NEC_SOURCE, \
+from ao300 import Amp, CLOCK_HZ, NEC_POWER, NEC_DOWN, NEC_SOURCE, \
     NEC_VOL_UP, NEC_VOL_DOWN, STATE_KEY                          # noqa: E402
 import build_patch as bp                                         # noqa: E402
 
@@ -335,6 +334,9 @@ def text_render(img, page, entry, buf, text, y):
 
 
 NEC_HDMI = 0x14                          # direct-select input 5
+NEC_MENU_OPEN = 0x04                     # opens the menu from home (key_menu_nav @ 0x10FC, key code 0x0F
+                                          # via the IR table); NEC_MENU (0x03, key code 0x5D) reaches
+                                          # key_menu @ 0x144E, which is a no-op unless page is already >= 3
 CHUNK = 0.01                             # lockstep granularity, one Timer0 tick
 TOUR = [                                 # (step, NEC command or None, seconds, screen check)
     ("power_on", NEC_POWER, 8.0, "home"),
@@ -342,9 +344,9 @@ TOUR = [                                 # (step, NEC command or None, seconds, 
     ("vol_up2", NEC_VOL_UP, 0.5, "vol"),
     ("back_home", None, 2.5, "home"),
     ("source", NEC_SOURCE, 11.0, "home"),   # OPTICAL has no signal: ~10 s detect timeout, then wipe
-    ("menu", NEC_MENU, 1.5, "home"),      # a single tap doesn't open the menu (page stays 1,
-    ("menu_down", NEC_DOWN, 1.0, "home"),  # confirmed by fast-lcd's own tour); still the home screen
-    ("menu_timeout", None, 10.5, "home"),
+    ("menu", NEC_MENU_OPEN, 1.5, "same"),   # opens the menu (page -> 3), screen identical to fast-lcd
+    ("menu_down", NEC_DOWN, 1.0, "same"),   # navigates the cursor down inside the menu (RAM 0x17)
+    ("menu_timeout", None, 9.5, "home"),    # ~9 s of inactivity in the menu returns home
     ("hdmi", NEC_HDMI, 3.0, "home"),
     ("vol_down", NEC_VOL_DOWN, 0.5, "vol"),
     ("vol_timeout", None, 2.5, "home"),
@@ -425,6 +427,8 @@ def tour():
                   new.page == 2 and new.lcd.gram == volpage_reference(new))
         else:
             check("%-12s screen identical to fast-lcd" % step, new.lcd.gram == ref.lcd.gram)
+        if step in ("menu", "menu_down"):
+            check("%-12s really in the menu (page >= 3)" % step, new.page >= 3, "(page %d)" % new.page)
         if step == "vol_up":
             check("vol_up       wipe and page drawn within 350 ms", draw_time(act[1]) <= 0.35,
                   "(%.0f ms)" % (draw_time(act[1]) * 1000))
@@ -498,11 +502,69 @@ def test_align():
           text_render(BASE, 1, 0x3A53, 0x50, wide, 135).lcd.gram)
 
 
+SWEEP_STATES = ["standby", "home", "volume", "volume_hp", "menu"]
+
+
+def reach(img, st):
+    """A fresh amp driven from reset into state st (the C core's ctypes pointers can't be
+    deep-copied, so every job replays from reset instead of cloning a snapshot)."""
+    a = Amp(img, log_audio=False)
+    a.set_pin(0xC0, 5, 0)                        # USB audio present
+    a.boot()
+    if st != "standby":
+        a.press(NEC_POWER); a.wait(8.0)
+    if st == "volume":
+        a.press(NEC_VOL_UP); a.wait(0.5)
+    elif st == "volume_hp":
+        a.e.iram[0x2B] = 2                       # headphone branch of 0x5936
+        a.press(NEC_VOL_UP); a.wait(0.5)
+    elif st == "menu":
+        a.press(NEC_MENU_OPEN); a.wait(1.5)      # see NEC_MENU_OPEN above the tour
+    return a
+
+
+def outcome(img, st, cmd):
+    amp = reach(img, st)
+    amp.press(cmd)
+    amp.wait(0.3)
+    e = amp.e
+    s = (amp.page, amp.powered) + tuple(e.iram[a] for a in (0x31, 0x52, 0x47, 0x2B, 0x39, 0x17)) + \
+        (e.sfr[0xA0], e.sfr[0x80] & 0x46, e.sfr[0xC0] & 0x41)
+    screen = hash(tuple(amp.lcd.gram)) if amp.page not in (1, 2) else None
+    return s, screen
+
+
+def job(args):
+    st, cmd = args
+    return st, cmd, outcome(BASE, st, cmd), outcome(NEW, st, cmd)
+
+
+def sweep():
+    print("\nIR sweep: 256 commands x %d states, against fast-lcd" % len(SWEEP_STATES))
+    t0 = time.time()
+    pages = {st: (reach(NEW, st).page, reach(NEW, st).powered) for st in SWEEP_STATES}
+    check("snapshots in the intended states", pages["standby"][1] is False and pages["home"] == (1, True)
+          and pages["volume"][0] == 2 and pages["volume_hp"][0] == 2 and pages["menu"][0] >= 3, str(pages))
+    check("snapshot runs are repeatable", outcome(NEW, "volume", NEC_VOL_UP) == outcome(NEW, "volume", NEC_VOL_UP))
+    print("  reached all states in %.0f s" % (time.time() - t0), flush=True)
+    jobs = [(st, cmd) for st in SWEEP_STATES for cmd in range(256)]
+    with mp.get_context("fork").Pool() as pool:
+        res = pool.map(job, jobs, chunksize=8)
+    for st in SWEEP_STATES:
+        diff = [c for s, c, a, b in res if s == st and a[0] != b[0]]
+        scr = [c for s, c, a, b in res if s == st and a[1] != b[1]]
+        check("%-10s 256 commands: same page, power, volumes, input, output, EQ, pins" % st, not diff,
+              str(["%02X" % c for c in diff[:8]]))
+        check("%-10s screens identical wherever the page is not 1 or 2" % st, not scr,
+              str(["%02X" % c for c in scr[:8]]))
+    print("  sweep in %.0f s" % (time.time() - t0))
+
+
 GROUPS = {
     "unit": [image_diff, test_fill, test_digit2x, test_text, test_name_ptr,
              test_draw_volume, test_volpage, test_wipe, test_enter_vol, test_home_tail, test_align],
     "tour": [tour],
-    "sweep": [],
+    "sweep": [sweep],
 }
 
 
