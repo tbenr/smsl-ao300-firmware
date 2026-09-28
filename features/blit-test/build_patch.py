@@ -30,6 +30,9 @@ import hashlib
 import os
 import sys
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "tools", "patch"))
+from asm51 import Asm, rel, ab  # noqa: E402
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 BASE_IMAGE = os.path.join(ROOT, "features", "direct-select", "build", "flash_patched.bin")
@@ -69,87 +72,6 @@ VERSION_MAX_LEN = 20
 COLOURS = [0xF800, 0x07E0, 0x001F, 0xFFFF, 0xFFE0, 0x07FF, 0xF81F, 0x7BEF]
 COLOUR_NAMES = ["red", "green", "blue", "white", "yellow", "cyan", "magenta", "grey"]
 BAND_W = 40
-
-
-class Asm:
-    """Label-resolving 8051 assembler; every instruction keeps its text for a listing."""
-
-    def __init__(self, org):
-        self.org = org
-        self.buf = bytearray()
-        self.labels = {}
-        self.fix = []
-        self.lines = []
-
-    @property
-    def pc(self):
-        return self.org + len(self.buf)
-
-    def L(self, name):
-        self.labels[name] = self.pc
-        self.lines.append(("label", name))
-
-    def comment(self, text):
-        self.lines.append(("comment", text))
-
-    def i(self, text, *parts):
-        start = self.pc
-        rels = []
-        for p in parts:
-            if isinstance(p, tuple):
-                kind, target = p
-                if kind == "rel":
-                    rels.append((len(self.buf), target))
-                    self.buf.append(0)
-                else:
-                    self.fix.append(("abs", len(self.buf), target, None))
-                    self.buf += b"\0\0"
-            else:
-                self.buf.append(p & 0xFF)
-        end = self.pc
-        for pos, target in rels:
-            self.fix.append(("rel", pos, target, end))
-        self.lines.append(("ins", start, end, text))
-
-    def data(self, text, bs):
-        start = self.pc
-        self.buf += bytes(bs)
-        self.lines.append(("ins", start, self.pc, text))
-
-    def resolve(self):
-        for kind, pos, target, end in self.fix:
-            addr = self.labels[target] if isinstance(target, str) else target
-            if kind == "rel":
-                rel = addr - end
-                assert -128 <= rel <= 127, "branch to %s out of range (%d)" % (target, rel)
-                self.buf[pos] = rel & 0xFF
-            else:
-                self.buf[pos] = addr >> 8
-                self.buf[pos + 1] = addr & 0xFF
-        return bytes(self.buf)
-
-    def listing(self):
-        out = []
-        for ln in self.lines:
-            if ln[0] == "label":
-                out.append("%s:" % ln[1])
-            elif ln[0] == "comment":
-                out.append("            ; %s" % ln[1])
-            else:
-                _, s, e, text = ln
-                bs = self.buf[s - self.org:e - self.org]
-                for k in range(0, len(bs), 8):
-                    chunk = bs[k:k + 8]
-                    out.append("  %04X: %-24s %s" % (s + k, chunk.hex(" "), text if k == 0 else ""))
-        return "\n".join(out) + "\n"
-
-
-def rel(lab):
-    return ("rel", lab)
-
-
-def ab(lab):
-    return ("abs", lab)
 
 
 def build(a):

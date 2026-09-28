@@ -66,6 +66,8 @@ public class SmslAo300Labels extends GhidraScript {
         {0x5232, "signal_present_update"}, {0x54EA, "njw1194_write"},
         // main loop and timers
         {0x3325, "main_tick_tasks"},   {0x5585, "post_power_on"},
+        {0x5A62, "mute_state_set"},    // R7=0: clear 0x22.4, P2.2 on; else 0x5B39 by output
+        {0x5B39, "p2_mute_pins_by_output"}, // output 1: P2.5/P2.7/P2.2 low, 2: high
         {0x5A78, "countdown16_dec"},   {0x5B22, "main_tasks_on"},
         {0x5D6E, "dispatch_key_if_any"},
         // Keil runtime
@@ -73,6 +75,8 @@ public class SmslAo300Labels extends GhidraScript {
         // patch code, only in the images that carry it
         {0x9400, "ir_direct_select"},  // features/direct-select
         {0x9450, "blit_test"},         // features/blit-test
+        {0x9700, "fast_pixel"},        // features/fast-lcd, replaces lcd_write_pixel
+        {0x9716, "fast_clear"},        // features/fast-lcd, replaces lcd_clear_black's loop
     };
 
     Object[][] codeLabels = {
@@ -84,6 +88,8 @@ public class SmslAo300Labels extends GhidraScript {
         {0x22FA, "ui_render_done"},         {0x336A, "main_render_page"},
         {0x3DD6, "read_key_volpage_exit"},  // page 2: keys other than Vol+/Vol-/Power -> 0x15 (home)
         {0x3ED9, "t0_return_home"},         // 0x3F:0x40 reaches 0 -> page 1, redraw
+        {0x3335, "main_tick_10ms"},         // runs once per 0x20.7 tick flag; missed ticks are lost
+        {0x33ED, "mute_timer_expired"},     // 0x43:0x44 reaches 0 -> mute_state_set(1)
         {0x45CE, "port_init"},              {0x5C79, "lcd_write_pixel_black"},
         // data
         {0x5DAB, "font_small_14x24"},       {0x6A23, "font_big_32x30"},
@@ -96,8 +102,8 @@ public class SmslAo300Labels extends GhidraScript {
         {0x2B, "g_output"},        {0x2C, "g_filter"},        {0x2F, "g_screen_off_hi"},
         {0x30, "g_screen_off_lo"}, {0x31, "g_volume"},        {0x32, "g_render_req"},
         {0x39, "g_eq"},
-        {0x3F, "g_home_timer_hi"}, {0x40, "g_home_timer_lo"}, {0x43, "g_timer_43"},
-        {0x44, "g_timer_44"},      {0x45, "g_ui_page"},       {0x46, "g_render_req2"},
+        {0x3F, "g_home_timer_hi"}, {0x40, "g_home_timer_lo"}, {0x43, "g_mute_timer_hi"},
+        {0x44, "g_mute_timer_lo"},      {0x45, "g_ui_page"},       {0x46, "g_render_req2"},
         {0x47, "g_input"},         {0x48, "g_text_colour_hi"}, {0x49, "g_text_colour_lo"},
         {0x52, "g_volume_hp"},
         {0x4F, "g_power_on"},      {0x54, "g_ir_pulse_hi"},   {0x55, "g_ir_pulse_lo"},

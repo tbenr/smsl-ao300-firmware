@@ -24,6 +24,9 @@ tools/
   flash/flash_ao300.py            guarded stcgal-based flasher for macOS/Linux (see below)
   emu/emu8051.py                  full 8051 emulator with STC8 clock counts and an ST7789
                                   model of the LCD bus (renders the screen to PNG)
+  emu/ao300.py                    harness: boot the whole firmware, press remote keys, log
+                                  audio-chip writes and pins per 10 ms tick
+  patch/asm51.py                  label-resolving 8051 assembler used by the build scripts
 
 features/
   status-line-flicker/            analysis of the "flickering C" display bug (no build yet)
@@ -39,6 +42,9 @@ features/
   blit-test/                      test build for the tuned blit (remote Vol+/Vol- on home), on top
                                   of direct-select; see its README
     build_patch.py, emu_test.py   build build/flash_blittest.bin, emulate it, render PNGs
+  fast-lcd/                       the stock UI through the tuned pixel path, on top of
+                                  direct-select; emulator-verified, see its README
+    build_patch.py, emu_test.py   build build/flash_fastlcd.bin, lockstep UI tour vs stock
 
 ghidraPRG/                    * Ghidra project (import original/extracted/flash.bin as
                                 8051:BE:16:default, block CODE at 0)

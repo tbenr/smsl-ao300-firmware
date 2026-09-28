@@ -16,6 +16,10 @@ Good enough to run stock firmware routines and patch code end to end:
 
 MOVX @Ri ignores P2 and addresses XDATA page 0, which is how the stock firmware
 uses it (its scratch variables at 0x00..0xFF are reached both ways consistently).
+
+Input pins: `pins[port_sfr] = (mask, value)` forces what source reads and bit tests
+see on those pins (JB P4.5, MOV A,P4...). Read-modify-write instructions still use the
+latch, as on the chip.
 """
 import struct
 import zlib
@@ -42,6 +46,7 @@ class Emu8051:
         self.on_tick = None
         self._next_tick = 0
         self.lcd = LCD()
+        self.pins = {}                     # port SFR -> (mask, value) forced on pin reads
         self.sfr_watch[P0] = self._p0_write
         self.ops = [self._bad] * 256
         self._build()
@@ -73,6 +78,19 @@ class Emu8051:
         w = self.sfr_watch.get(a)
         if w:
             w(self, old, v)
+
+    def rdp(self, a):
+        """Direct read as a source operand: port SFRs return pins, where forced."""
+        v = self.rd(a)
+        if self.pins and a in self.pins:
+            m, val = self.pins[a]
+            v = (v & ~m) | (val & m)
+        return v
+
+    def getpin(self, b):
+        """Bit read by a test or move (JB, JNB, MOV C,bit...): pins where forced."""
+        a, n = self.bit_addr(b)
+        return (self.rdp(a) >> n) & 1
 
     def psw(self):
         a = self.sfr[ACC]
@@ -163,7 +181,7 @@ class Emu8051:
             ops[op](op)
             self.steps += 1
             if self.tick_every and self.cycles >= self._next_tick:
-                self._next_tick = self.cycles + self.tick_every
+                self._next_tick += self.tick_every     # fixed schedule, no drift
                 if self.on_tick:
                     self.on_tick(self)
         return self.cycles
@@ -260,7 +278,7 @@ class Emu8051:
         def jbit(kind):
             def f(op):
                 b = e._fetch(1)
-                v = e.getbit(b)
+                v = e.getpin(b)
                 take = v if kind != "jnb" else not v
                 if kind == "jbc" and v:
                     e.setbit(b, 0)
@@ -281,7 +299,7 @@ class Emu8051:
                     e.pc += length; e.cycles += 1 if fast else 2
             return f
         O[0xB4] = cjne(lambda: e.A, lambda: e._fetch(1), 3, True)
-        O[0xB5] = cjne(lambda: e.A, lambda: e.rd(e._fetch(1)), 3, False)
+        O[0xB5] = cjne(lambda: e.A, lambda: e.rdp(e._fetch(1)), 3, False)
         for i in range(2):
             O[0xB6 + i] = cjne(lambda i=i: e.iram[e.R(i)], lambda: e._fetch(1), 3, False)
         for n in range(8):
@@ -338,7 +356,7 @@ class Emu8051:
 
         def alu_family(base, fn):
             def imm(op):  fn(e._fetch(1)); e.pc += 2; e.cycles += 1
-            def dr(op):   fn(e.rd(e._fetch(1))); e.pc += 2; e.cycles += 1
+            def dr(op):   fn(e.rdp(e._fetch(1))); e.pc += 2; e.cycles += 1
             def ind(op):  fn(e.iram[e.R(op & 1)]); e.pc += 1; e.cycles += 1
             def reg(op):  fn(e.R(op & 7)); e.pc += 1; e.cycles += 1
             O[base + 4] = imm; O[base + 5] = dr
@@ -425,12 +443,12 @@ class Emu8051:
         def clr_b(op):  e.setbit(e._fetch(1), 0); e.pc += 2; e.cycles += 1
         def setb_b(op): e.setbit(e._fetch(1), 1); e.pc += 2; e.cycles += 1
         def cpl_b(op):  b = e._fetch(1); e.setbit(b, 1 - e.getbit(b)); e.pc += 2; e.cycles += 1
-        def mov_c_b(op): e.C = e.getbit(e._fetch(1)); e.pc += 2; e.cycles += 1
+        def mov_c_b(op): e.C = e.getpin(e._fetch(1)); e.pc += 2; e.cycles += 1
         def mov_b_c(op): e.setbit(e._fetch(1), e.C); e.pc += 2; e.cycles += 1
-        def orl_c(op):  e.C = e.C | e.getbit(e._fetch(1)); e.pc += 2; e.cycles += 1
-        def anl_c(op):  e.C = e.C & e.getbit(e._fetch(1)); e.pc += 2; e.cycles += 1
-        def orl_nc(op): e.C = e.C | (1 - e.getbit(e._fetch(1))); e.pc += 2; e.cycles += 1
-        def anl_nc(op): e.C = e.C & (1 - e.getbit(e._fetch(1))); e.pc += 2; e.cycles += 1
+        def orl_c(op):  e.C = e.C | e.getpin(e._fetch(1)); e.pc += 2; e.cycles += 1
+        def anl_c(op):  e.C = e.C & e.getpin(e._fetch(1)); e.pc += 2; e.cycles += 1
+        def orl_nc(op): e.C = e.C | (1 - e.getpin(e._fetch(1))); e.pc += 2; e.cycles += 1
+        def anl_nc(op): e.C = e.C & (1 - e.getpin(e._fetch(1))); e.pc += 2; e.cycles += 1
         O[0xC3] = clr_c; O[0xD3] = setb_c; O[0xB3] = cpl_c
         O[0xC2] = clr_b; O[0xD2] = setb_b; O[0xB2] = cpl_b
         O[0xA2] = mov_c_b; O[0x92] = mov_b_c
@@ -438,7 +456,7 @@ class Emu8051:
 
         # --- data moves
         def mov_a_imm(op): e.A = e._fetch(1); e.pc += 2; e.cycles += 1
-        def mov_a_dir(op): e.A = e.rd(e._fetch(1)); e.pc += 2; e.cycles += 1
+        def mov_a_dir(op): e.A = e.rdp(e._fetch(1)); e.pc += 2; e.cycles += 1
         def mov_a_ind(op): e.A = e.iram[e.R(op & 1)]; e.pc += 1; e.cycles += 1
         def mov_a_reg(op): e.A = e.R(op & 7); e.pc += 1; e.cycles += 1
         O[0x74] = mov_a_imm; O[0xE5] = mov_a_dir; O[0xE6] = O[0xE7] = mov_a_ind
@@ -450,11 +468,11 @@ class Emu8051:
         def mov_ind_imm(op): e.iram[e.R(op & 1)] = e._fetch(1); e.pc += 2; e.cycles += 1
         def mov_reg_imm(op): e.setR(op & 7, e._fetch(1)); e.pc += 2; e.cycles += 1
         O[0x75] = mov_dir_imm; O[0x76] = O[0x77] = mov_ind_imm
-        def mov_dir_dir(op): v = e.rd(e._fetch(1)); e.wr(e._fetch(2), v); e.pc += 3; e.cycles += 1
+        def mov_dir_dir(op): v = e.rdp(e._fetch(1)); e.wr(e._fetch(2), v); e.pc += 3; e.cycles += 1
         def mov_dir_ind(op): e.wr(e._fetch(1), e.iram[e.R(op & 1)]); e.pc += 2; e.cycles += 1
         def mov_dir_reg(op): e.wr(e._fetch(1), e.R(op & 7)); e.pc += 2; e.cycles += 1
-        def mov_ind_dir(op): e.iram[e.R(op & 1)] = e.rd(e._fetch(1)); e.pc += 2; e.cycles += 1
-        def mov_reg_dir(op): e.setR(op & 7, e.rd(e._fetch(1))); e.pc += 2; e.cycles += 1
+        def mov_ind_dir(op): e.iram[e.R(op & 1)] = e.rdp(e._fetch(1)); e.pc += 2; e.cycles += 1
+        def mov_reg_dir(op): e.setR(op & 7, e.rdp(e._fetch(1))); e.pc += 2; e.cycles += 1
         O[0x85] = mov_dir_dir; O[0x86] = O[0x87] = mov_dir_ind
         O[0xA6] = O[0xA7] = mov_ind_dir
         for n in range(8):
@@ -473,7 +491,7 @@ class Emu8051:
         O[0xE0] = movx_a_dptr; O[0xE2] = O[0xE3] = movx_a_ri
         O[0xF0] = movx_dptr_a; O[0xF2] = O[0xF3] = movx_ri_a
 
-        def push_(op): e.push(e.rd(e._fetch(1))); e.pc += 2; e.cycles += 1
+        def push_(op): e.push(e.rdp(e._fetch(1))); e.pc += 2; e.cycles += 1
         def pop_(op):  v = e.pop(); e.wr(e._fetch(1), v); e.pc += 2; e.cycles += 1
         O[0xC0] = push_; O[0xD0] = pop_
 

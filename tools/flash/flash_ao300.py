@@ -59,6 +59,7 @@ KNOWN_IMAGES = {
     "85e8ac50ffcf47ea159a976edbcd398e81345c0ceb3b1542e97e80a800adb0cc": "stock v1.4 (original/extracted/flash.bin)",
     "bb468b29ea935150d2c43e00074a68184920329529077898011a0c334a76f43e": "direct-select + 'v1.4 tbenr' (features/direct-select/build/flash_patched.bin)",
     "eae8f6eda5f0cf4b07dc797b3a311706aca4195666b392a8b68002418083e8d0": "direct-select + tuned-blit test on Vol+/Vol-, 5 s hold fixed, 'v1.4 tbenr blit' (features/blit-test/build/flash_blittest.bin)",
+    "b292a64855975584dda5fe3fb282103bfde77f7f7237ca9945ac4b5442dae859": "direct-select + fast LCD paths, 'v1.4 tbenr fast' (features/fast-lcd/build/flash_fastlcd.bin)",
 }
 
 
