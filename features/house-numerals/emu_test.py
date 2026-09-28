@@ -275,9 +275,55 @@ def test_wipe():
     check("other pages: stock clear, no wipe", 0x51EE in seen and not fills)
 
 
+def test_home_tail():
+    print("\nhn_home_tail (home_refresh's tail, 0x5C99)")
+    for theme, acc in (((0xFF, 0xFF), bp.ORANGE), ((0x07, 0xE0), 0x07E0)):
+        e = emu(theme); e.iram[0x2B] = 1; e.setR(7, 37)
+        e.call(LAB["hn_home_tail"])
+        ref = emu(theme, BASE); ref.iram[0x2B] = 1; ref.setR(7, 37)
+        ref.call(0x5916)
+        bar = all(px(e, x, y) == acc for x in range(18, 46) for y in range(114, 117))
+        rest = all(px(e, x, y) == px(ref, x, y) for x in range(W) for y in range(H)
+                   if not (18 <= x < 46 and 114 <= y < 117))
+        check("theme %02X%02X: volume as stock, accent bar 28x3 at 18,114" % theme, bar and rest)
+        check("theme %02X%02X: theme colour restored" % theme, (e.iram[0x48], e.iram[0x49]) == theme)
+
+
+def text_render(img, page, entry, buf, text, y):
+    e = emu(img=img)
+    e.iram[0x45] = page
+    for k, ch in enumerate(text.encode() + b"\0"):
+        e.xram[buf + k] = ch
+    e.setR(6, 0); e.setR(7, y)
+    e.call(entry)
+    return e
+
+
+def test_align():
+    print("\nleft-aligned text on page 1 (hooks 0x2A25 big, 0x3A82 small)")
+    cases = (("big", 0x298B, 0x35, "USB", 75, 32, 30), ("small", 0x3A53, 0x50, "No signal", 135, 24, 14))
+    for kind, entry, buf, text, y, h, cw in cases:
+        n1, b1 = text_render(NEW, 1, entry, buf, text, y), text_render(BASE, 1, entry, buf, text, y)
+        n3, b3 = text_render(NEW, 3, entry, buf, text, y), text_render(BASE, 3, entry, buf, text, y)
+        tw = len(text) * cw
+        shift = (W - tw) // 2 - 16
+        moved = all(px(n1, x, yy) == px(b1, x + shift, yy) for x in range(16, 16 + tw) for yy in range(y, y + h))
+        check("%s: page 1 text moved to x 16, same glyphs" % kind, moved and ink_in(n1, 16, y, tw, h))
+        check("%s: page 1 margins left and right cleared" % kind,
+              not ink_in(n1, 0, y, 16, h) and not ink_in(n1, 16 + tw, y, W - 16 - tw, h))
+        check("%s: page 3 (menus) unchanged, centred" % kind, n3.lcd.gram == b3.lcd.gram)
+    e = text_render(NEW, 1, 0x298B, 0x35, "COAXIAL", 75)
+    check("big COAXIAL (narrow-glyph centring path) starts at x 16",
+          not ink_in(e, 0, 75, 16, 32) and ink_in(e, 16, 75, 30, 32))
+    wide = "ABCDEFGHIJKLMNOPQRSTU"                    # 21 x 14 = 294 px: stays centred
+    check("small text wider than 288 px stays centred on page 1",
+          text_render(NEW, 1, 0x3A53, 0x50, wide, 135).lcd.gram ==
+          text_render(BASE, 1, 0x3A53, 0x50, wide, 135).lcd.gram)
+
+
 GROUPS = {
     "unit": [image_diff, test_fill, test_digit2x, test_text, test_name_ptr,
-             test_draw_volume, test_volpage, test_wipe],
+             test_draw_volume, test_volpage, test_wipe, test_home_tail, test_align],
     "tour": [],
     "sweep": [],
 }

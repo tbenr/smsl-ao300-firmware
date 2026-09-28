@@ -77,6 +77,9 @@ HOOKS = [
     (0x2106, bytes([0x12, 0x5D, 0x42]), 0x12, "hn_clear"),        # lcall ui_clear_screen
     (0x2143, bytes([0x02, 0x21, 0x67]), 0x02, "hn_volpage"),      # page 2 jump-table entry
     (0x5936, bytes([0xAB, 0x07, 0xE5]), 0x02, "hn_draw_volume"),  # volpage_draw_volume entry
+    (0x2A25, bytes([0xE4, 0x78, 0x02]), 0x02, "hn_align_big"),    # big_text_render: clr A; mov R0,#2
+    (0x3A82, bytes([0xE4, 0x78, 0x02]), 0x02, "hn_align_small"),  # small_text_render: same
+    (0x5C99, bytes([0x02, 0x59, 0x16]), 0x02, "hn_home_tail"),    # home_refresh: ljmp home_draw_volume
 ]
 
 VERSION_TEXT = "v1.4 tbenr hn"
@@ -463,10 +466,42 @@ def build_volume_page(a):
     a.i("ret", 0x22)
 
 
+def build_home(a):
+    a.comment("hn_home_tail: replaces home_refresh's ljmp 0x5916; adds the accent bar")
+    a.L("hn_home_tail")
+    call(a, HOME_DRAW_VOLUME, "as before, R7 = volume")
+    call(a, "hn_begin")
+    call(a, "hn_accent")
+    rect(a, 18, 28, 114, 3)
+    call(a, "hn_fill", "accent bar under the input name")
+    jump(a, "hn_end")
+
+    for name, back in (("hn_align_big", 0x2A28), ("hn_align_small", 0x3A85)):
+        a.comment("%s: on page 1 move the stored start x (XDATA 0x04:0x05) to 16" % name)
+        a.L(name)
+        a.i("mov A,0x45", 0xE5, 0x45)
+        a.i("cjne A,#1,%s_x" % name, 0xB4, 0x01, rel(name + "_x"))
+        a.i("mov R0,#4", 0x78, 0x04)
+        a.i("movx A,@R0        ; start x hi", 0xE2)
+        a.i("jnz %s_x" % name, 0x70, rel(name + "_x"))
+        a.i("inc R0", 0x08)
+        a.i("movx A,@R0        ; start x lo", 0xE2)
+        a.i("clr C", 0xC3)
+        a.i("subb A,#16", 0x94, 16)
+        a.i("jc %s_x         ; wider than 288 px: keep it centred" % name, 0x40, rel(name + "_x"))
+        a.i("mov A,#16", 0x74, 16)
+        a.i("movx @R0,A        ; start x = 16", 0xF2)
+        a.L(name + "_x")
+        a.i("clr A             ; the two instructions the hook replaced", 0xE4)
+        a.i("mov R0,#2", 0x78, 0x02)
+        jump(a, back)
+
+
 def build(a):
     build_data(a)
     build_primitives(a)
     build_volume_page(a)
+    build_home(a)
 
 
 def assemble():
@@ -488,6 +523,7 @@ def main():
     for inp, addr, text in INPUT_NAMES:
         assert img[addr:addr + len(text) + 1] == text.encode() + b"\0", "input name %d moved" % inp
     assert len(img) <= CODE_ADDR
+    assert img[0x2A28] == 0xF2 and img[0x3A85] == 0xF2, "movx @R0,A after the align hooks moved"
 
     code, labels, a = assemble()
     img += b"\xFF" * (CODE_ADDR - len(img))

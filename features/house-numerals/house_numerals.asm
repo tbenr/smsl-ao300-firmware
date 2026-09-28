@@ -2,7 +2,10 @@
 ; 0x2106: 12 5d 42 -> 12 9a 64  (hn_clear)
 ; 0x2143: 02 21 67 -> 02 9a 24  (hn_volpage)
 ; 0x5936: ab 07 e5 -> 02 99 99  (hn_draw_volume)
-; version string 'v1.4 tbenr hn' at 0x9AE5, pointer 0x22CA repointed
+; 0x2A25: e4 78 02 -> 02 9a fe  (hn_align_big)
+; 0x3A82: e4 78 02 -> 02 9b 18  (hn_align_small)
+; 0x5C99: 02 59 16 -> 02 9a e5  (hn_home_tail)
+; version string 'v1.4 tbenr hn' at 0x9B32, pointer 0x22CA repointed
 
             ; input-name pointers for inputs 1..6 (stock strings), then the VOL label
 names:
@@ -486,3 +489,51 @@ hc_load:
   9AE2: e0                       movx A,@DPTR
   9AE3: fb                       mov R3,A
   9AE4: 22                       ret
+            ; hn_home_tail: replaces home_refresh's ljmp 0x5916; adds the accent bar
+hn_home_tail:
+  9AE5: 12 59 16                 lcall 0x5916   ; as before, R7 = volume
+  9AE8: 12 98 66                 lcall hn_begin
+  9AEB: 12 98 93                 lcall hn_accent
+  9AEE: 7a 00                    mov R2,#0x00
+  9AF0: 7b 12                    mov R3,#0x12
+  9AF2: 79 1c                    mov R1,#0x1C
+  9AF4: 7d 72                    mov R5,#0x72
+  9AF6: 7c 03                    mov R4,#0x03
+  9AF8: 12 98 10                 lcall hn_fill   ; accent bar under the input name
+  9AFB: 02 98 88                 ljmp hn_end
+            ; hn_align_big: on page 1 move the stored start x (XDATA 0x04:0x05) to 16
+hn_align_big:
+  9AFE: e5 45                    mov A,0x45
+  9B00: b4 01 0f                 cjne A,#1,hn_align_big_x
+  9B03: 78 04                    mov R0,#4
+  9B05: e2                       movx A,@R0        ; start x hi
+  9B06: 70 0a                    jnz hn_align_big_x
+  9B08: 08                       inc R0
+  9B09: e2                       movx A,@R0        ; start x lo
+  9B0A: c3                       clr C
+  9B0B: 94 10                    subb A,#16
+  9B0D: 40 03                    jc hn_align_big_x         ; wider than 288 px: keep it centred
+  9B0F: 74 10                    mov A,#16
+  9B11: f2                       movx @R0,A        ; start x = 16
+hn_align_big_x:
+  9B12: e4                       clr A             ; the two instructions the hook replaced
+  9B13: 78 02                    mov R0,#2
+  9B15: 02 2a 28                 ljmp 0x2A28
+            ; hn_align_small: on page 1 move the stored start x (XDATA 0x04:0x05) to 16
+hn_align_small:
+  9B18: e5 45                    mov A,0x45
+  9B1A: b4 01 0f                 cjne A,#1,hn_align_small_x
+  9B1D: 78 04                    mov R0,#4
+  9B1F: e2                       movx A,@R0        ; start x hi
+  9B20: 70 0a                    jnz hn_align_small_x
+  9B22: 08                       inc R0
+  9B23: e2                       movx A,@R0        ; start x lo
+  9B24: c3                       clr C
+  9B25: 94 10                    subb A,#16
+  9B27: 40 03                    jc hn_align_small_x         ; wider than 288 px: keep it centred
+  9B29: 74 10                    mov A,#16
+  9B2B: f2                       movx @R0,A        ; start x = 16
+hn_align_small_x:
+  9B2C: e4                       clr A             ; the two instructions the hook replaced
+  9B2D: 78 02                    mov R0,#2
+  9B2F: 02 3a 85                 ljmp 0x3A85
