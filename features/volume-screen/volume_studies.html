@@ -1,0 +1,908 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AO300 Volume Studies</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=Big+Shoulders+Display:wght@500;700;800&family=IBM+Plex+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&display=swap">
+<style>
+:root{
+  --bg:#E3E5E8; --panel:#EFF1F3; --ink:#16181B; --muted:#5B616A; --line:#C6CBD1;
+  --accent:#C23F29; --chip:#D7DBE0; --chip-ink:#2B3036; --bezel:#0A0B0C; --bezel-edge:#2A2E33;
+  --focus:#2E63D6;
+  --display:"Big Shoulders Display","Arial Narrow",Impact,sans-serif;
+  --body:"Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#111315; --panel:#191C1F; --ink:#E5E7EA; --muted:#949BA4; --line:#2B3035;
+    --accent:#F0674F; --chip:#23272B; --chip-ink:#C9CED4; --bezel:#050506; --bezel-edge:#34393F;
+    --focus:#7FA4FF; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#111315; --panel:#191C1F; --ink:#E5E7EA; --muted:#949BA4; --line:#2B3035;
+  --accent:#F0674F; --chip:#23272B; --chip-ink:#C9CED4; --bezel:#050506; --bezel-edge:#34393F;
+  --focus:#7FA4FF; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.55 var(--body);padding-inline:clamp(16px,4vw,48px);padding-block:0 64px}
+.wrap{max-width:1180px;margin:0 auto}
+header.top{padding-block:40px 24px;display:grid;gap:18px 40px;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);align-items:end}
+h1{font:800 clamp(44px,7vw,84px)/.88 var(--display);letter-spacing:.01em;text-transform:uppercase;margin:0;text-wrap:balance}
+h1 small{display:block;font:600 13px/1.4 var(--mono);letter-spacing:.14em;color:var(--accent);margin-bottom:12px}
+.lede{margin:0;max-width:64ch;color:var(--muted)}
+.console{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--panel);border-block:1px solid var(--line);
+  display:flex;flex-wrap:wrap;gap:12px 22px;align-items:center;padding:12px 16px;margin-inline:-16px}
+.knob{display:flex;align-items:center;gap:10px;flex:1 1 280px;min-width:0}
+.knob input{flex:1;min-width:0;accent-color:var(--accent)}
+.readout{font:600 26px/1 "Barlow Condensed","Arial Narrow",sans-serif;font-variant-numeric:tabular-nums;min-width:5.6em;white-space:nowrap}
+.readout span{font:500 12px var(--mono);color:var(--muted);margin-left:6px}
+.group{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.lbl{font:500 11px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-right:2px}
+button,select{font:500 13px var(--body);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:6px 11px;cursor:pointer}
+button:hover,select:hover{border-color:var(--muted)}
+button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+button.mute[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+label.chk{display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:4px;overflow:hidden}
+.seg button{border:0;border-radius:0;background:transparent}
+.seg button + button{border-left:1px solid var(--line)}
+.swatches{display:flex;gap:4px}
+.swatches button{width:22px;height:22px;padding:0;border-radius:3px;border:1px solid var(--line)}
+.swatches button[aria-pressed="true"]{outline:2px solid var(--ink);outline-offset:2px;border-color:transparent}
+section.fam{margin-top:44px}
+.fam-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 16px;border-bottom:1px solid var(--line);padding-bottom:8px;margin-bottom:22px}
+.fam-head h2{font:700 28px/1 var(--display);text-transform:uppercase;letter-spacing:.03em;margin:0}
+.fam-head p{margin:0;color:var(--muted);font-size:14px;max-width:70ch}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,480px),1fr));gap:36px 32px}
+.study{display:grid;gap:12px;align-content:start}
+.bezel{background:var(--bezel);border-radius:6px;padding:14px;box-shadow:inset 0 0 0 1px var(--bezel-edge)}
+.bezel canvas{display:block;width:100%;max-width:100%;aspect-ratio:320/170;image-rendering:pixelated;background:#000}
+.study h3{font:700 22px/1.05 var(--display);text-transform:uppercase;letter-spacing:.04em;margin:0;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.after{font:400 12px var(--mono);color:var(--accent);letter-spacing:.02em;text-transform:none}
+.study p{margin:0;color:var(--muted);max-width:62ch;font-size:14px}
+.study p b{color:var(--ink);font-weight:600}
+.spec{display:flex;flex-wrap:wrap;gap:6px;font:12px/1 var(--mono);font-variant-numeric:tabular-nums}
+.spec span{background:var(--chip);color:var(--chip-ink);border-radius:3px;padding:5px 7px}
+.spec span.warn{background:transparent;box-shadow:inset 0 0 0 1px var(--accent);color:var(--accent)}
+.state{font:500 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:flex;justify-content:space-between;margin-top:8px}
+.state i{font-style:normal;color:#8b939c}
+.today{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:28px 32px;align-items:start}
+.tbl{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{text-align:left;vertical-align:top;padding:7px 10px 7px 0;border-bottom:1px solid var(--line)}
+th{font:500 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+td.mono{font:12.5px var(--mono);white-space:nowrap;font-variant-numeric:tabular-nums}
+td code{font:12px var(--mono);color:var(--muted)}
+.blit h4{font:700 17px/1.1 var(--display);text-transform:uppercase;letter-spacing:.05em;margin:0 0 8px}
+.bl-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px 36px;align-items:start;margin-bottom:32px}
+.bl-text p,.bl-text li{color:var(--muted);font-size:14.5px;max-width:64ch}
+.bl-text p{margin:0 0 10px}
+.bl-text ul,.bl-text ol{margin:0 0 10px;padding-left:20px;display:grid;gap:4px}
+.bl-text b{color:var(--ink);font-weight:600}
+.bl-text code,.cap code{font:12.5px var(--mono);color:var(--ink)}
+.bl-code{display:grid;gap:8px;min-width:0}
+.cap{margin:0;font:12px/1.45 var(--mono);color:var(--muted)}
+pre{margin:0;font:12.5px/1.55 var(--mono);background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:4px;padding:12px 14px;overflow-x:auto}
+footer{margin-top:56px;border-top:1px solid var(--line);padding-top:16px;color:var(--muted);font-size:13px;max-width:80ch}
+footer p{margin:0 0 8px}
+@media (max-width:820px){header.top,.today,.bl-grid{grid-template-columns:1fr}}
+</style>
+
+<div class="wrap">
+<header class="top">
+  <h1><small>SMSL AO300 · custom firmware sketches</small>Volume Studies</h1>
+  <p class="lede">Each sketch has two screens, like the stock firmware: a home screen with the same information as today, and a volume screen that takes over when you turn the knob. It goes back home 2 s after the last step. Each one is drawn at the panel's size, one canvas pixel per LCD pixel, and uses the colour theme picked in the amp's COLOR menu. Transitions are limited to wipes and reveals, because this panel can only afford to repaint the whole screen about once per transition.</p>
+</header>
+
+<div class="console" role="group" aria-label="Amp controls">
+  <div class="knob">
+    <button id="down" aria-label="Volume down">−</button>
+    <input id="vol" type="range" min="0" max="60" step="1" value="32" aria-label="Volume">
+    <button id="up" aria-label="Volume up">+</button>
+    <div class="readout" id="readout" aria-live="polite">32<span>−27.5 dB</span></div>
+  </div>
+  <div class="group">
+    <button id="mute" class="mute" aria-pressed="false">Mute</button>
+    <button id="sweep" aria-pressed="false">Demo</button>
+  </div>
+  <div class="group">
+    <label class="lbl" for="input">Input</label>
+    <select id="input">
+      <option>USB</option><option>OPTICAL</option><option>COAXIAL</option><option>ARC</option><option>AUX</option><option>BLUETOOTH</option>
+    </select>
+    <label class="chk"><input id="signal" type="checkbox" checked> Signal</label>
+  </div>
+  <div class="group">
+    <span class="lbl">Colour</span>
+    <div class="swatches" id="swatches" role="group" aria-label="Colour theme"></div>
+  </div>
+  <div class="group">
+    <span class="lbl">Readout</span>
+    <div class="seg" role="group" aria-label="Readout">
+      <button id="m-steps" aria-pressed="true">0–60</button>
+      <button id="m-db" aria-pressed="false">dB</button>
+    </div>
+  </div>
+  <div class="group">
+    <label class="lbl" for="pace">Frame rate</label>
+    <select id="pace">
+      <option value="0">Smooth preview</option>
+      <option value="3">Stock LCD driver</option>
+      <option value="0.8">Tuned blit (see below)</option>
+    </select>
+  </div>
+</div>
+
+<section class="fam">
+  <div class="fam-head"><h2>Today</h2><p>The stock v1.4 screens, rebuilt from the firmware's draw calls. The black sweep is the stock clear routine. It streams 320 × 170 pixels one 170-pixel vertical line at a time, so it sweeps across the screen; the direction on the glass is not confirmed.</p></div>
+  <div class="today">
+    <div class="study" id="stock-slot"></div>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>Element</th><th>Where</th><th>What it shows</th></tr></thead>
+        <tbody>
+          <tr><td>Volume</td><td class="mono">48, 9</td><td>Two digits next to the icon: speaker or headphone volume, whichever output is active <code>0x5916</code></td></tr>
+          <tr><td>Output icon</td><td class="mono">15, 8</td><td>Speaker or headphones in the theme colour; red (0xF800) when muted <code>0x5744</code></td></tr>
+          <tr><td>Format tag</td><td class="mono">208, 10</td><td>PCM, DSD, DoP or MQA <code>0x4251</code></td></tr>
+          <tr><td>EQ tag</td><td class="mono">266, 10</td><td>DIR, CUS, BAS, SBA, RCK, SFT, CLR <code>0x4a0b</code></td></tr>
+          <tr><td>Input name</td><td class="mono">centred, 75</td><td>USB, OPTICAL, COAXIAL, ARC, AUX <code>0x4abd</code></td></tr>
+          <tr><td>Status line</td><td class="mono">centred, 135</td><td>Sample rate, Bluetooth codec, “Analog input”, “No signal” <code>0x4077</code></td></tr>
+          <tr><td>Volume page</td><td class="mono">130, 75</td><td>Two digits, with “volume” centred at y 135. Full clear on entry and exit; back home after 200 timer ticks <code>0x2167</code></td></tr>
+          <tr><td>Font</td><td class="mono">14 × 24</td><td>One 1-bit font, 42 bytes a glyph, for every text item</td></tr>
+          <tr><td>Colour</td><td class="mono">8 themes</td><td>White, Red, Green, Blue, Yellow, Cyan, Orange, Purple, from the RGB565 table at <code>0x9241</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<div id="families"></div>
+
+<section class="fam blit" id="blit">
+  <div class="fam-head"><h2>Tuned blit</h2><p>The faster pixel path behind the “Tuned blit” frame rate. It is a design, not yet built or measured. The cycle counts were checked against the instruction table in the STC8G reference manual (SETB/CLR bit, MOV direct,Rn and RLC are 1 clock; taken JC/SJMP and DJNZ are 3; MOVC is 4; LCALL and RET are 3) and the stock loop at 0x5180 (≈67 clocks per pixel); they still need confirming with a timer on the chip.</p></div>
+
+  <div class="bl-grid">
+    <div class="bl-text">
+      <h4>The bus</h4>
+      <p>The LCD sits on an 8-bit 8080-style bus. P1 carries the byte, P0.5 is WR (the panel latches on its rising edge), P0.7 is CS and P0.3 selects command or data. The init code at <code>0x45CE</code> sets P0 and P1 to push-pull, so edges are driven hard in both directions.</p>
+      <p>The stock window routine <code>0x4437</code> sends CASET, RASET and RAMWR. Firmware y (0–169) plus the 0x23 offset goes to the column address and firmware x (0–319) to the row address. The panel advances the column address first, so a block streams one 170-pixel vertical line at a time across the screen. The stock font is stored the same way: 42 bytes per glyph is 14 columns of 3 bytes.</p>
+    </div>
+    <div class="bl-code">
+      <p class="cap">Stock, <code>0x567A</code>: called once per byte</p>
+<pre>setb P0.3        ; D/C = data
+clr  P0.7        ; CS low
+clr  P0.5        ; WR low
+mov  P1, R7      ; byte on the bus
+setb P0.5        ; WR rises, panel latches
+lcall 0x001E     ; delay: mov R7,#1 / djnz / ret
+setb P0.7        ; CS high
+ret</pre>
+      <p class="cap">Two calls per pixel, plus 16-bit loop counters in the caller: about 70 clocks, 3 µs per pixel.</p>
+    </div>
+
+    <div class="bl-text">
+      <h4>The idea</h4>
+      <p>Pay the setup once per block instead of once per byte. The stock routine sets the window, then D/C and CS are set once and stay put. The inner loop only puts a byte on P1 and pulses WR. There are no calls and no delay, and the loop is unrolled 8 times so the loop counter costs little.</p>
+      <p>Three loops cover everything the new screens draw:</p>
+      <ul>
+        <li><b>Fill</b>: a solid colour (backgrounds, bars, segments, dots).</li>
+        <li><b>Same-byte fill</b>: colours whose two bytes are equal (0x0000 black, 0xFFFF white). P1 is set once and only WR toggles.</li>
+        <li><b>Expand</b>: a 1-bit glyph or mask into ink and paper colours, in the stock font's column order.</li>
+      </ul>
+    </div>
+    <div class="bl-code">
+      <p class="cap">Block start and end</p>
+<pre>blit_begin:      ; window already set via 0x4437
+    setb P0.3    ; D/C = data for the whole block
+    clr  P0.7    ; CS low for the whole block
+    ret
+blit_end:
+    setb P0.7    ; CS high
+    ret</pre>
+      <p class="cap">Fill: R2:R3 colour, R6:R7 blocks of 8 pixels</p>
+<pre>fill8:
+    mov  P1, R2  ; pixel 1, high byte
+    clr  P0.5
+    setb P0.5
+    mov  P1, R3  ; pixel 1, low byte
+    clr  P0.5
+    setb P0.5
+    ;  … the same 6 lines for pixels 2–8
+    djnz R7, fill8
+    djnz R6, fill8</pre>
+    </div>
+
+    <div class="bl-text">
+      <h4>Expanding glyphs</h4>
+      <p>Text and masks stay 1 bit per pixel in flash, so a 14 × 24 glyph still costs 42 bytes and a large numeral font stays small. Each bit becomes a full pixel on the way out. The bit order must match the stock font; check it against the glyph routine <code>0x2DF8</code> before relying on it.</p>
+      <p>Solid shapes like the ring dots, the orb and the meter hood are sent as runs: for each column, the start and end y of the shape, then a fill of that length. Circle and arc edges come from small tables in flash.</p>
+    </div>
+    <div class="bl-code">
+      <p class="cap">Expand: DPTR glyph column, R2:R3 ink, R4:R5 paper</p>
+<pre>col: mov  R1, #3        ; 3 bytes = 24 pixels
+byt: clr  A
+     movc A, @A+DPTR
+     inc  DPTR
+     mov  R0, #8
+bit: rlc  A             ; next pixel into C
+     jc   ink
+     mov  P1, R4        ; paper
+     clr  P0.5
+     setb P0.5
+     mov  P1, R5
+     sjmp wr
+ink: mov  P1, R2        ; ink
+     clr  P0.5
+     setb P0.5
+     mov  P1, R3
+wr:  clr  P0.5
+     setb P0.5
+     djnz R0, bit
+     djnz R1, byt</pre>
+    </div>
+  </div>
+
+  <div class="bl-grid">
+    <div class="bl-text">
+      <h4>Estimated speed at 24 MHz</h4>
+      <div class="tbl"><table>
+        <thead><tr><th>Path</th><th>Clocks/px</th><th>µs/px</th><th>Full screen</th></tr></thead>
+        <tbody>
+          <tr><td>Stock, via 0x567A</td><td class="mono">≈70</td><td class="mono">≈3.0</td><td class="mono">≈163 ms</td></tr>
+          <tr><td>Fill, unrolled ×8</td><td class="mono">≈6.5</td><td class="mono">≈0.27</td><td class="mono">≈15 ms</td></tr>
+          <tr><td>Same-byte fill</td><td class="mono">≈4.5</td><td class="mono">≈0.19</td><td class="mono">≈10 ms</td></tr>
+          <tr><td>Glyph expand</td><td class="mono">≈15</td><td class="mono">≈0.6</td><td class="mono">≈34 ms</td></tr>
+          <tr><td>Mixed screen, with windows and column rendering</td><td class="mono">≈19</td><td class="mono">≈0.8</td><td class="mono">≈44 ms</td></tr>
+        </tbody>
+      </table></div>
+      <p class="cap">The last row is the figure the frame-rate menu uses for “Tuned blit”.</p>
+    </div>
+    <div class="bl-text">
+      <h4>Timing against the ST7789</h4>
+      <p>One clock is 41.7 ns. The fastest byte in these loops is <code>mov P1</code>, <code>clr WR</code>, <code>setb WR</code>: 3 clocks, 125 ns.</p>
+      <div class="tbl"><table>
+        <thead><tr><th>8080 write parameter</th><th>ST7789 minimum</th><th>These loops</th></tr></thead>
+        <tbody>
+          <tr><td>Write cycle</td><td class="mono">66 ns</td><td class="mono">125 ns</td></tr>
+          <tr><td>WR low</td><td class="mono">15 ns</td><td class="mono">42 ns</td></tr>
+          <tr><td>WR high</td><td class="mono">15 ns</td><td class="mono">≥ 42 ns</td></tr>
+          <tr><td>Data setup before WR rises</td><td class="mono">10 ns</td><td class="mono">≥ 83 ns</td></tr>
+          <tr><td>Data hold after WR rises</td><td class="mono">10 ns</td><td class="mono">≥ 42 ns</td></tr>
+        </tbody>
+      </table></div>
+      <p>Every figure has at least twice the margin on paper. The stock delay call is therefore not needed by the controller. It may still exist for a board reason such as long traces, which is what the test build below checks.</p>
+    </div>
+  </div>
+
+  <div class="bl-grid">
+    <div class="bl-text">
+      <h4>Transitions without a framebuffer</h4>
+      <p>The new screen is generated while it is sent. A column renderer produces one vertical line of it: the background colour for each y from a 170-entry table (340 bytes of the 2 KB of RAM), then any glyph or shape columns that cross that x. Each transition is that renderer run in a different order:</p>
+      <ul>
+        <li><b>Edge wipe</b>: columns in wipe order, with a short pause between them.</li>
+        <li><b>Blinds</b>: the same, interleaving 16 strips.</li>
+        <li><b>Iris and radial sweep</b>: each column's visible part is a single run between two y values, taken from a circle or angle table, with one window per run.</li>
+        <li><b>Afterglow</b>: only the lit rectangles are repainted, 4 or 5 times in dimmer colours.</li>
+      </ul>
+      <p>A window costs 11 bytes, so a window per column over 320 columns adds about 4 ms even at stock speed.</p>
+    </div>
+    <div class="bl-text">
+      <h4>Interrupts, placement and testing</h4>
+      <p>P0.3, P0.5, P0.7 and P1 are written only by the LCD routines (<code>0x567A</code>, <code>0x5C9C</code>, <code>0x5A26</code>, <code>0x5CDA</code>, <code>0x5D1C</code>) and the port init. If the IR or UART interrupt fires mid-block, the stream just pauses: CS stays low, WR idles high and nothing is written. A call-graph check still needs to confirm that no interrupt handler reaches those LCD routines.</p>
+      <p>The code goes in the patch area after the direct-select routine at <code>0x9400</code>. Only the new screens call it; stock drawing keeps using <code>0x567A</code>.</p>
+      <ol>
+        <li>In the emulator, log P1 on every WR rising edge and compare the stream with the expected pixels.</li>
+        <li>Build a test image in which an unused IR command draws colour bars with the fill loop, then one line of text with the expand loop next to the same text drawn by the stock routine.</li>
+        <li>On the amp, look for missing columns, shifted pixels or wrong colours. If anything is off, stretch WR with one NOP between <code>clr</code> and <code>setb</code> (+42 ns), then another after the <code>setb</code>. Each step is still many times faster than stock.</li>
+        <li>Time a full-screen fill with a hardware timer and replace the estimates on this page with measured numbers.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p>Why only wipes and reveals: there is no framebuffer and the stock driver needs about 3 µs a pixel. A wipe, sweep, iris or blind paints each pixel once, so a whole transition costs one screen: about 163 ms with the stock driver and 44 ms with a tuned blit. A crossfade or slide repaints the full screen every frame, which this panel cannot do smoothly. The one exception here is Phosphor Panel, which only fades the lit areas.</p>
+  <p>dB values are relative to step 60, taken from the stock volume table at 0x9289. Pixel counts and flash sizes are estimates. The Bluetooth home label and the timer tick length have not been traced in the code; 2 s is an assumed value for the 200 ticks.</p>
+  <p>Keys: ↑ ↓ change volume, M mutes, when no control has focus.</p>
+</footer>
+</div>
+
+<script>
+(() => {
+const W = 320, H = 170, FULL = W * H, HOLD = 2.0;
+const RM = matchMedia('(prefers-reduced-motion: reduce)');
+const TABLE = [35,36,38,40,42,44,46,48,50,52,54,56,58,60,62,64,66,68,70,72,74,76,78,80,82,84,87,90,93,96,99,102,105,108,111,114,117,120,123,126,129,132,135,138,141,144,147,150,153,156,159,162,165,168,171,174,177,180,183,186,255];
+const rel = v => v <= 0 ? -Infinity : (32 - TABLE[60 - v] / 2) - 14.5;
+function volFromRel(r){
+  for (let v = 1; v < 60; v++){ const a = rel(v), b = rel(v + 1); if (r >= a && r <= b) return v + (r - a) / (b - a); }
+  return r >= 0 ? 60 : 0;
+}
+const fmtDb = v => v <= 0 ? '−∞' : (rel(v) === 0 ? '0.0' : '−' + Math.abs(rel(v)).toFixed(1));
+const label = (v, mode) => mode === 'db' ? fmtDb(v) : String(v);
+function marks(mode){
+  if (mode === 'steps') return [0,10,20,30,40,50,60].map(v => ({ v, t: String(v) }));
+  const out = [{ v: 0, t: '−∞' }];
+  for (const r of [-60,-40,-30,-20,-10,-5,0]) out.push({ v: volFromRel(r), t: r === 0 ? '0' : '−' + Math.abs(r) });
+  return out;
+}
+
+/* colour, quantised to RGB565 */
+const THEMES = [['White',0xFFFF],['Red',0xF800],['Green',0x07E0],['Blue',0x33BF],['Yellow',0xCFA0],['Cyan',0x07FF],['Orange',0xFC00],['Purple',0xF81F]]
+  .map(([n, v]) => [n, [Math.round((v >> 11) * 255 / 31), Math.round((v >> 5 & 63) * 255 / 63), Math.round((v & 31) * 255 / 31)]]);
+const A = c => typeof c === 'string' ? (n => [n >> 16 & 255, n >> 8 & 255, n & 255])(parseInt(c.slice(1), 16)) : c;
+const M = (a, b, t) => { a = A(a); b = A(b); t = Math.max(0, Math.min(1, t)); return [0,1,2].map(i => a[i] + (b[i] - a[i]) * t); };
+function R(c){
+  c = A(c);
+  const r = Math.round(Math.round(c[0] * 31 / 255) * 255 / 31), g = Math.round(Math.round(c[1] * 63 / 255) * 255 / 63), b = Math.round(Math.round(c[2] * 31 / 255) * 255 / 31);
+  return `rgb(${r},${g},${b})`;
+}
+const hexOf = c => '#' + A(c).map(x => Math.round(x).toString(16).padStart(2, '0')).join('');
+function ramp(stops, t){
+  t = Math.max(0, Math.min(1, t));
+  for (let i = 1; i < stops.length; i++) if (t <= stops[i][0]){ const [p0, c0] = stops[i - 1], [p1, c1] = stops[i]; return M(c0, c1, (t - p0) / (p1 - p0)); }
+  return A(stops[stops.length - 1][1]);
+}
+const themeOr = (S, fallback) => S.themeName === 'White' ? A(fallback) : S.theme;
+
+/* motion */
+function spring(s, target, dt, k, c){
+  if (RM.matches){ s.x = target; s.v = 0; return; }
+  let n = Math.ceil(dt / (1 / 240)); const h = dt / n;
+  while (n--){ const a = k * (target - s.x) - c * s.v; s.v += a * h; s.x += s.v * h; }
+}
+const approach = (x, t, rate, dt) => RM.matches ? t : x + (t - x) * (1 - Math.exp(-rate * dt));
+const clamp01 = x => Math.max(0, Math.min(1, x));
+const ease = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
+/* drawing */
+const F = {
+  num: (px, w = 600) => `${w} ${px}px "Barlow Condensed","Arial Narrow",sans-serif`,
+  disp: (px, w = 700) => `${w} ${px}px "Big Shoulders Display","Arial Narrow",sans-serif`,
+  mono: (px, w = 500) => `${w} ${px}px "IBM Plex Mono",Menlo,monospace`,
+};
+function text(g, s, x, y, font, color, align = 'left', spacing = 0){
+  g.font = font; g.fillStyle = color; g.textAlign = align; g.textBaseline = 'alphabetic';
+  if ('letterSpacing' in g) g.letterSpacing = spacing + 'px';
+  g.fillText(s, x, y);
+  if ('letterSpacing' in g) g.letterSpacing = '0px';
+}
+function numUnit(g, main, unit, cx, y, mainFont, unitFont, color, unitColor, align = 'center'){
+  g.font = mainFont; const wm = g.measureText(main).width;
+  g.font = unitFont; const wu = unit ? g.measureText(unit).width + 5 : 0;
+  const x = align === 'center' ? cx - (wm + wu) / 2 : align === 'right' ? cx - wm - wu : cx;
+  text(g, main, x, y, mainFont, color);
+  if (unit) text(g, unit, x + wm + 5, y, unitFont, unitColor);
+}
+function fit(g, s, px, maxW){ g.font = F.num(px); const w = g.measureText(s).width; return w > maxW ? F.num(Math.floor(px * maxW / w)) : F.num(px); }
+function rrect(g, x, y, w, h, r){ g.beginPath(); g.roundRect ? g.roundRect(x, y, w, h, r) : g.rect(x, y, w, h); }
+function speaker(g, x, y, s, color, muted){
+  g.fillStyle = color; g.strokeStyle = color; g.lineWidth = 2;
+  g.beginPath(); g.moveTo(x, y + s * .35); g.lineTo(x + s * .3, y + s * .35); g.lineTo(x + s * .62, y);
+  g.lineTo(x + s * .62, y + s); g.lineTo(x + s * .3, y + s * .65); g.lineTo(x, y + s * .65); g.closePath(); g.fill();
+  g.beginPath();
+  if (muted){ g.moveTo(x + s * .8, y + s * .3); g.lineTo(x + s * 1.15, y + s * .7); g.moveTo(x + s * 1.15, y + s * .3); g.lineTo(x + s * .8, y + s * .7); }
+  else { g.arc(x + s * .62, y + s / 2, s * .3, -0.9, 0.9); g.moveTo(x + s * .62 + s * .55 * Math.cos(-0.9), y + s / 2 + s * .55 * Math.sin(-0.9)); g.arc(x + s * .62, y + s / 2, s * .55, -0.9, 0.9); }
+  g.stroke();
+}
+const RED = '#ff0000';
+
+/* what the home screen shows */
+const INPUTS = {
+  USB: { short: 'USB', fmt: 'PCM', status: '96kHz' },
+  OPTICAL: { short: 'OPT', fmt: 'PCM', status: '44.1kHz' },
+  COAXIAL: { short: 'COAX', fmt: 'PCM', status: '192kHz' },
+  ARC: { short: 'ARC', fmt: 'PCM', status: '48kHz' },
+  AUX: { short: 'AUX', fmt: '', status: 'Analog input' },
+  BLUETOOTH: { short: 'BT', fmt: '', status: 'aptX HD', lost: 'Searching...' },
+};
+function info(S){
+  const i = INPUTS[S.input];
+  return { name: S.input, short: i.short, fmt: S.signal ? i.fmt : '', status: S.signal ? i.status : (i.lost || 'No signal'), eq: 'DIR', signal: S.signal };
+}
+function homeVol(g, S, x, y, ink, dim){
+  const main = label(S.vol, S.mode), unit = S.mode === 'db' ? 'dB' : '';
+  g.font = F.num(22); const wm = g.measureText(main).width;
+  text(g, main, x, y, F.num(22), ink);
+  if (!unit) return x + wm;
+  g.font = F.mono(9); const wu = g.measureText(unit).width;
+  text(g, unit, x + wm + 3, y, F.mono(9), dim);
+  return x + wm + 3 + wu;
+}
+function homeStd(g, S, o){
+  const I = info(S);
+  g.fillStyle = R(o.bg); g.fillRect(0, 0, W, H);
+  speaker(g, 12, 9, 16, S.muted ? R(RED) : R(o.ink), S.muted);
+  const volEnd = homeVol(g, S, 36, 24, R(o.ink), R(o.dim));
+  let x = 310;
+  for (const t of [I.eq, I.fmt]){
+    if (!t) continue;
+    g.font = F.mono(10); const w = g.measureText(t).width + 10;
+    x -= w; rrect(g, x, 8, w, 17, 2); g.strokeStyle = R(o.tag); g.lineWidth = 1; g.stroke();
+    text(g, t, x + w / 2, 20, F.mono(10), R(o.tag), 'center');
+    x -= 6;
+  }
+  const ax = o.align === 'left' ? 16 : 160;
+  text(g, I.name, ax, o.nameY || 98, o.nameFont || F.disp(46, 800), R(o.ink), o.align || 'center', 1);
+  text(g, I.status, ax + (o.align === 'left' ? 2 : 0), o.statusY || 128, F.mono(12), R(I.signal ? o.dim : M(o.dim, '#ff5040', .5)), o.align || 'center', 1);
+  return volEnd;
+}
+
+/* transition masks: p = how much of the volume screen is showing */
+function blit(g, src, x, w){ x = Math.max(0, Math.round(x)); w = Math.min(W - x, Math.round(w)); if (w > 0) g.drawImage(src, x, 0, w, H, x, 0, w, H); }
+const MASK = {
+  wipe(g, h, v, p, S, st){
+    g.drawImage(h, 0, 0); if (p <= 0) return;
+    const x = W * (1 - ease(p)); blit(g, v, x, W - x);
+    if (p < 1){ g.fillStyle = R(st.edge(S)); g.fillRect(Math.round(x) - 1, 0, 2, H); }
+  },
+  radial(g, h, v, p, S, st){
+    g.drawImage(h, 0, 0); if (p <= 0) return;
+    const th = (-154 + 128 * ease(p)) * Math.PI / 180;
+    g.save(); g.beginPath(); g.moveTo(160, 262); g.arc(160, 262, 700, -Math.PI, th); g.closePath(); g.clip(); g.drawImage(v, 0, 0); g.restore();
+    if (p < 1){ g.strokeStyle = R(st.edge(S)); g.lineWidth = 2; g.beginPath(); g.moveTo(160, 262); g.lineTo(160 + 400 * Math.cos(th), 262 + 400 * Math.sin(th)); g.stroke(); }
+  },
+  iris(g, h, v, p, S, st){
+    g.drawImage(h, 0, 0); if (p <= 0) return;
+    const [cx, cy] = st.irisAt(p), r = ease(p) * Math.hypot(Math.max(cx, W - cx), Math.max(cy, H - cy));
+    g.save(); g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.clip(); g.drawImage(v, 0, 0); g.restore();
+    if (p < 1 && r > 2){ g.strokeStyle = R(st.edge(S)); g.lineWidth = 2; g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.stroke(); }
+  },
+  blinds(g, h, v, p, S){
+    g.drawImage(h, 0, 0); if (p <= 0) return;
+    for (let i = 0; i < 16; i++){ const pi = clamp01(p * 1.6 - i / 15 * 0.6); blit(g, v, i * 20, 20 * ease(pi)); }
+  },
+  glow(g, h, v, p, S, st){
+    g.fillStyle = R(st.bgc); g.fillRect(0, 0, W, H);
+    g.globalCompositeOperation = 'lighter';
+    g.globalAlpha = Math.pow(1 - p, 2); g.drawImage(h, 0, 0);
+    g.globalAlpha = Math.min(1, p * 1.4); g.drawImage(v, 0, 0);
+    g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+  },
+};
+
+/* ---------- stock replica ---------- */
+function stockText(g, s, x, yTop, color){
+  for (let i = 0; i < s.length; i++) text(g, s[i], x + i * 14 + 7, yTop + 19, F.mono(22, 500), color, 'center');
+}
+const stockCenter = s => (320 - s.length * 14) / 2;
+const stock = {
+  id: 'stock', name: 'Stock v1.4', after: 'as shipped', px: 700, trans: 'Clear, then redraw', stock: true,
+  blurb: 'Home screen and volume page as the firmware draws them today. Stock only has steps 0–60, so the dB switch has no effect here.',
+  update(){},
+  drawHome(g, S){
+    const I = info(S), c = R(S.theme);
+    g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
+    speaker(g, 15, 8, 22, S.muted ? R(RED) : c, S.muted);
+    if (I.fmt) stockText(g, I.fmt, 208, 10, c);
+    stockText(g, I.eq, 266, 10, c);
+    stockText(g, String(S.vol).padStart(2, '0'), 48, 9, c);
+    stockText(g, I.name, stockCenter(I.name), 75, c);
+    stockText(g, I.status, stockCenter(I.status), 135, c);
+  },
+  drawVol(g, S){
+    const c = R(S.theme);
+    g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
+    stockText(g, String(S.vol).padStart(2, '0'), 130, 75, c);
+    stockText(g, 'volume', stockCenter('volume'), 135, c);
+  },
+};
+
+/* ---------- proposals ---------- */
+const studies = [];
+
+/* 1. Blue Meter */
+studies.push({
+  fam: 'hifi', name: 'Blue Meter', after: 'after McIntosh’s blue-lit meters', px: 3600, flash: '≈1.6 KB',
+  trans: 'Radial sweep', mask: 'radial',
+  blurb: '<b>Home:</b> the stock information, volume included, in the meter\'s tint, lamp off. <b>Volume:</b> the meter face sweeps in around the needle pivot, the needle swings up with real ballistics, and the hood shows the exact reading. On exit the needle drops to the pin and the face sweeps back out.',
+  s: { x: 0, v: 0 },
+  tint: S => themeOr(S, '#7cc8ff'),
+  edge(S){ return this.tint(S); },
+  update(dt, S, c){ spring(this.s, c.show && !S.muted ? S.vol / 60 : 0, dt, 90, 11); },
+  drawHome(g, S){ const t = this.tint(S); homeStd(g, S, { bg: '#000000', ink: M(t, '#ffffff', .55), dim: M(t, '#000000', .3), tag: M(t, '#000000', .2) }); },
+  drawVol(g, S){
+    const cx = 160, cy = 262, Rr = 200, Aa = 40 * Math.PI / 180, t = this.tint(S);
+    const ang = p => -Math.PI / 2 + (-Aa + 2 * Aa * p);
+    const P = (p, r) => [cx + r * Math.cos(ang(p)), cy + r * Math.sin(ang(p))];
+    const gr = g.createRadialGradient(160, 118, 10, 160, 118, 190);
+    gr.addColorStop(0, R(M(t, '#000', .62))); gr.addColorStop(.55, R(M(t, '#000', .8))); gr.addColorStop(1, R(M(t, '#000', .97)));
+    g.fillStyle = gr; g.fillRect(0, 0, W, H);
+    const scale = R(t);
+    g.strokeStyle = scale; g.lineWidth = 2; g.beginPath(); g.arc(cx, cy, Rr, ang(0), ang(1)); g.stroke();
+    g.strokeStyle = R('#ff3a2a'); g.lineWidth = 5; g.beginPath(); g.arc(cx, cy, Rr - 5, ang(45 / 60), ang(1)); g.stroke();
+    g.lineWidth = 1; g.strokeStyle = scale;
+    for (let v = 0; v <= 60; v++){ const [x1, y1] = P(v / 60, Rr), [x2, y2] = P(v / 60, Rr - (v % 5 ? 5 : 9)); g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke(); }
+    g.lineWidth = 2;
+    for (const m of marks(S.mode)){
+      const p = m.v / 60, [x1, y1] = P(p, Rr + 1), [x2, y2] = P(p, Rr - 14);
+      g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke();
+      const [lx, ly] = P(p, Rr + 12); text(g, m.t, lx, ly + 5, F.disp(14, 700), R(M(t, '#fff', .45)), 'center');
+    }
+    text(g, S.mode === 'db' ? 'dB' : 'VOLUME', 160, 104, F.mono(10), R(M(t, '#000', .15)), 'center', 3);
+    const p = Math.max(-0.03, Math.min(1.03, this.s.x)), [nx, ny] = P(p, Rr + 8);
+    g.strokeStyle = R('#f4f7fb'); g.lineWidth = 2; g.beginPath(); g.moveTo(cx, cy); g.lineTo(nx, ny); g.stroke();
+    g.fillStyle = R('#040506'); g.beginPath(); g.arc(cx, cy, 128, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = R(M(t, '#000', .75)); g.lineWidth = 2; g.beginPath(); g.arc(cx, cy, 128, Math.PI, 2 * Math.PI); g.stroke();
+    if (S.muted) text(g, 'MUTE', 160, 162, F.num(28), R(RED), 'center', 2);
+    else numUnit(g, label(S.vol, S.mode), S.mode === 'db' ? 'dB' : '', 160, 162, F.num(30), F.mono(11), R(M(t, '#fff', .8)), R(t));
+    text(g, info(S).name, 10, 17, F.mono(10), R(M(t, '#000', .2)), 'left', 1);
+    rrect(g, 272, 6, 40, 14, 2); g.fillStyle = S.muted ? R(RED) : R('#2a0f0d'); g.fill();
+    text(g, 'MUTE', 292, 17, F.mono(9), S.muted ? '#fff' : R('#5a2a24'), 'center', 1);
+  }
+});
+
+/* 2. Phosphor Panel */
+const SEGS = { '0':'abcdef','1':'bc','2':'abdeg','3':'abcdg','4':'bcfg','5':'acdfg','6':'acdefg','7':'abc','8':'abcdefg','9':'abcdfg','-':'g',' ':'' };
+studies.push({
+  fam: 'hifi', name: 'Phosphor Panel', after: 'after Marantz, Pioneer and Accuphase VFDs', px: 4200, flash: '≈1.1 KB',
+  trans: 'Afterglow crossfade', mask: 'glow', transPx: 70000,
+  blurb: '<b>Home:</b> the input name in a dot-matrix face with the status indicators along the top. <b>Volume:</b> the name fades out with phosphor afterglow as the seven-segment digits light and the bar scans in from the left. Only lit areas are repainted, so the fade is affordable.',
+  d: 32, acc: 0, b: {}, bgc: '#020504',
+  ph: S => themeOr(S, '#5af5d8'),
+  update(dt, S, c){
+    this.acc += dt;
+    const rate = RM.matches ? 1e9 : 45;
+    while (this.acc > 1 / rate && this.d !== S.vol){ this.d += Math.sign(S.vol - this.d); this.acc -= 1 / rate; }
+    if (this.d === S.vol) this.acc = 0;
+    const lit = this.targets(S, c);
+    for (const k of new Set(Object.keys(lit).concat(Object.keys(this.b)))){
+      this.b[k] = lit[k] ? 1 : (RM.matches ? 0 : (this.b[k] || 0) * Math.exp(-dt / 0.13));
+    }
+  },
+  targets(S, c){
+    const L = {}, d = this.d, blink = S.muted && (S.t % 0.9) > 0.5;
+    let cells;
+    if (S.mode === 'db'){
+      if (d <= 0) cells = ['-','-','-','-'];
+      else { const s = Math.abs(rel(d)).toFixed(1).padStart(4, ' '); cells = [rel(d) < 0 ? '-' : ' ', s[0], s[1], s[3]]; L.dp = 1; }
+      L.unitdb = 1;
+    } else { const s = String(d).padStart(2, ' '); cells = [' ', ' ', s[0], s[1]]; L.unitvol = 1; }
+    if (!blink) cells.forEach((ch, i) => { for (const sg of SEGS[ch]) L[`c${i}${sg}`] = 1; }); else delete L.dp;
+    const n = S.muted ? 0 : Math.round(d / 60 * 50 * clamp01(c.p * 1.3));
+    for (let i = 0; i < n; i++) L['bar' + i] = 1;
+    if (S.muted) L.mute = 1;
+    return L;
+  },
+  indicators(g, S, col, home){
+    const I = info(S), ph = this.ph(S);
+    let x = 12;
+    if (home){
+      speaker(g, 12, 10, 12, S.muted ? R('#ff5a48') : col(ph), S.muted);
+      const v = S.mode === 'db' ? fmtDb(S.vol) + 'dB' : String(S.vol);
+      text(g, v, 32, 20, F.mono(12), col(ph), 'left', 1); g.font = F.mono(12); x = 32 + g.measureText(v).width + v.length + 14;
+    }
+    for (const t of [I.short, I.fmt, I.signal && I.fmt ? I.status : '', I.eq]){
+      if (!t) continue;
+      text(g, t, x, 20, F.mono(10), col(ph), 'left', 1); g.font = F.mono(10); x += g.measureText(t).width + t.length + 12;
+    }
+    text(g, 'MUTE', 308, 20, F.mono(10), S.muted ? R('#ff5a48') : R('#2a0c09'), 'right', 1);
+  },
+  drawHome(g, S){
+    const ph = this.ph(S), I = info(S);
+    g.fillStyle = R(this.bgc); g.fillRect(0, 0, W, H);
+    this.indicators(g, S, c => R(c), true);
+    text(g, I.name, 160, 104, F.disp(58, 800), R(ph), 'center', 3);
+    g.fillStyle = R(this.bgc);
+    for (let y = 50; y < 110; y += 3) g.fillRect(0, y, W, 1);
+    for (let x = 0; x < W; x += 3) g.fillRect(x, 50, 1, 60);
+    text(g, I.status, 160, 136, F.mono(13), R(I.signal ? M(ph, this.bgc, .15) : '#ff5a48'), 'center', 2);
+  },
+  drawVol(g, S){
+    const ph = this.ph(S), ghost = M(ph, this.bgc, .87);
+    const col = (k, on = ph, off = ghost) => R(M(off, on, this.b[k] || 0));
+    g.fillStyle = R(this.bgc); g.fillRect(0, 0, W, H);
+    this.indicators(g, S, c => R(c));
+    const skew = 0.12, w = 30, h = 60, t = 6, y0 = 32;
+    const xs = S.mode === 'db' ? [66, 110, 154, 208] : [66, 110, 154, 198];
+    const poly = (pts, base) => { g.beginPath(); pts.forEach(([x, y], i) => { const X = x + (base - y) * skew; i ? g.lineTo(X, y) : g.moveTo(X, y); }); g.closePath(); g.fill(); };
+    const hs = (cx, cy, len, base) => poly([[cx-len/2,cy],[cx-len/2+t/2,cy-t/2],[cx+len/2-t/2,cy-t/2],[cx+len/2,cy],[cx+len/2-t/2,cy+t/2],[cx-len/2+t/2,cy+t/2]], base);
+    const vs = (cx, cy, len, base) => poly([[cx,cy-len/2],[cx+t/2,cy-len/2+t/2],[cx+t/2,cy+len/2-t/2],[cx,cy+len/2],[cx-t/2,cy+len/2-t/2],[cx-t/2,cy-len/2+t/2]], base);
+    xs.forEach((x, i) => {
+      const base = y0 + h, y = y0;
+      const geo = {
+        a: () => hs(x + w/2, y + t/2, w - 3, base), g: () => hs(x + w/2, y + h/2, w - 3, base), d: () => hs(x + w/2, y + h - t/2, w - 3, base),
+        f: () => vs(x + t/2, y + h/4 + 1, h/2 - 5, base), b: () => vs(x + w - t/2, y + h/4 + 1, h/2 - 5, base),
+        e: () => vs(x + t/2, y + 3*h/4 - 1, h/2 - 5, base), c: () => vs(x + w - t/2, y + 3*h/4 - 1, h/2 - 5, base),
+      };
+      for (const sg of 'abcdefg'){ g.fillStyle = col(`c${i}${sg}`); geo[sg](); }
+    });
+    if (S.mode === 'db'){ g.fillStyle = col('dp'); g.fillRect(193, y0 + h - 6, 6, 6); }
+    text(g, 'dB', 250, 90, F.mono(15), col('unitdb'));
+    text(g, 'VOL', 18, 90, F.mono(13), col('unitvol'), 'left', 1);
+    for (let i = 0; i < 50; i++){ g.fillStyle = col('bar' + i); g.fillRect(10 + i * 6, 118, 4, 16); }
+    const mk = S.mode === 'db' ? [['−∞',0],['−40',volFromRel(-40)],['−20',volFromRel(-20)],['−10',volFromRel(-10)],['0',60]] : [0,15,30,45,60].map(v => [String(v), v]);
+    for (const [s, v] of mk) text(g, s, 10 + v / 60 * 298, 152, F.mono(9), R(M(ghost, ph, .55)), 'center');
+  }
+});
+
+/* 3. House Numerals */
+studies.push({
+  fam: 'smsl', name: 'House Numerals', after: 'after SMSL’s SU and DO series screens', px: 7200, flash: '≈0.6 KB',
+  trans: 'Edge wipe', mask: 'wipe',
+  blurb: '<b>Home:</b> today\'s content with more hierarchy: a large input name, the status underneath, tags top-right. <b>Volume:</b> a hard edge in the theme colour wipes across from the right to reveal a large number, a position hairline and the other unit. Exit wipes back the other way. The accent is SMSL orange on the White theme and the theme colour otherwise.',
+  s: { x: 0, v: 0 }, cur: null, prev: null, k: 1,
+  accent: S => themeOr(S, '#ff8a1f'),
+  edge(S){ return this.accent(S); },
+  update(dt, S, c){
+    spring(this.s, c.show && !S.muted ? S.vol / 60 : 0, dt, 200, 28);
+    const L = S.muted ? 'MUTE' : label(S.vol, S.mode);
+    if (L !== this.cur){ this.prev = this.cur; this.cur = L; this.k = RM.matches ? 1 : 0; this.dir = S.vol >= (this.lastVol ?? S.vol) ? 1 : -1; this.lastVol = S.vol; }
+    this.k = Math.min(1, this.k + dt / 0.14);
+  },
+  drawHome(g, S){
+    homeStd(g, S, { bg: '#000000', ink: '#ffffff', dim: '#8a9096', tag: this.accent(S), align: 'left', nameFont: F.disp(52, 800), nameY: 104, statusY: 132 });
+    g.fillStyle = R(this.accent(S)); g.fillRect(18, 144, 28, 3);
+  },
+  drawVol(g, S){
+    const ac = R(this.accent(S)), I = info(S);
+    g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
+    text(g, I.name, 16, 58, F.disp(30, 800), '#fff', 'left', 1);
+    text(g, I.status, 18, 78, F.mono(11), R('#8a9096'));
+    if (S.muted) speaker(g, 158, 22, 14, R(RED), true); else text(g, S.mode === 'db' ? 'VOL · dB' : 'VOL', 158, 34, F.mono(11), ac, 'left', 3);
+    g.fillStyle = R('#222'); g.fillRect(140, 24, 1, 92);
+    g.save(); g.beginPath(); g.rect(146, 38, 164, 82); g.clip();
+    const size = S.muted ? 64 : S.mode === 'db' ? 72 : 84, e = 1 - Math.pow(1 - this.k, 3), shift = 20 * (this.dir || 1);
+    const col = S.muted ? R(RED) : '#fff';
+    if (this.prev && this.k < 1){ g.globalAlpha = 1 - e; text(g, this.prev, 304, 112 - shift * e, fit(g, this.prev, size, 152), col, 'right'); }
+    g.globalAlpha = e; text(g, this.cur, 304, 112 + shift * (1 - e), fit(g, this.cur, size, 152), col, 'right');
+    g.globalAlpha = 1; g.restore();
+    g.fillStyle = R('#1d1d1d'); g.fillRect(16, 136, 288, 3);
+    g.fillStyle = S.muted ? R('#5a1d19') : ac; g.fillRect(16, 136, Math.round(288 * clamp01(this.s.x)), 3);
+    text(g, S.mode === 'db' ? `step ${S.vol} / 60` : `${fmtDb(S.vol)} dB`, 16, 158, F.mono(11), R('#8a9096'));
+    text(g, S.mode === 'db' ? '0 dB = step 60' : 'max 60', 304, 158, F.mono(11), R('#4d5257'), 'right');
+  }
+});
+
+/* 4. Halo Ring */
+studies.push({
+  fam: 'colour', name: 'Halo Ring', after: 'after Devialet and Naim knob rings', px: 6500, flash: '≈2.2 KB',
+  trans: 'Iris, then count-up', mask: 'iris',
+  blurb: '<b>Home:</b> centred stock content. <b>Volume:</b> an iris opens from the middle and the 41 dots light in sequence up to the level. The ramp starts in the theme colour and turns amber at step 45, where the NJW1194 starts adding gain. On exit the dots retract and the iris closes.',
+  s: { x: 0, v: 0 },
+  lo: S => themeOr(S, '#19d3c5'),
+  edge(S){ return this.lo(S); },
+  irisAt: () => [160, 90],
+  update(dt, S, c){ spring(this.s, c.show ? S.vol / 60 : 0, dt, 140, 17); },
+  drawHome(g, S){ homeStd(g, S, { bg: '#07090a', ink: '#e8edf0', dim: '#7d8790', tag: this.lo(S) }); },
+  drawVol(g, S){
+    const stops = [[0, this.lo(S)], [.74, M(this.lo(S), '#ffb020', .35)], [.75, '#ffb020'], [1, '#ff4a3d']];
+    g.fillStyle = R('#07090a'); g.fillRect(0, 0, W, H);
+    const cx = 160, cy = 90, Rr = 68, N = 41, x = clamp01(this.s.x), lead = x * (N - 1);
+    for (let i = 0; i < N; i++){
+      const a = (135 + 270 * i / (N - 1)) * Math.PI / 180, on = clamp01(lead - i + 1);
+      const c = S.muted ? [70, 76, 82] : ramp(stops, i / (N - 1));
+      g.fillStyle = R(M([28, 34, 38], c, on)); g.beginPath(); g.arc(cx + Rr * Math.cos(a), cy + Rr * Math.sin(a), on > .5 ? 3.6 : 3, 0, Math.PI * 2); g.fill();
+    }
+    if (x > 0.001){
+      const a = (135 + 270 * x) * Math.PI / 180, c = S.muted ? A(RED) : ramp(stops, x), px = cx + Rr * Math.cos(a), py = cy + Rr * Math.sin(a);
+      g.strokeStyle = R(M(c, [7, 9, 10], .45)); g.lineWidth = 2; g.beginPath(); g.arc(px, py, 8, 0, Math.PI * 2); g.stroke();
+      g.fillStyle = R(M(c, '#fff', .35)); g.beginPath(); g.arc(px, py, 5, 0, Math.PI * 2); g.fill();
+    }
+    if (S.muted){ speaker(g, 146, 70, 22, R(RED), true); text(g, 'MUTE', cx, 118, F.mono(11), R(RED), 'center', 3); }
+    else { text(g, label(S.vol, S.mode), cx, 106, fit(g, label(S.vol, S.mode), 54, 100), '#fff', 'center'); text(g, S.mode === 'db' ? 'dB' : 'VOLUME', cx, 126, F.mono(10), R('#7d8790'), 'center', 3); }
+    const I = info(S);
+    text(g, I.name, 12, 24, F.disp(18, 800), R('#e6eaee'), 'left', 1);
+    text(g, I.status, 12, 40, F.mono(10), R('#7d8790'));
+  }
+});
+
+/* 5. Level Ladder */
+studies.push({
+  fam: 'colour', name: 'Level Ladder', after: 'after 80s Kenwood and Sony LED ladders', px: 2600, flash: '≈0.7 KB',
+  trans: 'Blinds, then bars rise', mask: 'blinds',
+  blurb: '<b>Home:</b> stock content, left-aligned. <b>Volume:</b> sixteen blinds open left to right and the LED wedge climbs to the level, with a peak cap that holds and then falls. Exit drops the bars and closes the blinds. The cheapest study to keep on screen.',
+  s: { x: 0, v: 0 }, bars: new Array(20).fill(0), peak: 0, hold: 0,
+  update(dt, S, c){
+    spring(this.s, c.show && !S.muted ? S.vol / 60 : 0, dt, 320, 34);
+    const L = Math.max(0, this.s.x) * 20;
+    for (let i = 0; i < 20; i++){ const t = clamp01(L - i); this.bars[i] = approach(this.bars[i], t, t > this.bars[i] ? 40 : 7, dt); }
+    if (L >= this.peak){ this.peak = L; this.hold = 0.7; }
+    else if ((this.hold -= dt) < 0) this.peak = RM.matches ? L : Math.max(L, this.peak - 9 * dt);
+  },
+  drawHome(g, S){ homeStd(g, S, { bg: '#060707', ink: '#eef0f1', dim: '#7c858d', tag: themeOr(S, '#3be46b'), align: 'left', nameFont: F.disp(48, 800), nameY: 100 }); },
+  drawVol(g, S){
+    g.fillStyle = R('#060707'); g.fillRect(0, 0, W, H);
+    const x0 = 116, bw = 7, gap = 3, base = 160;
+    for (let i = 0; i < 20; i++){
+      const f = i / 19, h = Math.round(16 + Math.pow(f, 1.25) * 124), x = x0 + i * (bw + gap);
+      const c = S.muted ? '#6b7076' : f < .6 ? '#3be46b' : f < .74 ? '#f5d33a' : '#ff3d3d';
+      g.fillStyle = R(M('#171a1c', c, this.bars[i]));
+      for (let y = base - 4; y > base - h - 1; y -= 5) g.fillRect(x, y, bw, 4);
+    }
+    const pk = Math.min(19, Math.floor(this.peak - 0.001));
+    if (pk >= 0){ const f = pk / 19, h = Math.round(16 + Math.pow(f, 1.25) * 124); g.fillStyle = S.muted ? R(RED) : '#fff'; g.fillRect(x0 + pk * (bw + gap), base - h - 4, bw, 2); }
+    const I = info(S);
+    text(g, I.name, 14, 26, F.disp(18, 800), R('#e6eaee'), 'left', 1);
+    text(g, I.status, 14, 42, F.mono(10), R('#7c858d'));
+    if (S.muted) text(g, 'MUTE', 14, 116, F.num(40), R(RED));
+    else text(g, label(S.vol, S.mode), 14, 116, fit(g, label(S.vol, S.mode), 60, 94), '#fff');
+    text(g, S.mode === 'db' ? 'dB' : 'VOL', 16, 136, F.mono(10), R(themeOr(S, '#7c858d')), 'left', 3);
+  }
+});
+
+/* 6. Colour Orb */
+const ORB = [[0,'#ff2a2a'],[.2,'#ff8a1a'],[.38,'#ffe03a'],[.55,'#3fe06a'],[.7,'#2fd6ff'],[.85,'#3a6bff'],[1,'#c05bff']];
+studies.push({
+  fam: 'colour', name: 'Colour Orb', after: 'after Chord Electronics’ colour-coded balls', px: 11000, flash: '≈0.9 KB',
+  trans: 'Orb grows from its dot', mask: 'iris',
+  blurb: '<b>Home:</b> stock content plus a small dot after the volume number, coloured by the current volume, so the level reads from across the room even at rest. <b>Volume:</b> the dot flies to the left and grows into the orb while an iris opens around it. On exit the orb shrinks back into the dot.',
+  s: { x: 32 / 60, v: 0 }, dim: 0, e: 0,
+  dot: [40, 17],
+  irisAt(p){ const e = ease(p); return [this.dot[0] + (92 - this.dot[0]) * e, this.dot[1] + (88 - this.dot[1]) * e]; },
+  edge(S){ return ramp(ORB, S.vol / 60); },
+  update(dt, S, c){ spring(this.s, S.vol / 60, dt, 110, 21); this.dim = approach(this.dim, S.muted ? 1 : 0, 10, dt); this.e = ease(c.p); },
+  orbColor(){ return M(ramp(ORB, clamp01(this.s.x)), [22, 22, 24], this.dim); },
+  drawHome(g, S){
+    const end = homeStd(g, S, { bg: '#000000', ink: '#f2f2f2', dim: '#7c858d', tag: themeOr(S, '#7c858d') });
+    this.dot = [Math.round(end + 12), 17];
+    g.fillStyle = R(this.orbColor()); g.beginPath(); g.arc(this.dot[0], this.dot[1], 6, 0, Math.PI * 2); g.fill();
+  },
+  drawVol(g, S){
+    g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
+    const c = this.orbColor(), e = this.e;
+    const cx = this.dot[0] + (92 - this.dot[0]) * e, cy = this.dot[1] + (88 - this.dot[1]) * e, r = 6 + 52 * e;
+    const gr = g.createRadialGradient(cx - r * .3, cy - r * .35, 1, cx, cy, r);
+    gr.addColorStop(0, R(M(c, '#fff', .5))); gr.addColorStop(.45, R(c)); gr.addColorStop(1, R(M(c, '#000', .5)));
+    g.fillStyle = gr; g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = S.muted ? R(RED) : R('#1c1e20'); g.lineWidth = 3; g.beginPath(); g.arc(cx, cy, r + 5, 0, Math.PI * 2); g.stroke();
+    if (S.muted && e > .8) speaker(g, cx - 14, cy - 10, 22, R(RED), true);
+    const I = info(S);
+    text(g, I.name, 176, 32, F.disp(18, 800), R('#e6eaee'), 'left', 1);
+    if (S.muted) text(g, 'MUTE', 176, 96, F.num(44), R(RED));
+    else numUnit(g, label(S.vol, S.mode), S.mode === 'db' ? 'dB' : '', 176, 96, fit(g, label(S.vol, S.mode), 60, 104), F.mono(12), '#fff', R('#7c858d'), 'left');
+    const sx = 176, sw = 128, sy = 124;
+    for (let i = 0; i < sw; i++){ g.fillStyle = R(ramp(ORB, i / (sw - 1))); g.fillRect(sx + i, sy, 1, 6); }
+    const mx = sx + clamp01(this.s.x) * (sw - 1);
+    g.fillStyle = '#fff'; g.beginPath(); g.moveTo(mx - 4, sy + 14); g.lineTo(mx + 4, sy + 14); g.lineTo(mx, sy + 8); g.closePath(); g.fill();
+    text(g, S.mode === 'db' ? '−∞' : '0', sx, sy + 28, F.mono(9), R('#4f575e'));
+    text(g, S.mode === 'db' ? '0 dB' : '60', sx + sw, sy + 28, F.mono(9), R('#4f575e'), 'right');
+  }
+});
+
+/* ---------- page ---------- */
+const FAMS = [
+  { id: 'hifi', name: 'Hi-fi', desc: 'Instruments from the component era.' },
+  { id: 'smsl', name: 'SMSL', desc: 'Today\'s look, refined rather than replaced.' },
+  { id: 'colour', name: 'Colour', desc: 'Ideas that depend on the colour screen.' },
+];
+const fmtK = n => n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + 'k' : String(n);
+function card(st){
+  const el = document.createElement('article'); el.className = 'study';
+  const tPx = st.transPx || FULL, stockMs = Math.round(tPx * 3 / 1000), tunedMs = Math.round(tPx * 0.8 / 1000);
+  const chips = st.stock
+    ? `<span>clear ≈163 ms each way</span><span>number: ${st.px} px/step</span>`
+    : `<span>${st.trans}</span><span>transition ≈${stockMs} ms stock · ${tunedMs} ms tuned</span><span>${fmtK(st.px)} px/frame on screen</span><span>flash ${st.flash}</span>`;
+  el.innerHTML = `<div class="bezel"><canvas width="${W}" height="${H}" role="img" aria-label="${st.name}: home and volume screen sketch"></canvas>
+      <div class="state"><span data-state>home</span><i>${st.stock ? 'firmware v1.4' : 'back home 2 s after the last step'}</i></div></div>
+    <h3>${st.name}<span class="after">${st.after}</span></h3>
+    <p>${st.blurb}</p>
+    <div class="spec">${chips}</div>`;
+  st.g = el.querySelector('canvas').getContext('2d');
+  st.stateEl = el.querySelector('[data-state]');
+  st.offH = Object.assign(document.createElement('canvas'), { width: W, height: H });
+  st.offV = Object.assign(document.createElement('canvas'), { width: W, height: H });
+  st.c = { st: 'vol', p: 1, show: true, seen: -1, entering: true };
+  st.fAcc = 0;
+  return el;
+}
+document.getElementById('stock-slot').replaceWith(card(stock));
+const host = document.getElementById('families');
+for (const f of FAMS){
+  const sec = document.createElement('section'); sec.className = 'fam';
+  sec.innerHTML = `<div class="fam-head"><h2>${f.name}</h2><p>${f.desc}</p></div><div class="grid"></div>`;
+  const grid = sec.querySelector('.grid');
+  for (const st of studies.filter(s => s.fam === f.id)) grid.appendChild(card(st));
+  host.appendChild(sec);
+}
+const all = [stock, ...studies];
+
+const S = { vol: 32, muted: false, mode: 'steps', t: 0, pace: 0, input: 'USB', signal: true, themeName: 'White', theme: THEMES[0][1], act: 0, volAct: 0 };
+const $ = id => document.getElementById(id);
+
+/* per-card state machine: home -> enter -> vol -> exit -> home */
+function step(st, dt){
+  const c = st.c, trigger = st.stock ? S.volAct : S.act;
+  if (trigger !== c.seen){ c.seen = trigger; if (c.st === 'home' || c.st === 'exit'){ c.st = 'enter'; c.entering = true; } }
+  const cost = st.stock ? 0.17 : Math.max(0, (st.transPx || FULL) * S.pace / 1e6);
+  const din = RM.matches ? 1e-3 : st.stock ? 0.17 : Math.max(0.32, cost), dout = RM.matches ? 1e-3 : st.stock ? 0.17 : Math.max(0.42, cost);
+  if (c.st === 'enter'){ c.p += dt / din; if (c.p >= 1){ c.p = 1; c.st = 'vol'; } }
+  else if (c.st === 'vol' && S.t - trigger > HOLD){ c.st = 'exit'; c.entering = false; }
+  if (c.st === 'exit'){ c.p -= dt / dout; if (c.p <= 0){ c.p = 0; c.st = 'home'; } }
+  c.show = c.st === 'enter' || c.st === 'vol';
+  st.update(dt, S, c);
+}
+function render(st){
+  const c = st.c, g = st.g;
+  if (c.p < 1) st.drawHome(st.offH.getContext('2d'), S, c);
+  if (c.p > 0) st.drawVol(st.offV.getContext('2d'), S, c);
+  if (c.p >= 1) g.drawImage(st.offV, 0, 0);
+  else if (c.p <= 0) g.drawImage(st.offH, 0, 0);
+  else if (st.stock){
+    const from = c.entering ? st.offH : st.offV, to = c.entering ? st.offV : st.offH, qv = c.entering ? c.p : 1 - c.p;
+    if (qv >= 0.92) g.drawImage(to, 0, 0);
+    else { g.drawImage(from, 0, 0); g.fillStyle = '#000'; g.fillRect(0, 0, Math.round(W * Math.min(1, qv / 0.85)), H); }
+  }
+  else MASK[st.mask](g, st.offH, st.offV, c.p, S, st);
+  const label = { home: 'home', enter: 'volume ▸ in', vol: 'volume', exit: 'volume ▸ out' }[c.st];
+  if (st.stateEl.textContent !== label) st.stateEl.textContent = label;
+}
+
+const volEl = $('vol'), readout = $('readout');
+function setVol(v, fromDemo){
+  const nv = Math.max(0, Math.min(60, Math.round(v)));
+  if (nv !== S.vol){ S.act = S.volAct = S.t; }
+  S.vol = nv; volEl.value = nv;
+  readout.innerHTML = `${nv}<span>${fmtDb(nv)} dB</span>`;
+  if (!fromDemo && demo) toggleDemo(false);
+}
+volEl.addEventListener('input', () => setVol(+volEl.value));
+$('up').onclick = () => setVol(S.vol + 1);
+$('down').onclick = () => setVol(S.vol - 1);
+const muteBtn = $('mute');
+function toggleMute(){ S.muted = !S.muted; S.act = S.t; muteBtn.setAttribute('aria-pressed', S.muted); }
+muteBtn.onclick = toggleMute;
+function setMode(m){ if (m !== S.mode) S.act = S.t; S.mode = m; $('m-steps').setAttribute('aria-pressed', m === 'steps'); $('m-db').setAttribute('aria-pressed', m === 'db'); }
+$('m-steps').onclick = () => setMode('steps');
+$('m-db').onclick = () => setMode('db');
+$('pace').addEventListener('change', e => { S.pace = +e.target.value; });
+$('input').addEventListener('change', e => { S.input = e.target.value; });
+$('signal').addEventListener('change', e => { S.signal = e.target.checked; });
+const sw = $('swatches');
+THEMES.forEach(([n, c], i) => {
+  const b = document.createElement('button');
+  b.style.background = hexOf(c); b.title = n; b.setAttribute('aria-label', n + ' theme'); b.setAttribute('aria-pressed', i === 0);
+  b.onclick = () => { S.themeName = n; S.theme = c; sw.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); };
+  sw.appendChild(b);
+});
+document.addEventListener('keydown', e => {
+  if (document.activeElement && document.activeElement !== document.body) return;
+  if (e.key === 'ArrowUp'){ setVol(S.vol + 1); e.preventDefault(); }
+  else if (e.key === 'ArrowDown'){ setVol(S.vol - 1); e.preventDefault(); }
+  else if (e.key === 'm' || e.key === 'M') toggleMute();
+});
+
+/* demo: turn the knob, then leave it long enough for the screens to go home */
+let demo = false, demoTimer = null, target = 32, pause = 0, turns = 0;
+const demoBtn = $('sweep');
+function toggleDemo(on){
+  demo = on; demoBtn.setAttribute('aria-pressed', on); clearInterval(demoTimer);
+  if (!on) return;
+  target = S.vol; pause = 0;
+  demoTimer = setInterval(() => {
+    if (pause > 0){ pause--; return; }
+    if (S.vol === target){
+      turns++;
+      const lo = S.vol > 30 ? 8 : 30, hi = S.vol > 30 ? 30 : 56;
+      target = lo + Math.floor(Math.random() * (hi - lo));
+      pause = turns % 2 ? 12 : 64;
+      return;
+    }
+    setVol(S.vol + Math.sign(target - S.vol), true);
+  }, 55);
+}
+demoBtn.onclick = () => toggleDemo(!demo);
+
+let last = performance.now();
+function frame(now){
+  const dt = Math.min(0.25, (now - last) / 1000); last = now; S.t += dt;
+  for (const st of all){
+    st.fAcc += dt;
+    const moving = st.c.st === 'enter' || st.c.st === 'exit';
+    const interval = S.pace && !st.stock && !moving ? Math.max(1 / 60, st.px * S.pace / 1e6) : 0;
+    if (st.fAcc >= interval){ step(st, st.fAcc); render(st); st.fAcc = 0; }
+  }
+  requestAnimationFrame(frame);
+}
+setVol(32);
+S.act = S.volAct = 0;
+for (const st of all){ step(st, 0); render(st); }
+requestAnimationFrame(frame);
+document.fonts && document.fonts.ready.then(() => { for (const st of all) render(st); });
+})();
+</script>

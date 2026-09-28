@@ -1,0 +1,21 @@
+# Firmware stays out of the repo: vendor updaters, extracted and built images.
+*.bin
+*.exe
+*.hex
+
+# The stock firmware in other forms: its full disassembly (regenerate with
+# tools/disasm/d51.py, see README "Workflow") and the Ghidra project that holds
+# the imported image.
+original/extracted/flash.asm
+ghidraPRG/
+
+# Build outputs (images and emulator renders); rebuild with each feature's scripts.
+features/*/build/
+
+# Local flasher log: chip UID, serial port, raw packets.
+tools/flash/flash_ao300.log
+
+# Python and OS clutter
+.venv/
+__pycache__/
+.DS_Store
