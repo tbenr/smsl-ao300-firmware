@@ -4,6 +4,11 @@ The stock UI, unchanged, drawn through the tuned pixel path that `features/blit-
 verified on the panel. Built on top of direct-select. The RESET page shows
 `v1.4 tbenr fast`.
 
+## Status
+
+Flashed on the amp on 2026-09-28 and working so far. Longer listening tests are still to
+come: power-on, input switching and the display flicker.
+
 ## What changes
 
 | Stock routine | Stock | Now |

@@ -37,8 +37,9 @@ features/
     emu_test.py                   emulator test of the patched image
     build/flash_patched.bin     * patched firmware image
     build/SMSL_AO300_UPDATE_VER0A5_EN_directselect.exe * rebuilt updater carrying it
-  volume-screen/                  design stage: new home/volume screens, not built yet
-    volume_studies.html           interactive sketches, stock screen map, tuned-blit design
+  ui-theme/                       design stage: visual themes for the home and volume
+                                  screens, not built yet
+    ui_themes.html                interactive theme designs and the stock screen map
   blit-test/                      test build for the tuned blit (remote Vol+/Vol- on home), on top
                                   of direct-select; see its README
     build_patch.py, emu_test.py   build build/flash_blittest.bin, emulate it, render PNGs
@@ -162,6 +163,9 @@ Also verified on 2026-09-28, flashed from Linux (`/dev/ttyUSB0`): the tuned-blit
 build `features/blit-test/build/flash_blittest.bin`. The colour bars are correct through
 both paths, the full-screen fill times match the emulator's STC8 prediction (about 15 ms
 tuned against 147 ms stock), and the result holds for 5 s.
+
+Flashed on 2026-09-28 and working so far: `features/fast-lcd/build/flash_fastlcd.bin`,
+the stock UI through the fast pixel path. Longer listening tests are still to come.
 
 ## What the custom firmware adds
 
@@ -288,7 +292,7 @@ EEPROM format stay as they are:
   font. The home spot at 48,9 has room up to the format tag at x 208. The volume page
   needs the text re-centred.
 - **Reference point.** Relative to step 60 (0 dB at maximum, negative below) is the usual
-  hi-fi convention and is what the volume-screen sketches use. The NJW1194's own gain
+  hi-fi convention and is what the UI theme designs use. The NJW1194's own gain
   (+14.5 to −61 dB, 0 dB at step 45) is the alternative.
 - **Curve, optional.** Making the steps even is a separate change: rewrite the 61 bytes
   at 0x9289. Evening it out changes how loud each step is, not just the label, so it
