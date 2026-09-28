@@ -373,16 +373,34 @@ def volpage_reference(amp):
     return e.lcd.gram
 
 
-def home_checks(step, new, ref):
-    sp, rp = new.lcd.screen_pixel, ref.lcd.screen_pixel
-    acc = accent_of(new)
+def home_ours(x, y):
+    """Pixels house-numerals draws differently from stock on page 1: the accent bar box,
+    plus the two left-aligned text bands (HOME_BANDS)."""
+    return any(y0 <= y < y0 + h for y0, h in HOME_BANDS) or (18 <= x < 46 and 114 <= y < 117)
 
-    def ours(x, y):
-        return any(y0 <= y < y0 + h for y0, h in HOME_BANDS) or (18 <= x < 46 and 114 <= y < 117)
-    check("%-12s home: icon, volume, tags as fast-lcd" % step,
-          all(sp(x, y) == rp(x, y) for x in range(W) for y in range(H) if not ours(x, y)))
-    check("%-12s home: accent bar %04X" % (step, acc),
-          all(sp(x, y) == acc for x in range(18, 46) for y in range(114, 117)))
+
+def home_pixels_ok(new, ref):
+    """Everything outside our bands: identical to fast-lcd (ref), pixel for pixel."""
+    sp, rp = new.lcd.screen_pixel, ref.lcd.screen_pixel
+    return all(sp(x, y) == rp(x, y) for x in range(W) for y in range(H) if not home_ours(x, y))
+
+
+def home_bar_ok(new):
+    """The 28x3 accent bar itself, painted in accent_of(new)."""
+    sp, acc = new.lcd.screen_pixel, accent_of(new)
+    return all(sp(x, y) == acc for x in range(18, 46) for y in range(114, 117))
+
+
+def home_screen_ok(new, ref):
+    """Whole page-1 screen as house-numerals should draw it: stock outside our bands, plus
+    our accent bar. Used by the tour's home_checks and the sweep's per-command screen_ok."""
+    return home_pixels_ok(new, ref) and home_bar_ok(new)
+
+
+def home_checks(step, new, ref):
+    check("%-12s home: icon, volume, tags as fast-lcd" % step, home_pixels_ok(new, ref))
+    check("%-12s home: accent bar %04X" % (step, accent_of(new)), home_bar_ok(new))
+    sp = new.lcd.screen_pixel
     for y0, h in HOME_BANDS:
         left = next((x for x in range(W) if any(sp(x, y) for y in range(y0, y0 + h))), None)
         check("%-12s home: text at y %d starts at x 16..29" % (step, y0),
@@ -523,20 +541,40 @@ def reach(img, st):
     return a
 
 
-def outcome(img, st, cmd):
+def run(img, st, cmd):
+    """A fresh amp reached into state st, cmd pressed and settled 0.3 s later."""
     amp = reach(img, st)
     amp.press(cmd)
     amp.wait(0.3)
+    return amp
+
+
+def outcome(amp):
     e = amp.e
-    s = (amp.page, amp.powered) + tuple(e.iram[a] for a in (0x31, 0x52, 0x47, 0x2B, 0x39, 0x17)) + \
+    return (amp.page, amp.powered) + tuple(e.iram[a] for a in (0x31, 0x52, 0x47, 0x2B, 0x39, 0x17)) + \
         (e.sfr[0xA0], e.sfr[0x80] & 0x46, e.sfr[0xC0] & 0x41)
-    screen = hash(tuple(amp.lcd.gram)) if amp.page not in (1, 2) else None
-    return s, screen
+
+
+def screen_ok(base, new):
+    """Whether new's screen is what we expect, given where both amps ended up: the stock
+    home screen outside our bands and bar (both page 1, both powered), hn_volpage's exact
+    render (both page 2, both powered), or bit-identical to base otherwise -- any other
+    page (including the menu), a mismatched page pair (the outcome() check next to this one
+    already catches that), or either amp mid power-off, where the whole screen (bar and
+    all) blanks to black in both images alike, same as the tour's own "standby" step
+    (kind "same", not "home") treats it."""
+    if base.powered and new.powered:
+        if new.page == 1 and base.page == 1:
+            return home_screen_ok(new, base)
+        if new.page == 2 and base.page == 2:
+            return new.lcd.gram == volpage_reference(new)
+    return new.lcd.gram == base.lcd.gram
 
 
 def job(args):
     st, cmd = args
-    return st, cmd, outcome(BASE, st, cmd), outcome(NEW, st, cmd)
+    base, new = run(BASE, st, cmd), run(NEW, st, cmd)
+    return st, cmd, outcome(base), outcome(new), screen_ok(base, new)
 
 
 def sweep():
@@ -545,18 +583,19 @@ def sweep():
     pages = {st: (reach(NEW, st).page, reach(NEW, st).powered) for st in SWEEP_STATES}
     check("snapshots in the intended states", pages["standby"][1] is False and pages["home"] == (1, True)
           and pages["volume"][0] == 2 and pages["volume_hp"][0] == 2 and pages["menu"][0] >= 3, str(pages))
-    check("snapshot runs are repeatable", outcome(NEW, "volume", NEC_VOL_UP) == outcome(NEW, "volume", NEC_VOL_UP))
+    a1, a2 = run(NEW, "volume", NEC_VOL_UP), run(NEW, "volume", NEC_VOL_UP)
+    check("snapshot runs are repeatable", outcome(a1) == outcome(a2) and a1.lcd.gram == a2.lcd.gram)
     print("  reached all states in %.0f s" % (time.time() - t0), flush=True)
     jobs = [(st, cmd) for st in SWEEP_STATES for cmd in range(256)]
     with mp.get_context("fork").Pool() as pool:
         res = pool.map(job, jobs, chunksize=8)
     for st in SWEEP_STATES:
-        diff = [c for s, c, a, b in res if s == st and a[0] != b[0]]
-        scr = [c for s, c, a, b in res if s == st and a[1] != b[1]]
+        diff = [c for s, c, a, b, ok in res if s == st and a != b]
+        scr = [c for s, c, a, b, ok in res if s == st and not ok]
         check("%-10s 256 commands: same page, power, volumes, input, output, EQ, pins" % st, not diff,
               str(["%02X" % c for c in diff[:8]]))
-        check("%-10s screens identical wherever the page is not 1 or 2" % st, not scr,
-              str(["%02X" % c for c in scr[:8]]))
+        check("%-10s screens as expected (home: fast-lcd outside our bands; volume: hn_volpage; "
+              "other: identical to fast-lcd)" % st, not scr, str(["%02X" % c for c in scr[:8]]))
     print("  sweep in %.0f s" % (time.time() - t0))
 
 
