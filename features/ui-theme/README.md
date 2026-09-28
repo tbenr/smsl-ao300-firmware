@@ -42,3 +42,10 @@ Next steps toward a build:
    and the volume page renderer at 0x2167. Follow the feature pattern in `AGENTS.md`:
    a build script, a listing, an emulator test that includes a full-firmware UI tour,
    and a README.
+
+House Numerals has a first build in `features/house-numerals/` (emulator-verified, not
+yet tried on hardware). Step 3's hooks are done there: 0x5916 (`home_draw_volume`) stays
+stock, called as before from the new home-refresh tail; 0x5936 (`volpage_draw_volume`)
+is replaced outright; and the page-2 renderer (0x2167) is replaced too, though the tour
+found the volume keys actually open page 2 through four inline sites in the key
+handlers, not through that renderer — see the feature README for all ten hooks.
