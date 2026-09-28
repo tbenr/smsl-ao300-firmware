@@ -12,6 +12,9 @@ ghidraPRG/
 # Build outputs (images and emulator renders); rebuild with each feature's scripts.
 features/*/build/
 
+# The emulator's C core, compiled on first use by tools/emu/cemu8051.py.
+tools/emu/build/
+
 # Local flasher log: chip UID, serial port, raw packets.
 tools/flash/flash_ao300.log
 

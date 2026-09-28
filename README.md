@@ -23,7 +23,12 @@ tools/
   disasm/SmslAo300Labels.java     Ghidra script that names routines, globals and tables
   flash/flash_ao300.py            guarded stcgal-based flasher for macOS/Linux (see below)
   emu/emu8051.py                  full 8051 emulator with STC8 clock counts and an ST7789
-                                  model of the LCD bus (renders the screen to PNG)
+                                  model of the LCD bus (renders the screen to PNG); the
+                                  Python reference implementation
+  emu/core8051.c, emu/cemu8051.py the same emulator in C, loaded through ctypes and
+                                  compiled on first use; what Emu8051() runs, ~100x faster
+  emu/test_core.py                differential test: C core against the Python reference
+  run_tests.py                    runs every features/*/emu_test.py in parallel
   emu/ao300.py                    harness: boot the whole firmware, press remote keys, log
                                   audio-chip writes and pins per 10 ms tick
   patch/asm51.py                  label-resolving 8051 assembler used by the build scripts
@@ -58,7 +63,9 @@ ghidraPRG/                    * Ghidra project (import original/extracted/flash.
 - `stcgal` 1.10 or newer for the flasher (`tools/flash/flash_ao300.py`); it pulls in
   `pyserial`. A USB-to-serial adapter (3.3 V logic) on the amp's 4-pin header.
 - The disassembler, the patch builder and the emulator test need only the standard
-  library.
+  library, plus a C compiler (`cc`; on macOS the Xcode command-line tools) for the
+  emulator's C core. Without one the emulator falls back to the Python reference,
+  about 100 times slower.
 - Optional: Ghidra (with a JDK 17 or newer) for `tools/disasm/SmslAo300Labels.java`.
 
 Use a virtual environment so the tools don't touch the system Python. From the project
@@ -206,6 +213,12 @@ The RESET menu page shows `v1.4 tbenr` instead of `v1.4`. Change `VERSION_TEXT` 
 (`tools/emu/emu8051.py`). It executes the stock window, pixel and digit routines, with
 clocks counted from the STC8 instruction table. The LCD bus is decoded into an ST7789
 model and saved as PNG.
+
+`python3 tools/run_tests.py` runs all the feature tests at once, on the C core, in
+about 5 s (the Python reference, `EMU8051=py`, took about 8 minutes). After changing
+the emulator, `python3 tools/emu/test_core.py` checks the C core against the Python
+reference: every opcode from random states, random programs, and a boot scenario of
+the stock firmware compared at every 10 ms tick.
 
 `stc_release.py rebuild` output was verified by unpacking it again and by checking the
 PE structure with `pefile`. Only the firmware resource differs from the vendor updater.
