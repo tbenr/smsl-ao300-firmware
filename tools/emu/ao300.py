@@ -47,8 +47,8 @@ AUDIO_PINS = {                     # SFR -> {bit: name}
 
 
 class Amp:
-    def __init__(self, image, log_audio=True):
-        self.e = Emu8051(image)
+    def __init__(self, image, log_audio=True, emu=Emu8051):
+        self.e = emu(image)
         self.lcd = self.e.lcd
         self.events = []
         self.state = {}                    # audio state: last value per register / pin
@@ -81,6 +81,8 @@ class Amp:
             e.hooks[addr] = hook
         for sfr, bits in AUDIO_PINS.items():
             prev = e.sfr_watch.get(sfr)
+            if prev is None:                          # only writes that move these pins
+                e.sfr_watch_mask[sfr] = sum(1 << b for b in bits)
 
             def watch(em, old, new, bits=bits, prev=prev):
                 if prev:

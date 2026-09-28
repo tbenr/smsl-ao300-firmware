@@ -50,6 +50,9 @@ rules apply to anyone working here, human or agent.
 - Use `tools/emu/emu8051.py`. Its clock counts come from the STC8 instruction table in
   the STC8G manual: bit operations and most MOVs take 1 clock. Don't estimate timing
   from classic 8051 or from memory.
+- `Emu8051(...)` runs the C core (`tools/emu/core8051.c` through `cemu8051.py`);
+  `PyEmu8051` in `emu8051.py` is the reference. Any change to the emulator goes into
+  both, and `tools/emu/test_core.py` must pass before the tests count.
 - Every patch test includes:
   - the new behaviour, run at the hook;
   - a sweep of all 256 IR commands against the base image, in every power and page
@@ -60,7 +63,8 @@ rules apply to anyone working here, human or agent.
   then run the main loop (see `boot_scenario` in `features/blit-test/emu_test.py`).
   Hook-only tests once missed `read_key`'s tail at 0x3DD6, which turns keys on page 2
   into "go home".
-- Run the tests and report their output before calling a build ready.
+- Run the tests (`python3 tools/run_tests.py` runs them all in parallel) and report
+  their output before calling a build ready.
 
 ## Documentation
 

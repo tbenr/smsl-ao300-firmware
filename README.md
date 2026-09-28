@@ -23,7 +23,12 @@ tools/
   disasm/SmslAo300Labels.java     Ghidra script that names routines, globals and tables
   flash/flash_ao300.py            guarded stcgal-based flasher for macOS/Linux (see below)
   emu/emu8051.py                  full 8051 emulator with STC8 clock counts and an ST7789
-                                  model of the LCD bus (renders the screen to PNG)
+                                  model of the LCD bus (renders the screen to PNG); the
+                                  Python reference implementation
+  emu/core8051.c, emu/cemu8051.py the same emulator in C, loaded through ctypes and
+                                  compiled on first use; what Emu8051() runs, ~100x faster
+  emu/test_core.py                differential test: C core against the Python reference
+  run_tests.py                    runs every features/*/emu_test.py in parallel
   emu/ao300.py                    harness: boot the whole firmware, press remote keys, log
                                   audio-chip writes and pins per 10 ms tick
   patch/asm51.py                  label-resolving 8051 assembler used by the build scripts
@@ -37,8 +42,9 @@ features/
     emu_test.py                   emulator test of the patched image
     build/flash_patched.bin     * patched firmware image
     build/SMSL_AO300_UPDATE_VER0A5_EN_directselect.exe * rebuilt updater carrying it
-  volume-screen/                  design stage: new home/volume screens, not built yet
-    volume_studies.html           interactive sketches, stock screen map, tuned-blit design
+  ui-theme/                       design stage: visual themes for the home and volume
+                                  screens, not built yet
+    ui_themes.html                interactive theme designs and the stock screen map
   blit-test/                      test build for the tuned blit (remote Vol+/Vol- on home), on top
                                   of direct-select; see its README
     build_patch.py, emu_test.py   build build/flash_blittest.bin, emulate it, render PNGs
@@ -57,7 +63,9 @@ ghidraPRG/                    * Ghidra project (import original/extracted/flash.
 - `stcgal` 1.10 or newer for the flasher (`tools/flash/flash_ao300.py`); it pulls in
   `pyserial`. A USB-to-serial adapter (3.3 V logic) on the amp's 4-pin header.
 - The disassembler, the patch builder and the emulator test need only the standard
-  library.
+  library, plus a C compiler (`cc`; on macOS the Xcode command-line tools) for the
+  emulator's C core. Without one the emulator falls back to the Python reference,
+  about 100 times slower.
 - Optional: Ghidra (with a JDK 17 or newer) for `tools/disasm/SmslAo300Labels.java`.
 
 Use a virtual environment so the tools don't touch the system Python. From the project
@@ -163,6 +171,9 @@ build `features/blit-test/build/flash_blittest.bin`. The colour bars are correct
 both paths, the full-screen fill times match the emulator's STC8 prediction (about 15 ms
 tuned against 147 ms stock), and the result holds for 5 s.
 
+Flashed on 2026-09-28 and working so far: `features/fast-lcd/build/flash_fastlcd.bin`,
+the stock UI through the fast pixel path. Longer listening tests are still to come.
+
 ## What the custom firmware adds
 
 ### Direct input selection over IR
@@ -202,6 +213,12 @@ The RESET menu page shows `v1.4 tbenr` instead of `v1.4`. Change `VERSION_TEXT` 
 (`tools/emu/emu8051.py`). It executes the stock window, pixel and digit routines, with
 clocks counted from the STC8 instruction table. The LCD bus is decoded into an ST7789
 model and saved as PNG.
+
+`python3 tools/run_tests.py` runs all the feature tests at once, on the C core, in
+about 5 s (the Python reference, `EMU8051=py`, took about 8 minutes). After changing
+the emulator, `python3 tools/emu/test_core.py` checks the C core against the Python
+reference: every opcode from random states, random programs, and a boot scenario of
+the stock firmware compared at every 10 ms tick.
 
 `stc_release.py rebuild` output was verified by unpacking it again and by checking the
 PE structure with `pefile`. Only the firmware resource differs from the vendor updater.
@@ -288,7 +305,7 @@ EEPROM format stay as they are:
   font. The home spot at 48,9 has room up to the format tag at x 208. The volume page
   needs the text re-centred.
 - **Reference point.** Relative to step 60 (0 dB at maximum, negative below) is the usual
-  hi-fi convention and is what the volume-screen sketches use. The NJW1194's own gain
+  hi-fi convention and is what the UI theme designs use. The NJW1194's own gain
   (+14.5 to −61 dB, 0 dB at step 45) is the alternative.
 - **Curve, optional.** Making the steps even is a separate change: rewrite the 61 bytes
   at 0x9289. Evening it out changes how loud each step is, not just the label, so it

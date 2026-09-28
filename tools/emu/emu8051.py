@@ -11,8 +11,16 @@ Good enough to run stock firmware routines and patch code end to end:
   firmware's real 10 ms Timer0 ISR at 0x000B);
 * `hooks[pc] = fn(emu)` runs fn before the instruction at pc; fn may call
   `emu.ret()` to skip a stock routine that needs real hardware;
+* `sfr_watch[addr] = fn(emu, old, new)` runs fn on every write to that SFR; with
+  `sfr_watch_mask[addr] = mask` only on writes that change one of those bits;
 * the LCD bus (P1 data, P0.5 WR, P0.7 CS, P0.3 D/C) is sampled on every WR rising
   edge with CS low and fed to an ST7789 model, which can be saved as a PNG.
+
+Two implementations with the same interface and identical results: PyEmu8051 below
+(the reference) and CEmu8051 in cemu8051.py (the same code in C, core8051.c, about
+100x faster). `Emu8051(code)` returns the C one, compiled on first use; set
+EMU8051=py to force the reference, EMU8051=c to fail rather than fall back.
+tools/emu/test_core.py checks that both agree; change both together.
 
 MOVX @Ri ignores P2 and addresses XDATA page 0, which is how the stock firmware
 uses it (its scratch variables at 0x00..0xFF are reached both ways consistently).
@@ -21,7 +29,9 @@ Input pins: `pins[port_sfr] = (mask, value)` forces what source reads and bit te
 see on those pins (JB P4.5, MOV A,P4...). Read-modify-write instructions still use the
 latch, as on the chip.
 """
+import os
 import struct
+import sys
 import zlib
 
 ACC, B, PSW, SP, DPL, DPH = 0xE0, 0xF0, 0xD0, 0x81, 0x82, 0x83
@@ -29,7 +39,7 @@ P0, P1 = 0x80, 0x90
 SENTINEL = 0xFFF0          # return address used by call(); execution stops there
 
 
-class Emu8051:
+class PyEmu8051:
     def __init__(self, code):
         self.code = bytearray(code) + b"\xFF" * (0x10000 - len(code))
         self.iram = bytearray(256)
@@ -42,12 +52,12 @@ class Emu8051:
         self.steps = 0
         self.hooks = {}
         self.sfr_watch = {}                # addr -> fn(emu, old, new)
+        self.sfr_watch_mask = {}           # addr -> bits; watch only writes that change them
         self.tick_every = 0
         self.on_tick = None
         self._next_tick = 0
         self.lcd = LCD()
         self.pins = {}                     # port SFR -> (mask, value) forced on pin reads
-        self.sfr_watch[P0] = self._p0_write
         self.ops = [self._bad] * 256
         self._build()
 
@@ -75,9 +85,13 @@ class Emu8051:
             return
         old = self.sfr[a]
         self.sfr[a] = v
+        if a == P0:
+            self._p0_write(old, v)
         w = self.sfr_watch.get(a)
         if w:
-            w(self, old, v)
+            m = self.sfr_watch_mask.get(a)
+            if m is None or (old ^ v) & m:
+                w(self, old, v)
 
     def rdp(self, a):
         """Direct read as a source operand: port SFRs return pins, where forced."""
@@ -209,7 +223,7 @@ class Emu8051:
         return self.run(None, 1 << 40, stop_cycles=self.cycles + int(seconds * clock_hz))
 
     # ---- LCD bus ------------------------------------------------------------
-    def _p0_write(self, emu, old, new):
+    def _p0_write(self, old, new):
         # WR = P0.5 rising edge with CS = P0.7 low latches P1; D/C = P0.3
         if not (old & 0x20) and (new & 0x20) and not (new & 0x80):
             self.lcd.byte(bool(new & 0x08), self.sfr[P1], self.cycles)
@@ -584,3 +598,26 @@ class LCD:
         with open(path, "wb") as f:
             f.write(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) +
                     chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b""))
+
+
+_impl = None
+
+
+def Emu8051(code):
+    """The emulator for `code`: CEmu8051 when the C core builds, else PyEmu8051."""
+    global _impl
+    if _impl is None:
+        want = os.environ.get("EMU8051", "auto")
+        if want == "py":
+            _impl = PyEmu8051
+        else:
+            try:
+                from cemu8051 import CEmu8051
+                _impl = CEmu8051
+            except Exception as ex:          # no C compiler, or it failed
+                if want == "c":
+                    raise
+                print("emu8051: C core unavailable (%s), using the Python reference" % ex,
+                      file=sys.stderr)
+                _impl = PyEmu8051
+    return _impl(code)
