@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.join(ROOT, "tools", "emu"))
 sys.path.insert(0, HERE)
 from emu8051 import Emu8051                                     # noqa: E402
 from ao300 import Amp, CLOCK_HZ, NEC_POWER, NEC_MENU, NEC_DOWN, NEC_SOURCE, \
-    NEC_VOL_UP, NEC_VOL_DOWN                                     # noqa: E402
+    NEC_VOL_UP, NEC_VOL_DOWN, STATE_KEY                          # noqa: E402
 import build_patch as bp                                         # noqa: E402
 
 BASE = open(bp.BASE_IMAGE, "rb").read()
@@ -299,6 +299,167 @@ def text_render(img, page, entry, buf, text, y):
     return e
 
 
+NEC_HDMI = 0x14                          # direct-select input 5
+CHUNK = 0.01                             # lockstep granularity, one Timer0 tick
+TOUR = [                                 # (step, NEC command or None, seconds, screen check)
+    ("power_on", NEC_POWER, 8.0, "home"),
+    ("vol_up", NEC_VOL_UP, 0.5, "vol"),
+    ("vol_up2", NEC_VOL_UP, 0.5, "vol"),
+    ("back_home", None, 2.5, "home"),
+    ("source", NEC_SOURCE, 11.0, "home"),   # OPTICAL has no signal: ~10 s detect timeout, then wipe
+    ("menu", NEC_MENU, 1.5, "home"),      # a single tap doesn't open the menu (page stays 1,
+    ("menu_down", NEC_DOWN, 1.0, "home"),  # confirmed by fast-lcd's own tour); still the home screen
+    ("menu_timeout", None, 10.5, "home"),
+    ("hdmi", NEC_HDMI, 3.0, "home"),
+    ("vol_down", NEC_VOL_DOWN, 0.5, "vol"),
+    ("vol_timeout", None, 2.5, "home"),
+    ("standby", NEC_POWER, 3.0, "same"),
+]
+HOME_BANDS = [(75, 32), (135, 24)]       # input name, status line
+
+
+def state(amp):
+    return (amp.page, amp.powered) + tuple(amp.e.iram[a] for a in (0x31, 0x52, 0x47, 0x2B))
+
+
+def accent_of(amp):
+    hi, lo = amp.e.iram[0x48], amp.e.iram[0x49]
+    return bp.ORANGE if (hi, lo) == (0xFF, 0xFF) else (hi << 8) | lo
+
+
+def current_volume(amp):
+    return amp.e.iram[0x52] if amp.e.iram[0x2B] == 2 else amp.e.iram[0x31]
+
+
+VOL_BOXES = [(184, 42, 120, 64), (40, 136, 240, 3)]      # our number box, position line
+STOCK_DIGIT_BAND = (0, 0, W, 110)                        # stock's own centred, un-doubled
+                                                          # digit: page 2 draws nothing
+                                                          # else up here (no icons on this
+                                                          # screen -- see tour_vol_up.png)
+
+
+def volume_checks(step, new, ref):
+    """Pressing a volume key shows the quick number+line toast (hn_draw_volume, 0x5936),
+    not the full hn_volpage screen (0x2143) -- that jump-table entry is a separate,
+    menu-driven page. Confirmed by tour_vol_up.png: no input name / VOL heading / divider,
+    just the number and position line over an otherwise fast-lcd-identical screen. Below
+    that, fast-lcd draws its own (un-doubled, centred) digit in the same band -- excluded
+    here since its x position moves with the value -- and the "volume" caption, which is
+    untouched by the patch and must still match fast-lcd exactly."""
+    v, acc = current_volume(new), accent_of(new)
+    boxes = VOL_BOXES + [STOCK_DIGIT_BAND]
+    outside = all(new.lcd.screen_pixel(x, y) == ref.lcd.screen_pixel(x, y)
+                  for x in range(W) for y in range(H)
+                  if not any(bx <= x < bx + bw and by <= y < by + bh for bx, by, bw, bh in boxes))
+    check("%-12s volume: number and line as hn_draw_volume draws it" % step,
+          new.page == 2 and expect_volume(new, v, acc))
+    check("%-12s volume: caption below identical to fast-lcd" % step, outside)
+
+
+def home_checks(step, new, ref):
+    sp, rp = new.lcd.screen_pixel, ref.lcd.screen_pixel
+    acc = accent_of(new)
+
+    def ours(x, y):
+        return any(y0 <= y < y0 + h for y0, h in HOME_BANDS) or (18 <= x < 46 and 114 <= y < 117)
+    check("%-12s home: icon, volume, tags as fast-lcd" % step,
+          all(sp(x, y) == rp(x, y) for x in range(W) for y in range(H) if not ours(x, y)))
+    check("%-12s home: accent bar %04X" % (step, acc),
+          all(sp(x, y) == acc for x in range(18, 46) for y in range(114, 117)))
+    for y0, h in HOME_BANDS:
+        left = next((x for x in range(W) if any(sp(x, y) for y in range(y0, y0 + h))), None)
+        check("%-12s home: text at y %d starts at x 16..29" % (step, y0),
+              left is not None and 16 <= left < 30, "(x %s)" % left)
+
+
+def draw_time(activity, quiet=10):
+    for i in range(len(activity)):
+        if not any(activity[i:i + quiet]):
+            return i * CHUNK
+    return len(activity) * CHUNK
+
+
+def tour():
+    print("\nWhole firmware, lockstep with fast-lcd")
+    amps = [Amp(BASE), Amp(NEW)]
+    for amp in amps:
+        amp.set_pin(0xC0, 5, 0)                         # USB audio present
+        amp.boot()
+    ref, new = amps
+    for step, cmd, secs, kind in TOUR:
+        w0 = time.time()
+        for amp in amps:
+            if cmd is not None:
+                amp.press(cmd)
+        act, home_at = [[], []], [None, None]
+        for n in range(int(round(secs / CHUNK))):
+            for k, amp in enumerate(amps):
+                p0, n0 = amp.lcd.pixels, len(amp.lcd.log)
+                amp.wait(CHUNK)
+                act[k].append(amp.lcd.pixels != p0 or len(amp.lcd.log) != n0)
+                if home_at[k] is None and amp.page == 1:
+                    home_at[k] = n * CHUNK
+        print("    %-12s %5.1f s emulated x2 in %5.1f s, drawing %4.0f / %4.0f ms" %
+              (step, secs, time.time() - w0, draw_time(act[0]) * 1000, draw_time(act[1]) * 1000), flush=True)
+        check("%-12s same page, power, volumes, input, output" % step, state(ref) == state(new),
+              "%s vs %s" % (state(ref), state(new)))
+        if kind == "home":
+            home_checks(step, new, ref)
+        elif kind == "vol":
+            volume_checks(step, new, ref)
+        else:
+            check("%-12s screen identical to fast-lcd" % step, new.lcd.gram == ref.lcd.gram)
+        if step == "vol_up":
+            check("vol_up       wipe and page drawn within 350 ms", draw_time(act[1]) <= 0.35,
+                  "(%.0f ms)" % (draw_time(act[1]) * 1000))
+        if step in ("back_home", "vol_timeout"):
+            both = None not in home_at
+            check("%-12s home returns within 0.1 s of fast-lcd" % step,
+                  both and abs(home_at[0] - home_at[1]) <= 0.1, str(home_at))
+        new.lcd.save_png(os.path.join(HERE, "build", "tour_%s.png" % step))
+
+    print("\n  Audio state, after every write that changes it")
+    backlight = ("pin", "P0.6 backlight")
+
+    def transitions(amp):
+        out, last = [], None
+        for c, st in amp.state_changes:
+            st = tuple(kv for kv in st if kv[0] != backlight)
+            if st != last:
+                out.append((c / CLOCK_HZ, st))
+                last = st
+        return out
+    tr_ref, tr_new = transitions(ref), transitions(new)
+    same_order = [s for _, s in tr_ref] == [s for _, s in tr_new]
+    check("same sequence of audio states, in the same order", same_order,
+          "(%d vs %d states)" % (len(tr_ref), len(tr_new)))
+    if same_order:
+        late = [(tn - tr, tr) for (tr, _), (tn, _) in zip(tr_ref, tr_new) if tn - tr > 0.10]
+        check("no audio state more than 0.10 s later than fast-lcd", not late,
+              "" if not late else "(%d, first %+.2f s at %.2f s)" % (len(late), late[0][0], late[0][1]))
+        moved = [(tr, tn - tr) for (tr, _), (tn, _) in zip(tr_ref, tr_new) if abs(tn - tr) > 0.05]
+        for tr, d in moved:
+            print("    audio state at %7.2f s moves %+.2f s" % (tr, d))
+    bl = [[d for _, nm, d in amp.events if nm == backlight[1]] for amp in amps]
+    check("backlight switches the same way", bl[0] == bl[1])
+
+    def semantic_args(name, regs):
+        """The part of a writer's logged R3/R4/R5/R7 that reaches the chip, per
+        ao300.STATE_KEY's own field selection: R3/R4 double as scratch/loop-counter
+        registers at some call sites (e.g. a signal-lock retry loop around input
+        switches) and can differ, by one incidental value, from a harmless timing
+        shift -- house-numerals's extra hooks change how many main-loop iterations
+        fit in a second -- without changing what the chip is told."""
+        r = [0] * 8
+        for kv in regs.split():
+            r[int(kv[1])] = int(kv[3:], 16)
+        return STATE_KEY[name](r)
+    for name in sorted(set(ref.calls) | set(new.calls)):
+        a = {semantic_args(name, regs) for regs in ref.calls.get(name, set())}
+        b = {semantic_args(name, regs) for regs in new.calls.get(name, set())}
+        check("%-15s same argument sets (%d distinct)" % (name, len(a)), a == b)
+
+
 def test_align():
     print("\nleft-aligned text on page 1 (hooks 0x2A25 big, 0x3A82 small)")
     cases = (("big", 0x298B, 0x35, "USB", 75, 32, 30), ("small", 0x3A53, 0x50, "No signal", 135, 24, 14))
@@ -324,7 +485,7 @@ def test_align():
 GROUPS = {
     "unit": [image_diff, test_fill, test_digit2x, test_text, test_name_ptr,
              test_draw_volume, test_volpage, test_wipe, test_home_tail, test_align],
-    "tour": [],
+    "tour": [tour],
     "sweep": [],
 }
 
