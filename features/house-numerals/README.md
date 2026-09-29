@@ -22,11 +22,12 @@ hn4.1 fixes three things found in hn4 (`v1.4 tbenr hn4`, sha256 `86aacb8b…`):
 Earlier images:
 - hn3 (`v1.4 tbenr hn3`, sha256 `2c4809ab…`) and hn2 (`2819e0b0…`) drew a 200 ms wipe inside the
   volume-key handler, which stopped the main loop.
-- The first image (`v1.4 tbenr hn`, `deada16a…`, 47 ms wipe) is the only one flashed so far.
+- Flashed so far: the first image (`v1.4 tbenr hn`, `deada16a…`, 47 ms wipe) and hn4.1.
 
 ## Status
 
-Emulator-verified (all tests pass). Not yet tried on hardware (hn4.1, `v1.4 tbenr hn4.1`).
+Emulator-verified (all tests pass). Tried on the amp on 2026-09-29: hn4.1
+(`v1.4 tbenr hn4.1`, `5eddb6df…`) looks OK. Longer use is still to come.
 
 ## What the build shows
 

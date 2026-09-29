@@ -184,6 +184,10 @@ tuned against 147 ms stock), and the result holds for 5 s.
 Flashed on 2026-09-28 and working so far: `features/fast-lcd/build/flash_fastlcd.bin`,
 the stock UI through the fast pixel path. Longer listening tests are still to come.
 
+Tried on 2026-09-29 and looks OK: `features/house-numerals/build/flash_house_numerals.bin`
+(hn4.1, `v1.4 tbenr hn4.1`), the House Numerals home and volume page with the non-blocking
+eased wipe. Longer use is still to come.
+
 ## What the custom firmware adds
 
 ### Direct input selection over IR
