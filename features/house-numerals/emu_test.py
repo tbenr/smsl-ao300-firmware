@@ -167,13 +167,13 @@ def buffer_text(e, addr, n=25):
 def model_tag(fb, text, right, acc):
     t = text[:5].rstrip(" ")
     wd = bp.PF_TAG.width(t)
-    w = wd + 10
+    w = wd + 2 * bp.TAG_PAD
     x = right - w
     for xx in range(x, x + w):
         fb[bp.TAG_Y0][xx] = fb[bp.TAG_Y1][xx] = acc
     for yy in range(bp.TAG_Y0 + 1, bp.TAG_Y1):
         fb[yy][x] = fb[yy][x + w - 1] = acc
-    bp.PF_TAG.render(fb, t, x + 5, bp.TAG_TY, acc, 0)
+    bp.PF_TAG.render(fb, t, x + bp.TAG_PAD, bp.TAG_TY, acc, 0)
 
 
 def home_parts(e):
@@ -196,11 +196,11 @@ def home_parts(e):
     fmt = format_tag_string(ir[0x47], ir[0x3D], ir[0x75])
     part(bp.HF_FMT, lambda fb: model_tag(fb, fmt, bp.FMT_RIGHT, acc) if fmt is not None else None)
     part(bp.HF_NAME, lambda fb: bp.PF_NAME.render(fb, buffer_text(e, bp.BIG_BUF), bp.HNAME_X, bp.HNAME_Y,
-                                                  bp.WHITE, 0, spacing=1))
+                                                  bp.WHITE, 0, spacing=bp.NAME_SP))
     part(bp.HF_STAT, lambda fb: bp.PF_STATUS.render(fb, buffer_text(e, bp.SMALL_BUF), bp.STAT_X, bp.STAT_Y,
-                                                    bp.DIM, 0, spacing=1))
-    part(bp.HF_BAR, lambda fb: [fb[y].__setitem__(x, acc) for y in range(bp.BAR_Y, bp.BAR_Y + 3)
-                                for x in range(18, 46)])
+                                                    bp.DIM, 0, spacing=bp.STAT_SP))
+    part(bp.HF_BAR, lambda fb: [fb[y].__setitem__(x, acc) for y in range(bp.BAR_Y, bp.BAR_Y + bp.BAR_H)
+                                for x in range(bp.BAR_X, bp.BAR_X + bp.BAR_W)])
     return parts
 
 
@@ -329,7 +329,9 @@ def test_home():
                     e.xram[buf + k] = ch
                 e.setR(6, 0); e.setR(7, y)
                 e.call(entry)
-        got.append(ink_in(e, 120, bp.HNAME_Y, 100, bp.PF_NAME.H) or ink_in(e, 80, bp.STAT_Y, 60, bp.PF_STATUS.H))
+        nx = bp.HNAME_X + bp.PF_NAME.width("USB", bp.NAME_SP) + 2          # past the shorter texts
+        sx = bp.STAT_X + bp.PF_STATUS.width("48kHz", bp.STAT_SP) + 2
+        got.append(ink_in(e, nx, bp.HNAME_Y, W - nx, bp.PF_NAME.H) or ink_in(e, sx, bp.STAT_Y, W - sx, bp.PF_STATUS.H))
     check("a shorter name / status line clears the rest of the longer one, except during a wipe "
           "(the wipe's band is black)", got == [False, True], str(got))
 
@@ -475,14 +477,14 @@ def home_reference(inp=2, status="No signal"):
 def home_boxes(inp=2, status="No signal"):
     """x0, x1, y0, y1 of each home element, as hn5 draws it."""
     name = {1: "USB", 2: "OPTICAL", 3: "COAXIAL", 4: "BT", 5: "ARC", 6: "AUX"}[inp]
-    nr = bp.HNAME_X + bp.PF_NAME.width(name, 1) - 1
-    sr = bp.STAT_X + bp.PF_STATUS.width(status, 1) - 1
+    nr = bp.HNAME_X + bp.PF_NAME.width(name, bp.NAME_SP) - 1
+    sr = bp.STAT_X + bp.PF_STATUS.width(status, bp.STAT_SP) - 1
     return {bp.HF_ICON: (bp.ICON_X, bp.ICON_END, bp.ICON_Y, bp.ICON_Y + bp.PF_ICON.H - 1),
             bp.HF_VOL: (bp.HVOL_X, bp.HVOL_END, bp.HVOL_Y, bp.HVOL_Y + bp.PF_HVOL.H - 1),
-            bp.HF_BAR: (18, 45, bp.BAR_Y, bp.BAR_Y + 2),
+            bp.HF_BAR: (bp.BAR_X, bp.BAR_X + bp.BAR_W - 1, bp.BAR_Y, bp.BAR_Y + bp.BAR_H - 1),
             bp.HF_NAME: (bp.HNAME_X, nr, bp.HNAME_Y, bp.HNAME_Y + bp.PF_NAME.H - 1),
             bp.HF_FMT: (bp.FMT_LEFT, bp.FMT_RIGHT - 1, bp.TAG_Y0, bp.TAG_Y1),
-            bp.HF_EQ: (bp.EQ_RIGHT - 28, bp.EQ_RIGHT - 1, bp.TAG_Y0, bp.TAG_Y1),
+            bp.HF_EQ: (bp.EQ_X, bp.EQ_RIGHT - 1, bp.TAG_Y0, bp.TAG_Y1),
             bp.HF_STAT: (bp.STAT_X, sr, bp.STAT_Y, bp.STAT_Y + bp.PF_STATUS.H - 1)}
 
 
@@ -800,7 +802,7 @@ def test_home_tail():
         parts = home_parts(e)
         want = dict(parts[bp.HF_VOL]); want.update(parts[bp.HF_BAR])
         ok = all(px(e, x, y) == want.get((x, y), 0) for x in range(W) for y in range(H))
-        check("theme %02X%02X: the volume (hm_volume), accent bar 28x3 at 18,%d, nothing else" % (theme + (bp.BAR_Y,)),
+        check("theme %02X%02X: the volume (hm_volume), accent bar %dx%d at %d,%d, nothing else" % (theme + (bp.BAR_W, bp.BAR_H, bp.BAR_X, bp.BAR_Y)),
               ok)
         check("theme %02X%02X: theme colour untouched" % theme, (e.iram[0x48], e.iram[0x49]) == theme)
 

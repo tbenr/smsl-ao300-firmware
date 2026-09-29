@@ -2,9 +2,12 @@
 
 A reduced build of study 3 ("House Numerals", after SMSL's SU and DO series screens) from
 `features/ui-theme/ui_themes.html`. Built on top of fast-lcd. The RESET page shows
-`v1.4 tbenr hn5`.
+`v1.4 tbenr hn6`.
 
-This is image hn5 (sha256 `510fd138…`). The home screen is now the mock's, drawn in the mock's
+This is image hn6 (sha256 `7b74e950…`): hn5 with the larger sizes picked on the amp's feedback,
+the home layout now read from `layout.json`, which `sizing.html` writes (see "Layout" below).
+
+hn5 (`v1.4 tbenr hn5`, sha256 `510fd138…`) made the home screen the mock's, drawn in the mock's
 own typefaces: speaker icon and volume top left, the tags as accent boxes top right, the input
 name in the condensed display face, the status line in grey mono under it, the accent bar
 below. See "The home screen" below. The volume page and the wipes are hn4.1's.
@@ -29,7 +32,9 @@ Earlier images:
 
 ## Status
 
-hn5: emulator-verified (all tests pass). Tried on the amp on 2026-09-29: looks great, and the
+hn6: emulator-verified (all tests pass), not yet tried on the amp.
+
+hn5: emulator-verified. Tried on the amp on 2026-09-29: looks great, and the
 anti-aliased text works well on the panel, but the tags, the status line (sample rate) and the
 volume are too small at the panel's size. A redesign of the sizes is next.
 
@@ -40,12 +45,13 @@ is still to come.
 
 | Element | Build |
 |---|---|
-| Home: icon | the mock's 16-px speaker at 12,9, white; red with an X when muted (bit 0x22.1); headphones on the headphone output |
-| Home: volume | Barlow Condensed 22 px, white, at x 36, baseline 24, no leading zero |
-| Home: tags | IBM Plex Mono 10 px in the accent, in 1-px accent boxes 10 px wider than the text, rows 8..24: the EQ tag ends at x 309, the format tag 6 px left of it |
+| Home: icon | the mock's speaker at 23 px, 12,7, white; red with an X when muted (bit 0x22.1); headphones on the headphone output |
+| Home: volume | Barlow Condensed 36 px, white, at x 47, baseline 29, no leading zero |
+| Home: tags | IBM Plex Mono 13 px in the accent, in 1-px accent boxes 10 px wider than the text, rows 9..29: the EQ box 276..309, the format box ending at 269 |
 | Home: input name | Big Shoulders Display 52 px, white, at x 16, baseline 104, 1 px letter spacing |
-| Home: status line | IBM Plex Mono 12 px, grey #8a9096, at x 18, baseline 132, 1 px letter spacing |
-| Home: accent bar | 28 x 3 at 18,144 |
+| Home: status line | IBM Plex Mono 20 px, grey #8a9096, at x 18, baseline 140, 1 px letter spacing |
+| Home: accent bar | 28 x 3 at 18,150 |
+| (hn5) | speaker 16 px, volume 22, tags 10 in 17-px boxes, status 12 at baseline 132, bar at y 144 |
 | Volume page: name | small font, white, at 16,30 |
 | Volume page: divider | 1 x 104 at 140,14, colour 0x2104 |
 | Volume page: label | "VOL" in accent, small font, at 158,14 |
@@ -90,17 +96,40 @@ EQ key and the rest all call these painters in their own order, so they all draw
   the pixels don't change. During a wipe `hm_rest` does nothing: the wipe's band is black and
   the element is only drawn once the edge has passed it.
 - **Tags.** The stock strings are copied without trailing spaces ("PCM ", "DoP ", "MQA."). The
-  EQ tags are all three letters, so the EQ box is always x 282..309; the format box ends at
-  x 275 and is 28 or 34 px wide; the format tag's area is x 240..275 and is cleared up to the
+  EQ tags are all three letters, so the EQ box has one width (x 276..309); the format box ends
+  at x 269 and is 34 or 42 px wide; the format tag's area is x 228..269 and is cleared up to the
   box. The tag arithmetic keeps x - 192 in 8 bits (the EQ box ends past x 255).
 - **Colours.** Name and volume white, status grey, tags and bar in the accent (the COLOR tint;
   SMSL orange on White), the muted icon red. The stock tinted all of it.
-- **Speed.** A whole home (home_refresh and the status line) takes 10.7 ms; the stock refresh
+- **Speed.** A whole home (home_refresh and the status line) takes 12.4 ms; the stock refresh
   took about 45 ms. The main loop now loses fewer ticks at the refreshes after power-on, so
   the first unmute comes 0.12 to 0.18 s earlier than on fast-lcd (see "Per input").
-- **Fonts** (7077 bytes): the name face 3164 (A-Z, space, `.`, `-`), the status mono 2370 (the 59
-  characters of every firmware string), the volume digits 610, the tag mono 635, the three
-  icons 298, all 4-level anti-aliased run-length.
+- **Fonts** (8997 bytes): the name face 3164 (A-Z, space, `.`, `-`), the status mono 3681 (the 59
+  characters of every firmware string), the volume digits 992, the tag mono 769, the three
+  icons 391, all 4-level anti-aliased run-length.
+
+### Layout: `layout.json` and `sizing.html`
+
+`build_patch.py` takes every home position and font from `layout.json`: each element's raster
+(`tools/fonts/raster/<id>.json`), x, baseline, the tags' box rows and padding, the status colour
+and letter spacing, the bar. Everything else (the clear-up-to columns, the tag areas, the exit
+wipe's element columns) is derived from it, and the build asserts that the elements don't
+overlap and that the tags stay right of x 192.
+
+`sizing.html` edits it. Served by the font bench, it shows the home exactly as the firmware
+draws it: it rasterises the fonts in the page with the same code as `raster.html`
+(`tools/fonts/glyphs.js`) and packs and draws them with a port of `pfont.py`. The preview of
+hn6's default state equals the emulator's screen pixel for pixel. It shows each font's cap
+height on the panel in mm and its exact size in flash, and flags overlaps and texts wider than
+the screen. **Save layout and fonts** writes the rasters of the chosen sizes (adding them to
+`tools/fonts/specs.json`) and `layout.json`, with the slider values under `controls` and the
+positions under `home`. Then rebuild by hand:
+
+    python3 tools/fonts/rasterize.py         # the font bench; open the sizing page it prints
+    python3 features/house-numerals/build_patch.py
+    python3 tools/run_tests.py house-numerals
+
+A new image needs its sha256 in `KNOWN_IMAGES` before `flash_ao300.py` flashes it.
 
 ## How the wipes work
 
@@ -170,12 +199,12 @@ directions, at four frame phases. Every frame between the first and last step ha
 
 | Way out: element | Drawn by | Appears (OPTICAL, "No signal") |
 |---|---|---|
-| icon 12..34, accent bar 18..45 | `home_draw_output_icon` 0x5744 (`hm_icon`), `uk_fill` | 5 (47) |
-| volume 36..79 | `home_draw_volume` 0x5916 (`hm_volume`) | 7 (87) |
+| icon 12..45, accent bar 18..45 | `home_draw_output_icon` 0x5744 (`hm_icon`), `uk_fill` | 5 (47) |
+| volume 47..82 | `home_draw_volume` 0x5916 (`hm_volume`) | 7 (87) |
 | status line 18..end of the text | `hm_status`, buffer XDATA 0x50 | 11 (184): once the stock refresh has loaded the buffer, and the edge has passed its end |
 | input name 16..end of the text | `hm_name`, buffer XDATA 0x35 | 11 (184); USB 8 (110), BT 6 (66) |
-| format tag 240..275 | `home_draw_format_tag` 0x41CA (`hm_fmt`) | 16 (288) |
-| EQ tag 282..309 | `home_draw_eq_tag` 0x49A1 (`hm_eq`) | 18 (310) |
+| format tag 228..269 | `home_draw_format_tag` 0x41CA (`hm_fmt`) | 15 (271) |
+| EQ tag 276..309 | `home_draw_eq_tag` 0x49A1 (`hm_eq`) | 18 (310) |
 
 The status line waits for its buffer:
 - The stock refresh loads XDATA 0x50 10 ticks after the return home (0x27:0x28 = 10 after
@@ -336,19 +365,19 @@ main README's "UI themes").
 
 ## Timing
 
-Worst step measured: **6.54 ms**, on the exit with the OPTICAL name and "No signal", which
-the edge passes on the same step (step 11). The budget is 8 ms, well inside the 10 ms tick.
+Worst step measured: **7.28 ms**, on the exit with the OPTICAL name and "No signal", which
+the edge passes on the same step (step 11). The budget is 8 ms, inside the 10 ms tick.
 Unit test, worst step per wipe:
 
 | Wipe | Worst |
 |---|---|
 | Entry | 4.87 ms (number box) |
-| Exit, OPTICAL, "No signal" | 6.53 ms (name and status line together) |
-| Exit, USB, "2.8224MHz" | 3.51 ms |
-| Exit, BT, "Searching..." | 3.22 ms |
+| Exit, OPTICAL, "No signal" | 7.28 ms (name and status line together) |
+| Exit, USB, "2.8224MHz" | 3.69 ms |
+| Exit, BT, "Searching..." | 4.23 ms |
 
-In the whole firmware the worst step seen is 4.91 ms (entries) and 6.54 ms (optical exit).
-For comparison, a whole hn5 home takes 10.7 ms and the stock periodic home refresh blocks the
+In the whole firmware the worst step seen is 4.91 ms (entries) and 7.28 ms (optical exit).
+For comparison, a whole hn6 home takes 12.4 ms and the stock periodic home refresh blocks the
 main loop for about 45 ms every 0.5 s.
 
 ## Per input (emulator, Vol+ from home, whole firmware against fast-lcd)
@@ -399,8 +428,8 @@ volume page. Every stock byte is asserted by `build_patch.py`.
 
 ## Memory
 
-- **Code:** 13638 bytes at 0x9800..0xCD45 (7077 of them fonts), plus the version string at
-  0xCD46. Image length 52565 bytes; 9899 bytes are left under the 0xF400 split.
+- **Code:** 15558 bytes at 0x9800..0xD4C5 (8997 of them fonts), plus the version string at
+  0xD4C6. Image length 54485 bytes; 7979 bytes are left under the 0xF400 split.
   `house_numerals.asm` is the generated listing.
 - **XDATA** 0x0100..0x01A6. The EEPROM sectors and everything fast-lcd/direct-select use
   stay untouched.
@@ -435,8 +464,8 @@ volume page. Every stock byte is asserted by `build_patch.py`.
 
 ## Emulator results
 
-`python3 tools/run_tests.py` gives **ALL PASS** for every feature, 112 s wall (house-numerals
-112 s, most of it the sweep). `emu_test.py` has four groups: `unit`, `tour`, `int1`, `sweep`;
+`python3 tools/run_tests.py` gives **ALL PASS** for every feature, 116 s wall (house-numerals
+116 s, most of it the sweep). `emu_test.py` has four groups: `unit`, `tour`, `int1`, `sweep`;
 `unit tour` alone runs in about 50 s.
 
 - **Image diff:** only the fifteen hook sites (plus the version pointer) differ from
@@ -564,6 +593,9 @@ volume page. Every stock byte is asserted by `build_patch.py`.
 
 ## What to look for on the amp
 
+hn6: the volume, the tags and the status line larger than hn5's (36, 13 and 20 px against 22,
+10 and 12), the speaker larger with them, the bar 6 px lower. Readable at arm's length?
+
 hn5, the home screen:
 - The home looks like the mock's House Numerals home: speaker and volume top left, the tags
   in thin accent boxes top right, the input name large in the condensed face, the status in
@@ -602,6 +634,7 @@ input selection over IR).
 
 ## Files
 
+- `layout.json` is the home layout; `sizing.html` edits it (see "Layout").
 - `build_patch.py` builds `build/flash_house_numerals.bin` from
   `features/fast-lcd/build/flash_fastlcd.bin` and writes the listing
   `house_numerals.asm`. It uses the text instructions added to `tools/patch/asm51.py`

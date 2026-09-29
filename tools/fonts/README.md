@@ -12,7 +12,11 @@ The OFL allows this use: bitmaps rendered from the faces and embedded in firmwar
 `specs.json` lists the faces and sizes the themes use, as canvas font strings. `raster.html`
 renders every character of each spec with the browser's text engine, the same way the mock
 draws them. It posts the anti-aliased coverage of each glyph to `rasterize.py`, which writes
-`raster/<id>.json`. Each file has one line per glyph:
+`raster/<id>.json`. The rendering lives in `glyphs.js`, shared with the themes' sizing pages
+(`features/house-numerals/sizing.html`), which also port `pfont.py`'s packing and drawing, so
+their previews are exactly what the firmware draws. A sizing page saves the rasters of the sizes
+it picks and adds their specs to `specs.json`. Raster ids are the kind and the size: `disp52`,
+`num36`, `mono20`, `icons23`. Each file has one line per glyph:
 
 - the advance;
 - the ink box's offset from the pen on the baseline;
@@ -26,11 +30,15 @@ A spec with `"draw"` instead of `"font"` names a drawing routine in `raster.html
 glyphs that are shapes rather than text. `icons16` holds the mock's speaker (`S`), the muted
 speaker (`M`) and headphones in the same line weight (`H`).
 
-To add a face or size: add a spec, then run
+`rasterize.py` is the font bench: a server on 127.0.0.1 for these pages. It serves the
+repository and accepts only two saves: `raster/<id>.json` (with its spec) and a feature's
+`layout.json`. It builds nothing.
 
-    python3 tools/fonts/rasterize.py        # serves http://127.0.0.1:8767/raster.html
+To add a face or size by hand: add a spec, then run
 
-Open `raster.html?only=<id>` in a browser. The page reports a font that failed to load and
+    python3 tools/fonts/rasterize.py        # prints the pages' addresses
+
+and open `tools/fonts/raster.html?only=<id>`. The page reports a font that failed to load and
 writes nothing for it, so a fallback face never gets saved by mistake. Rasters from
 different browsers or systems can differ by a pixel here and there, and `engine` in each
 file records which browser made it. Only re-render existing rasters on purpose: every theme

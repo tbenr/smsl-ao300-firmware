@@ -1,0 +1,327 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>House Numerals Sizing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&display=swap">
+<style>
+/* Layout: a bench: the panel under test on the left at a readable zoom, its measurements below it,
+   the controls in one column on the right; one column on a phone. */
+:root{
+  --ground:#e6e7e4; --plate:#f3f3f1; --ink:#1e2124; --muted:#5d6268; --line:#c9ccc8;
+  --accent:#d9661a; --warn:#b3261e; --good:#2e7d4f; --bezel:#0b0c0d;
+  --display:"Big Shoulders Display","Arial Narrow",sans-serif;
+  --body:"Barlow","Helvetica Neue",Arial,sans-serif;
+  --mono:"IBM Plex Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#16181a; --plate:#1e2124; --ink:#e7e8e6; --muted:#9aa0a6; --line:#33373b;
+    --accent:#ff8a1f; --warn:#ff6b5e; --good:#6fcf97; --bezel:#050606; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#16181a; --plate:#1e2124; --ink:#e7e8e6; --muted:#9aa0a6; --line:#33373b;
+  --accent:#ff8a1f; --warn:#ff6b5e; --good:#6fcf97; --bezel:#050606; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--ground);color:var(--ink);font:15px/1.5 var(--body);padding-inline:clamp(16px,3vw,40px);padding-block:24px 48px;margin:0}
+header{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 18px;margin-bottom:20px}
+h1{font:800 clamp(30px,4.2vw,46px)/1 var(--display);text-transform:uppercase;letter-spacing:.02em;margin:0;text-wrap:balance}
+h1 span{color:var(--accent)}
+header p{margin:0;color:var(--muted);max-width:66ch}
+.bench{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,340px);gap:24px;align-items:start}
+@media (max-width:880px){.bench{grid-template-columns:1fr}}
+.panel-col{display:flex;flex-direction:column;gap:16px;min-width:0}
+.bezel{background:var(--bezel);border-radius:14px;padding:clamp(10px,2vw,22px)}
+canvas#screen{display:block;width:100%;max-width:1280px;aspect-ratio:320/170;image-rendering:pixelated;margin-inline:auto;background:#000}
+.bar{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;font:500 12px var(--mono);color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+.warn{color:var(--warn);font:500 13px var(--mono);text-transform:none;letter-spacing:0}
+.ok{color:var(--muted);font:500 13px var(--mono);text-transform:none;letter-spacing:0}
+.tbl-wrap{overflow-x:auto;background:var(--plate);border:1px solid var(--line);border-radius:8px}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{padding:7px 12px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{font:500 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+td{font:14px var(--mono)}
+tr:last-child td{border-bottom:0}
+tfoot td{font-weight:500}
+.over{color:var(--warn)}
+aside{background:var(--plate);border:1px solid var(--line);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:18px}
+fieldset{border:0;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+legend,.lg{font:600 13px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin:0 0 6px}
+.presets{display:flex;flex-wrap:wrap;gap:6px}
+button{font:500 13px var(--body);color:var(--ink);background:var(--ground);border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer}
+button[aria-pressed="true"]{background:var(--ink);color:var(--ground);border-color:var(--ink)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+button:disabled{opacity:.5;cursor:default}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.row{display:grid;grid-template-columns:7.5em 1fr 3.2em;gap:8px;align-items:center;font-size:14px}
+.row output{font:14px var(--mono);text-align:right;font-variant-numeric:tabular-nums}
+.row select{grid-column:2 / 4}
+select{font:14px var(--body);color:var(--ink);background:var(--ground);border:1px solid var(--line);border-radius:6px;padding:4px 6px;width:100%}
+input[type=range]{width:100%;accent-color:var(--accent)}
+label.chk{display:flex;gap:8px;align-items:center;font-size:14px}
+.save{display:flex;flex-direction:column;gap:8px}
+.save pre{margin:0;background:var(--ground);border:1px solid var(--line);border-radius:6px;padding:10px;font:12.5px/1.5 var(--mono);white-space:pre-wrap;word-break:break-word}
+#saved.good{color:var(--good)} #saved.bad{color:var(--warn)}
+.note{font-size:13px;color:var(--muted);margin:0;max-width:65ch}
+</style>
+
+<header>
+  <h1>House Numerals <span>sizing</span></h1>
+  <p>The home screen exactly as the firmware draws it: the same glyph rasters, packing and four-level anti-aliasing, at the panel's 320 × 170 pixels. Save writes <code>layout.json</code> and the fonts; then rebuild by hand.</p>
+</header>
+
+<div class="bench">
+  <div class="panel-col">
+    <div class="bezel"><canvas id="screen" width="320" height="170" aria-label="Simulated amp screen"></canvas></div>
+    <div class="bar"><span>panel 42.7 × 22.7 mm · 0.134 mm per pixel</span><span id="warnings" class="ok">loading fonts…</span></div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Element</th><th>Font</th><th>Cap height</th><th>On the panel</th><th>Flash</th></tr></thead>
+        <tbody id="readout"></tbody>
+        <tfoot><tr><td>Home fonts</td><td></td><td></td><td id="leftlab"></td><td id="total"></td></tr></tfoot>
+      </table>
+    </div>
+    <p class="note">Flash is exact: each font packed as the build packs it. About 17 KB of the image is free for fonts, the volume page's included. hn5 on the amp had the volume at 22 px, the tags at 10 px and the status line at 12 px.</p>
+  </div>
+
+  <aside>
+    <fieldset>
+      <legend>Starting points</legend>
+      <div class="presets" id="presets"></div>
+    </fieldset>
+    <fieldset>
+      <legend>What the amp shows</legend>
+      <div class="row"><span>Input</span><select id="s_input"><option>USB</option><option selected>OPTICAL</option><option>COAXIAL</option><option>BT</option><option>ARC</option><option>AUX</option><option>PHONO</option></select></div>
+      <div class="row"><span>Status</span><select id="s_status"><option>96kHz</option><option>44.1kHz</option><option selected>2.8224MHz</option><option>22.5792MHz</option><option>352.8kHz</option><option>No signal</option><option>Searching...</option><option>Analog input</option></select></div>
+      <div class="row"><span>Format tag</span><select id="s_fmt"><option>PCM</option><option>DSD</option><option selected>DoP</option><option>MQA</option><option>MQA.</option><option value="">none</option></select></div>
+      <div class="row"><span>EQ tag</span><select id="s_eq"><option selected>DIR</option><option>CUS</option><option>BAS</option><option>SBA</option><option>RCK</option><option>SFT</option><option>CLR</option><option>SDB</option></select></div>
+      <div class="row"><span>Volume</span><input type="range" id="s_vol" min="0" max="60" value="38"><output id="o_vol"></output></div>
+      <div class="row"><span>COLOR tint</span><select id="s_tint"><option value="white">White (orange accent)</option><option value="#00ff00">Green</option><option value="#ff0000">Red</option><option value="#33bfff">Blue</option></select></div>
+      <label class="chk"><input type="checkbox" id="s_mute"> Muted</label>
+      <label class="chk"><input type="checkbox" id="s_hp"> Headphone output</label>
+    </fieldset>
+    <fieldset id="sizes">
+      <legend>Sizes, px</legend>
+    </fieldset>
+    <div class="save">
+      <h2 class="lg">Save for the build</h2>
+      <button id="save" type="button" class="primary">Save layout and fonts</button>
+      <span id="saved" class="note"></span>
+      <pre id="next">python3 features/house-numerals/build_patch.py
+python3 tools/run_tests.py house-numerals</pre>
+    </div>
+  </aside>
+</div>
+
+<script src="../../tools/fonts/glyphs.js"></script>
+<script>
+(() => {
+const G = window.Glyphs, W = 320, H = 170, PITCH = 0.1335;   // 1.9" 170 x 320 IPS: 22.70 x 42.72 mm
+// the characters the build keeps (build_patch.py: NAME_CHARS, TAG_CHARS, the status set)
+const CHARS = {
+  name: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ .-',
+  status: " !'-.0123456789ABCDEFGHIKLMNOPQRSTUVXabcdeghiklmnoprstuvwyz",
+  tag: 'ABCDFIKLMPQRSTUo. ', volume: '0123456789', icon: 'SMH',
+};
+const ORANGE = 0xFC43, RED = G.hex565('#ff0000'), WHITE = 0xFFFF;
+const TONES = {grey: '#8a9096', light: '#c3c8cc', white: '#ffffff'};
+const DEFS = [
+  ['icon', 'Speaker', 12, 30], ['vol', 'Volume', 16, 48], ['top', 'Top row base', 18, 46],
+  ['tag', 'Tag text', 8, 20], ['tagH', 'Tag box', 12, 30],
+  ['name', 'Input name', 32, 64], ['nameY', 'Name base', 70, 124],
+  ['stat', 'Status', 10, 28], ['statY', 'Status base', 100, 160], ['statSp', 'Status spacing', 0, 3],
+  ['barY', 'Accent bar y', 110, 166],
+];
+const PRESETS = {
+  'hn5 on the amp': {icon:16, vol:22, top:24, tag:10, tagH:17, name:52, nameY:104, stat:12, statY:132, statSp:1, barY:144, tone:'grey'},
+  'Scaled up': {icon:20, vol:30, top:29, tag:13, tagH:21, name:52, nameY:104, stat:18, statY:136, statSp:1, barY:150, tone:'grey'},
+  'Big volume': {icon:24, vol:40, top:36, tag:14, tagH:23, name:46, nameY:104, stat:18, statY:134, statSp:1, barY:148, tone:'grey'},
+  'Status forward': {icon:18, vol:28, top:27, tag:13, tagH:20, name:44, nameY:92, stat:22, statY:128, statSp:1, barY:146, tone:'light'},
+};
+let P = {...PRESETS['Scaled up']}, activePreset = null, ready = false;
+const $ = id => document.getElementById(id);
+
+// ---- fonts, made in the page exactly as the build makes them ----
+const rasters = {}, fonts = {};
+function font(kind, px, chars){
+  const id = kind + px;
+  if (!rasters[id]) rasters[id] = G.raster(G.spec(kind, px));
+  const key = id + '|' + chars;
+  if (!fonts[key]) fonts[key] = G.makeFont(rasters[id], chars, 2);
+  return fonts[key];
+}
+function fontsFor(p){
+  return {
+    icon: font('icons', p.icon, CHARS.icon), volume: font('num', p.vol, CHARS.volume),
+    tag: font('mono', p.tag, CHARS.tag), name: font('disp', p.name, CHARS.name),
+    status: font('mono', p.stat, CHARS.status),
+  };
+}
+const capOf = (f, ch) => { const g = rasters[f.id].glyphs[ch]; return g && g.rows.length ? -g.y : 0; };
+
+// ---- the layout the build reads: every position explicit ----
+function layout(p, F){
+  const iconAdv = F.icon.glyphs.S.adv;
+  const vx = 12 + iconAdv + Math.max(4, G.pyRound(p.icon / 4));
+  const boxTop = p.top - p.tagH + 1;
+  const tb = G.pyRound(boxTop + (p.tagH + capOf(F.tag, 'D')) / 2);
+  return {
+    icon: {font: 'icons' + p.icon, x: 12, baseline: p.top + 1},
+    volume: {font: 'num' + p.vol, x: vx, baseline: p.top},
+    tags: {font: 'mono' + p.tag, top: boxTop, height: p.tagH, baseline: tb, right: 310, gap: 6, pad: 5},
+    name: {font: 'disp' + p.name, x: 16, baseline: p.nameY, spacing: 1},
+    status: {font: 'mono' + p.stat, x: 18, baseline: p.statY, spacing: p.statSp, colour: TONES[p.tone]},
+    bar: {x: 18, y: p.barY, width: 28, height: 3},
+  };
+}
+
+// ---- drawing, as the firmware (and home_model in emu_test.py) does ----
+function rect(fb, x, y, w, h, c){ for (let yy = y; yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) if (xx >= 0 && xx < W && yy >= 0 && yy < H) fb[yy * W + xx] = c; }
+function tag(fb, F, L, t, right, acc){
+  t = t.slice(0, 5).replace(/ +$/, '');
+  const w = F.tag.width(t) + 2 * L.tags.pad, x = right - w, y0 = L.tags.top, y1 = y0 + L.tags.height - 1;
+  rect(fb, x, y0, w, 1, acc); rect(fb, x, y1, w, 1, acc); rect(fb, x, y0 + 1, 1, y1 - y0 - 1, acc); rect(fb, x + w - 1, y0 + 1, 1, y1 - y0 - 1, acc);
+  F.tag.render(fb, t, x + L.tags.pad, L.tags.baseline + F.tag.top, acc, 0);
+  return x;
+}
+function inkRows(fb, x0, x1){
+  let a = H, b = -1;
+  for (let y = 0; y < H; y++) for (let x = Math.max(0, x0); x <= Math.min(W - 1, x1); x++) if (fb[y * W + x]){ if (y < a) a = y; b = y; break; }
+  return [a, b];
+}
+function draw(){
+  if (!ready) return;
+  $('o_vol').textContent = $('s_vol').value;
+  const F = fontsFor(P), L = layout(P, F);
+  const tint = $('s_tint').value, acc = tint === 'white' ? ORANGE : G.hex565(tint);
+  const muted = $('s_mute').checked, hp = $('s_hp').checked;
+  const parts = {};
+  const layer = fn => { const fb = new Uint16Array(W * H); fn(fb); return fb; };
+  parts.icon = layer(fb => F.icon.render(fb, muted ? 'M' : hp ? 'H' : 'S', L.icon.x, L.icon.baseline + F.icon.top, muted ? RED : WHITE, 0));
+  parts.volume = layer(fb => F.volume.render(fb, String(+$('s_vol').value), L.volume.x, L.volume.baseline + F.volume.top, WHITE, 0));
+  let fmtLeft = 0;
+  parts.tags = layer(fb => {
+    const eqX = tag(fb, F, L, $('s_eq').value, L.tags.right, acc);
+    fmtLeft = $('s_fmt').value ? tag(fb, F, L, $('s_fmt').value, eqX - L.tags.gap, acc) : eqX;
+  });
+  parts.name = layer(fb => F.name.render(fb, $('s_input').value, L.name.x, L.name.baseline + F.name.top, WHITE, 0, 0, L.name.spacing));
+  parts.status = layer(fb => F.status.render(fb, $('s_status').value, L.status.x, L.status.baseline + F.status.top, G.hex565(L.status.colour), 0, 0, L.status.spacing));
+  parts.bar = layer(fb => rect(fb, L.bar.x, L.bar.y, L.bar.width, L.bar.height, acc));
+  const fb = new Uint16Array(W * H);
+  for (const p of Object.values(parts)) for (let i = 0; i < fb.length; i++) if (p[i]) fb[i] = p[i];
+  const img = new ImageData(W, H);
+  for (let i = 0; i < fb.length; i++){ const [r, g, b] = G.to_rgb(fb[i]); img.data.set([r, g, b, 255], i * 4); }
+  $('screen').getContext('2d').putImageData(img, 0, 0);
+  check(F, L, parts, fmtLeft);
+  readout(F);
+  try { localStorage.setItem('hn-sizing', JSON.stringify(P)); } catch (e) {}
+}
+
+function check(F, L, parts, fmtLeft){
+  const w = [];
+  const rows = k => inkRows(parts[k], 0, W - 1);
+  const topBottom = Math.max(rows('icon')[1], rows('volume')[1], L.tags.top + L.tags.height - 1);
+  const volRight = L.volume.x + Math.max(...['48', '58', '60', '38'].map(s => F.volume.width(s))) - 1;
+  // the widest texts the firmware shows, at these sizes
+  const eqW = F.tag.width('SDB') + 2 * L.tags.pad, fmtW = F.tag.width('MQA.') + 2 * L.tags.pad;
+  const fmtArea = L.tags.right - eqW - L.tags.gap - fmtW;
+  if (volRight + 6 > fmtArea) w.push('volume 60 runs into the format tag');
+  if (rows('name')[0] - topBottom < 6) w.push('name within 6 px of the top row');
+  if (rows('status')[0] - rows('name')[1] < 6) w.push('status within 6 px of the name');
+  if (L.bar.y - rows('status')[1] < 4) w.push('bar within 4 px of the status');
+  if (L.bar.y + L.bar.height > H) w.push('bar off the bottom');
+  if (L.name.x + Math.max(F.name.width('OPTICAL', 1), F.name.width('COAXIAL', 1)) > 318) w.push('COAXIAL is wider than the screen');
+  if (L.status.x + F.status.width('22.5792MHz', L.status.spacing) > 318) w.push('22.5792MHz is wider than the screen');
+  const tagCell = L.tags.baseline + F.tag.top;
+  if (tagCell <= L.tags.top || tagCell + F.tag.H - 1 >= L.tags.top + L.tags.height - 1) w.push('tag text does not fit inside its box');
+  if (fmtArea < 192) w.push('the tags reach left of x 192 (the build keeps tag columns as x - 192)');
+  const el = $('warnings');
+  el.className = w.length ? 'warn' : 'ok';
+  el.textContent = w.length ? 'Check: ' + w.join(' · ') : 'no overlaps; the widest name, status, volume and tags fit';
+  $('save').dataset.ok = w.length ? '' : '1';
+}
+
+const BUDGET = 16976;     // bytes for fonts: the 0xF400 split minus hn5's image without its fonts
+function readout(F){
+  const rows = [['Input name', F.name, 'H'], ['Status line', F.status, 'H'], ['Volume', F.volume, '0'],
+                ['Tags', F.tag, 'D'], ['Speaker', F.icon, 'S']];
+  let total = 0;
+  $('readout').innerHTML = rows.map(([name, f, ch]) => {
+    const cap = ch === 'S' ? rasters[f.id].glyphs.S.rows.length : capOf(f, ch);
+    const b = f.size(); total += b;
+    return `<tr><td>${name}</td><td>${f.id}</td><td>${cap} px</td><td>${(cap * PITCH).toFixed(1)} mm</td><td>${(b / 1024).toFixed(1)} KB</td></tr>`;
+  }).join('');
+  const left = BUDGET - total;
+  $('total').textContent = (total / 1024).toFixed(1) + ' KB';
+  $('leftlab').textContent = (left / 1024).toFixed(1) + ' KB left for the volume page';
+  $('leftlab').className = left < 7000 ? 'over' : '';
+}
+
+// ---- controls ----
+const sizes = $('sizes');
+for (const [k, label, mn, mx] of DEFS){
+  const row = document.createElement('div'); row.className = 'row';
+  row.innerHTML = `<label for="p_${k}">${label}</label><input type="range" id="p_${k}" min="${mn}" max="${mx}" step="1"><output id="q_${k}"></output>`;
+  sizes.appendChild(row);
+  row.querySelector('input').addEventListener('input', ev => { P[k] = +ev.target.value; activePreset = null; sync(); });
+}
+const toneRow = document.createElement('div'); toneRow.className = 'row';
+toneRow.innerHTML = `<label for="p_tone">Status colour</label><select id="p_tone"><option value="grey">grey #8a9096</option><option value="light">light grey #c3c8cc</option><option value="white">white</option></select>`;
+sizes.appendChild(toneRow);
+$('p_tone').addEventListener('change', ev => { P.tone = ev.target.value; activePreset = null; sync(); });
+const pre = $('presets');
+const addPreset = name => {
+  const b = document.createElement('button'); b.type = 'button'; b.textContent = name;
+  b.addEventListener('click', () => { P = {...PRESETS[name]}; activePreset = name; sync(); });
+  pre.appendChild(b);
+};
+for (const id of ['s_input','s_status','s_fmt','s_eq','s_vol','s_tint','s_mute','s_hp']) $(id).addEventListener('input', draw);
+function sync(){
+  for (const [k] of DEFS){ $('p_' + k).value = P[k]; $('q_' + k).textContent = P[k]; }
+  $('p_tone').value = P.tone;
+  for (const b of pre.children) b.setAttribute('aria-pressed', String(b.textContent === activePreset));
+  draw();
+}
+
+// ---- save: the fonts at these sizes (raster + spec) and layout.json ----
+$('save').addEventListener('click', async () => {
+  const out = $('saved');
+  if (!$('save').dataset.ok){ out.className = 'note bad'; out.textContent = 'Fix the checks under the screen first.'; return; }
+  $('save').disabled = true;
+  try {
+    const F = fontsFor(P), L = layout(P, F);
+    const kinds = {icon: ['icons', P.icon], volume: ['num', P.vol], tag: ['mono', P.tag], name: ['disp', P.name], status: ['mono', P.stat]};
+    for (const [kind, px] of Object.values(kinds)){
+      const id = kind + px, body = {...rasters[id], spec: G.spec(kind, px)};
+      const r = await fetch('../../tools/fonts/save?id=' + id, {method: 'POST', body: JSON.stringify(body)});
+      if (!r.ok) throw new Error(id + ': ' + (await r.text()));
+    }
+    const doc = {_: 'House Numerals home layout, written by sizing.html (tools/fonts/rasterize.py serves it); build_patch.py reads it.',
+                 controls: P, home: L};
+    const r = await fetch('save-layout', {method: 'POST', body: JSON.stringify(doc)});
+    if (!r.ok) throw new Error('layout: ' + (await r.text()));
+    out.className = 'note good';
+    out.textContent = 'Saved layout.json and ' + Object.keys(kinds).length + ' fonts. Rebuild with the commands below.';
+  } catch (e) {
+    out.className = 'note bad';
+    out.textContent = (e instanceof TypeError ? 'Nothing to save to: open this page through the font bench (python3 tools/fonts/rasterize.py).' : 'Not saved: ' + e.message);
+  } finally { $('save').disabled = false; }
+});
+
+async function start(){
+  try {
+    const r = await fetch('layout.json', {cache: 'no-store'});
+    if (r.ok){ const doc = await r.json(); PRESETS['layout.json'] = {...doc.controls}; P = {...doc.controls}; activePreset = 'layout.json'; }
+  } catch (e) {}
+  for (const name of Object.keys(PRESETS)) addPreset(name);
+  try { await G.loadFonts(); ready = true; }
+  catch (e) { $('warnings').className = 'warn'; $('warnings').textContent = e.message; return; }
+  sync();
+}
+start();
+})();
+</script>

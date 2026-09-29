@@ -1,17 +1,20 @@
 {
-  "_": "Faces the UI mock (features/ui-theme/ui_themes.html) draws with, as canvas font strings. raster.html renders each spec's characters to raster/<id>.json.",
-  "families": "Barlow+Condensed:wght@500;600&family=Big+Shoulders+Display:wght@700;800&family=IBM+Plex+Mono:wght@400;500",
+  "_": "Faces and sizes the themes draw with (tools/fonts/glyphs.js: disp, num, mono, icons). raster.html renders a spec's characters to raster/<id>.json; a sizing page adds the sizes it saves.",
   "specs": [
-    {"id": "disp52", "font": "800 52px \"Big Shoulders Display\"", "chars": "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .-"},
     {"id": "disp30", "font": "800 30px \"Big Shoulders Display\"", "chars": "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .-"},
-    {"id": "num84", "font": "600 84px \"Barlow Condensed\"", "chars": "0123456789.-−∞ "},
-    {"id": "num72", "font": "600 72px \"Barlow Condensed\"", "chars": "0123456789.-−∞ "},
-    {"id": "num64", "font": "600 64px \"Barlow Condensed\"", "chars": "0123456789.-−∞MUTE "},
-    {"id": "num22", "font": "600 22px \"Barlow Condensed\"", "chars": "0123456789.-−∞ "},
-    {"id": "mono12", "font": "500 12px \"IBM Plex Mono\"", "chars": "ascii·−∞"},
-    {"id": "mono11", "font": "500 11px \"IBM Plex Mono\"", "chars": "ascii·−∞"},
-    {"id": "mono10", "font": "500 10px \"IBM Plex Mono\"", "chars": "ascii·−∞"},
+    {"id": "disp52", "font": "800 52px \"Big Shoulders Display\"", "chars": "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .-"},
     {"id": "icons16", "draw": "icons", "size": 16, "chars": "SMH"},
-    {"id": "mono9", "font": "500 9px \"IBM Plex Mono\"", "chars": "ascii·−∞"}
+    {"id": "icons23", "draw": "icons", "size": 23, "chars": "SMH"},
+    {"id": "mono9", "font": "500 9px \"IBM Plex Mono\"", "chars": "ascii·−∞"},
+    {"id": "mono10", "font": "500 10px \"IBM Plex Mono\"", "chars": "ascii·−∞"},
+    {"id": "mono11", "font": "500 11px \"IBM Plex Mono\"", "chars": "ascii·−∞"},
+    {"id": "mono12", "font": "500 12px \"IBM Plex Mono\"", "chars": "ascii·−∞"},
+    {"id": "mono13", "font": "500 13px \"IBM Plex Mono\"", "chars": "ascii·−∞"},
+    {"id": "mono20", "font": "500 20px \"IBM Plex Mono\"", "chars": "ascii·−∞"},
+    {"id": "num22", "font": "600 22px \"Barlow Condensed\"", "chars": "0123456789.-−∞ "},
+    {"id": "num36", "font": "600 36px \"Barlow Condensed\"", "chars": "0123456789.-−∞ "},
+    {"id": "num64", "font": "600 64px \"Barlow Condensed\"", "chars": "0123456789.-−∞MUTE "},
+    {"id": "num72", "font": "600 72px \"Barlow Condensed\"", "chars": "0123456789.-−∞ "},
+    {"id": "num84", "font": "600 84px \"Barlow Condensed\"", "chars": "0123456789.-−∞ "}
   ]
 }

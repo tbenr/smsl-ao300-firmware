@@ -40,7 +40,8 @@ tools/
   patch/uikit.py                  shared building blocks for UI themes (see "UI themes")
   patch/uikit_test.py             the kit's own emulator tests, on fast-lcd + the kit
   patch/pfont.py                  proportional fonts for uk_text, packed from tools/fonts/raster
-  fonts/                          the UI mock's typefaces as glyph coverage (see its README)
+  fonts/                          the UI mock's typefaces as glyph coverage, the font bench
+                                  server and the shared rasteriser glyphs.js (see its README)
 
 features/
   status-line-flicker/            analysis of the "flickering C" display bug (no build yet)
@@ -67,6 +68,8 @@ features/
                                    in its own typefaces, non-blocking eased wipes in and out
                                    of the volume page), home model, lockstep UI tour, keys
                                    during wipes, INT1 sweep, 256-command sweep vs fast-lcd
+    layout.json, sizing.html      the home layout the build reads, and the page that edits it
+                                   (preview exact to the firmware; served by tools/fonts/rasterize.py)
     house_numerals.asm            annotated listing of the patch code at 0x9800
 
 ghidraPRG/                    * Ghidra project (import original/extracted/flash.bin as
@@ -196,6 +199,8 @@ Tried on 2026-09-29 and looks OK: `features/house-numerals/build/flash_house_num
 eased wipe. Longer use is still to come. Its successor hn5 (`v1.4 tbenr hn5`, the mock's
 home screen in the mock's typefaces) was tried on 2026-09-29: it looks great and the
 anti-aliased text works on the panel, but the tags, status line and volume are too small.
+hn6 (`v1.4 tbenr hn6`) has them larger, sized in `features/house-numerals/sizing.html`; it is
+emulator-verified and not yet tried on the amp.
 
 ## What the custom firmware adds
 
@@ -386,7 +391,7 @@ Measured from the images; the code/EEPROM split is the chip's own setting (0xF40
 
 | Region | Size | Used | Free |
 |---|---|---|---|
-| Code flash, 0x0000..0xF3FF | 62464 bytes | 52565 bytes (features/house-numerals hn5, 7 KB of it fonts) | ~9.7 KB |
+| Code flash, 0x0000..0xF3FF | 62464 bytes | 54485 bytes (features/house-numerals hn6, 9 KB of it fonts) | ~7.8 KB |
 | EEPROM area, 0xF400..0xFDFF | 2560 bytes, 5 sectors of 512 | sectors at offsets 0x0000, 0x0200, 0x0400 | 2 sectors, 1 KB |
 | Internal direct RAM, 0x00..0x7F | 128 bytes | all (registers, bit flags, variables up to 0x7F) | none |
 | Internal indirect RAM, 0x80..0xFF | 128 bytes | stack from 0x88 (`mov SP,#0x88` at 0x44A5) | stack headroom only |

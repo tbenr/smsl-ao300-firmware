@@ -36,6 +36,7 @@ routines they replace or wrap do the same). RAM 0x48:0x49 (the theme colour) is 
 New state lives in XDATA 0x0100..0x01A6.
 """
 import hashlib
+import json
 import math
 import os
 import sys
@@ -66,7 +67,6 @@ DIVIDER = 0x2104                    # #222
 TRACK = 0x18E3                      # #1d1d1d
 WHITE = 0xFFFF
 RED = 0xF800                        # #ff0000, the muted icon
-DIM = uikit.rgb565(0x8A, 0x90, 0x96)  # the status line
 
 # XDATA
 HN_N = 0x0100                       # uk_fill's work area (4 bytes, see KIT below)
@@ -111,36 +111,58 @@ assert FP + uikit.Kit.FP_SIZE - 1 < TP_BASE
 XDATA_END = HM_TL
 assert TP_BASE + uikit.Kit.TP_SIZE <= HM_VS
 
-# fonts from the UI mock (tools/fonts): what the home screen draws with
+# the home layout: layout.json, written by sizing.html (served by tools/fonts/rasterize.py), with
+# every position explicit and the fonts named by their rasters in tools/fonts/raster
+LAYOUT_FILE = os.path.join(HERE, "layout.json")
+LAYOUT = json.load(open(LAYOUT_FILE))["home"]
 NAME_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ .-"       # page-1 big text: input names, EQ preset names
 TAG_CHARS = "ABCDFIKLMPQRSTUo. "                   # the format and EQ tags
-PF_NAME = pfont.PFont("pf_name", "disp52", NAME_CHARS, bpp=2)
-PF_STATUS = pfont.PFont("pf_status", "mono12", "".join(sorted(set(
-    " !'-.0123456789ABCDEFGHIKLMNOPQRSTUVXabcdeghiklmnoprstuvwyz"))), bpp=2)   # every firmware string
-PF_TAG = pfont.PFont("pf_tag", "mono10", TAG_CHARS, bpp=2)
-PF_HVOL = pfont.PFont("pf_hvol", "num22", "0123456789", bpp=2)
-PF_ICON = pfont.PFont("pf_icon", "icons16", "SMH", bpp=2)
+STATUS_CHARS = " !'-.0123456789ABCDEFGHIKLMNOPQRSTUVXabcdeghiklmnoprstuvwyz"   # every firmware string
+# (sizing.html keeps the same character sets, for its flash figures)
+
+
+def layout_font(label, element, chars):
+    rid = LAYOUT[element]["font"]
+    if not os.path.exists(os.path.join(pfont.RASTER_DIR, rid + ".json")):
+        raise SystemExit("font %s (layout.json, %s) has no raster: open sizing.html through "
+                         "python3 tools/fonts/rasterize.py and press Save" % (rid, element))
+    return pfont.PFont(label, rid, chars, bpp=2)
+
+
+PF_NAME = layout_font("pf_name", "name", NAME_CHARS)
+PF_STATUS = layout_font("pf_status", "status", STATUS_CHARS)
+PF_TAG = layout_font("pf_tag", "tags", TAG_CHARS)
+PF_HVOL = layout_font("pf_hvol", "volume", "0123456789")
+PF_ICON = layout_font("pf_icon", "icon", "SMH")
 PFONTS = (PF_NAME, PF_STATUS, PF_TAG, PF_HVOL, PF_ICON)
 
-# home layout (the mock's House Numerals home): x, baseline -> the cell's top row y = baseline + top
-ICON_X, ICON_Y = 12, 9 + 16 + PF_ICON.top           # the mock's 16-px speaker at 12,9
-ICON_END = 34                                       # icon cells end at 31; cleared up to here
-HVOL_X, HVOL_Y = 36, 24 + PF_HVOL.top
-HVOL_END = 79
-TAG_Y0, TAG_Y1 = 8, 24                              # the boxes' rows (17)
-TAG_TY = 20 + PF_TAG.top                            # the text's top row (baseline 20)
-EQ_RIGHT = 310                                      # the EQ box ends before x 310 ...
-FMT_RIGHT = 276                                     # ... the format box 6 px left of it (EQ tags are 3 letters)
-FMT_LEFT = 240                                      # the format tag's area (4 letters: 34 px)
+# where things go: x, baseline -> the cell's top row y = baseline + the font's top
+ICON_X, ICON_Y = LAYOUT["icon"]["x"], LAYOUT["icon"]["baseline"] + PF_ICON.top
+HVOL_X, HVOL_Y = LAYOUT["volume"]["x"], LAYOUT["volume"]["baseline"] + PF_HVOL.top
+ICON_END = HVOL_X - 2                               # icon cells are cleared up to here
+HVOL_END = HVOL_X + max(PF_HVOL.width(str(v)) for v in range(61)) + 1   # the volume, cleared up to here
+TAG_Y0 = LAYOUT["tags"]["top"]                      # the boxes' rows
+TAG_Y1 = TAG_Y0 + LAYOUT["tags"]["height"] - 1
+TAG_TY = LAYOUT["tags"]["baseline"] + PF_TAG.top    # the text's top row
+TAG_PAD = LAYOUT["tags"]["pad"]                     # box edge to text, the edge included
+EQ_RIGHT = LAYOUT["tags"]["right"]                  # the EQ box ends before this column ...
+EQ_W = PF_TAG.width("SDB") + 2 * TAG_PAD            # ... (EQ tags are all 3 letters: one width)
+EQ_X = EQ_RIGHT - EQ_W
+FMT_RIGHT = EQ_X - LAYOUT["tags"]["gap"]            # the format box ends before this column
+FMT_LEFT = FMT_RIGHT - (PF_TAG.width("MQA.") + 2 * TAG_PAD)   # the format tag's area (4 letters)
 TAG_BASE = 192                                      # hm_tag keeps its columns as x - 192 (8 bits)
-HNAME_X, HNAME_Y = 16, 104 + PF_NAME.top
-STAT_X, STAT_Y = 18, 132 + PF_STATUS.top
-BAR_Y = 144
-assert PF_TAG.width("SDB") == 18 and FMT_RIGHT - PF_TAG.width("MQA.") - 10 >= FMT_LEFT >= TAG_BASE
-assert all((FMT_RIGHT - PF_TAG.width(t) - 10) & 0xFF != 0xFF for t in ("PCM", "DSD", "DoP", "MQA", "MQA."))
-assert EQ_RIGHT - TAG_BASE < 256
+HNAME_X, HNAME_Y = LAYOUT["name"]["x"], LAYOUT["name"]["baseline"] + PF_NAME.top
+NAME_SP = LAYOUT["name"]["spacing"]
+STAT_X, STAT_Y = LAYOUT["status"]["x"], LAYOUT["status"]["baseline"] + PF_STATUS.top
+STAT_SP = LAYOUT["status"]["spacing"]
+DIM = uikit.rgb565(*(int(LAYOUT["status"]["colour"][k:k + 2], 16) for k in (1, 3, 5)))   # the status line
+BAR_X, BAR_Y, BAR_W, BAR_H = (LAYOUT["bar"][k] for k in ("x", "y", "width", "height"))
+assert all(PF_TAG.width(t) == PF_TAG.width("SDB") for t in ("DIR", "CUS", "BAS", "SBA", "RCK", "SFT", "CLR"))
+assert FMT_LEFT >= TAG_BASE and EQ_RIGHT - TAG_BASE < 256 and 2 <= TAG_PAD
+assert all((FMT_RIGHT - PF_TAG.width(t) - 2 * TAG_PAD) & 0xFF != 0xFF for t in ("PCM", "DSD", "DoP", "MQA", "MQA."))
 assert TAG_Y0 < TAG_TY and TAG_TY + PF_TAG.H - 1 < TAG_Y1
-assert ICON_X + max(PF_ICON.width(c) for c in "SMH") - 1 <= ICON_END < HVOL_X
+assert ICON_X + max(PF_ICON.width(c) for c in "SMH") - 1 <= ICON_END < HVOL_X and HVOL_END < FMT_LEFT
+assert HNAME_Y + PF_NAME.H <= STAT_Y and STAT_Y + PF_STATUS.H <= BAR_Y and BAR_Y + BAR_H <= 170
 
 # volume-page elements: (bit, name, x0, x1); an element appears once the edge is left of x0
 VF_NAME, VF_DIV, VF_VOL, VF_NUM, VF_LINE = 1, 2, 4, 8, 16
@@ -154,7 +176,7 @@ HF_ICON, HF_VOL, HF_BAR, HF_NAME, HF_FMT, HF_EQ, HF_STAT = 1, 2, 4, 8, 16, 32, 6
 HF_ALL = 127
 HOME_ELEMENTS = [(HF_ICON, "hh_icon", ICON_X, ICON_END), (HF_VOL, "hh_vol", HVOL_X, HVOL_END),
                  (HF_BAR, "hh_bar", 18, 45), (HF_NAME, "hh_name", 0, HN_NAMER),
-                 (HF_FMT, "hh_fmt", FMT_LEFT, FMT_RIGHT - 1), (HF_EQ, "hh_eq", EQ_RIGHT - 28, EQ_RIGHT - 1),
+                 (HF_FMT, "hh_fmt", FMT_LEFT, FMT_RIGHT - 1), (HF_EQ, "hh_eq", EQ_X, EQ_RIGHT - 1),
                  (HF_STAT, "hh_stat", 0, HN_STATR)]
 
 STEPS = 20
@@ -185,7 +207,7 @@ HOOKS = [STOCK_SITES[site] + (op, target) for site, op, target in (
     ("format_tag_clear", 0x02, "hm_fmt_clear"),
     ("format_tag_clear_changed", 0x12, "hm_fmt_clear"),
 )]
-VERSION_TEXT = "v1.4 tbenr hn5"
+VERSION_TEXT = "v1.4 tbenr hn6"
 
 
 rect = KIT.rect
@@ -691,7 +713,7 @@ hh_eq:
 ljmp 0x49A1        ; home_draw_eq_tag
 hh_bar:
 lcall uk_acc""")
-    rect(a, 18, 28, BAR_Y, 3)
+    rect(a, BAR_X, BAR_W, BAR_Y, BAR_H)
     S(a, """
 ljmp uk_fill
 hh_name:
@@ -1181,7 +1203,7 @@ def build_home(a):
 hn_home_tail:
 lcall 0x5916       ; the volume (hm_volume), R7 = volume
 lcall uk_acc""")
-    rect(a, 18, 28, BAR_Y, 3)
+    rect(a, BAR_X, BAR_W, BAR_Y, BAR_H)
     S(a, "ljmp uk_fill")
     for name, back, y, draw in (("hn_align_big", 0x2A28, NAME_Y, "hm_name"),
                                 ("hn_align_small", 0x3A85, uikit.STATUS_Y, "hm_status")):
@@ -1216,18 +1238,18 @@ ljmp 0x%04X
 """ % (name, y, draw, name, name, name, y, name, draw, name, name, name, name, back))
 
     S(a, "; hm_name: the input name (XDATA 0x35), display face, white, at x 16, baseline 104\nhm_name:")
-    tp_setup(a, "pf_name", BIG_BUF, 0, HNAME_X, HNAME_Y, WHITE, spacing=1)
+    tp_setup(a, "pf_name", BIG_BUF, 0, HNAME_X, HNAME_Y, WHITE, spacing=NAME_SP)
     S(a, "lcall uk_text")
     S(a, "mov R6,#1\nmov R7,#0x3F\nmov R5,#%d\nmov R4,#%d\nljmp hm_rest" % (HNAME_Y, PF_NAME.H))
     S(a, "; hm_name_meas: TP_END = where hm_name's text ends (nothing drawn)\nhm_name_meas:")
-    tp_setup(a, "pf_name", BIG_BUF, 0, HNAME_X, HNAME_Y, WHITE, clip=(0x100, 0), spacing=1)
+    tp_setup(a, "pf_name", BIG_BUF, 0, HNAME_X, HNAME_Y, WHITE, clip=(0x100, 0), spacing=NAME_SP)
     S(a, "ljmp uk_text")
     S(a, "; hm_status: the status line (XDATA 0x50), mono, grey, at x 18, baseline 132\nhm_status:")
-    tp_setup(a, "pf_status", SMALL_BUF, 0, STAT_X, STAT_Y, DIM, spacing=1)
+    tp_setup(a, "pf_status", SMALL_BUF, 0, STAT_X, STAT_Y, DIM, spacing=STAT_SP)
     S(a, "lcall uk_text")
     S(a, "mov R6,#1\nmov R7,#0x3F\nmov R5,#%d\nmov R4,#%d\nljmp hm_rest" % (STAT_Y, PF_STATUS.H))
     S(a, "; hm_stat_meas: TP_END = where hm_status's text ends\nhm_stat_meas:")
-    tp_setup(a, "pf_status", SMALL_BUF, 0, STAT_X, STAT_Y, DIM, clip=(0x100, 0), spacing=1)
+    tp_setup(a, "pf_status", SMALL_BUF, 0, STAT_X, STAT_Y, DIM, clip=(0x100, 0), spacing=STAT_SP)
     S(a, "ljmp uk_text")
 
     S(a, """
@@ -1366,14 +1388,14 @@ movx @DPTR,A
 hm_eq:
 lcall hm_tag_copy
 mov A,#%d""" % (EQ_RIGHT - TAG_BASE) + """
-mov R6,#%d""" % (EQ_RIGHT - 28 - TAG_BASE) + """
+mov R6,#%d""" % (EQ_X - TAG_BASE) + """
 sjmp hm_tag
 ; hm_fmt: replaces home_draw_format_tag's lcall 0x4F20 (string R3:R2:R1): a box ending before x %d""" % FMT_RIGHT + """
 hm_fmt:
 lcall hm_tag_copy
 mov A,#%d""" % (FMT_RIGHT - TAG_BASE) + """
 mov R6,#%d""" % (FMT_LEFT - TAG_BASE) + """
-; hm_tag: the text in HM_TAG in the accent, mono, centred in a 1-px accent box 10 px wider than it
+; hm_tag: the text in HM_TAG in the accent, mono, centred in a 1-px accent box 2 * TAG_PAD wider than it
 ; and ending before x A + 192; black from x R6 + 192 up to the box (HM_TR, HM_TL, HM_TX: x - 192)
 hm_tag:
 mov DPTR,#0x%04X""" % HM_TR + """
@@ -1393,7 +1415,7 @@ inc A
 mov R7,A           ; text width
 mov DPTR,#0x%04X""" % HM_TWD + """
 movx @DPTR,A
-add A,#10
+add A,#%d""" % (2 * TAG_PAD) + """
 mov R6,A           ; box width
 mov DPTR,#0x%04X""" % HM_TW + """
 movx @DPTR,A
@@ -1451,7 +1473,7 @@ mov R1,#1
 mov R5,#%d""" % (TAG_Y0 + 1) + """
 mov R4,#%d""" % (TAG_Y1 - TAG_Y0 - 1) + """
 lcall ht_acc
-; the inside around the text, black: rows above and below it, 4 columns left and right
+; the inside around the text, black: rows above and below it, TAG_PAD - 1 columns left and right
 lcall ht_xw
 inc R3
 dec R1
@@ -1468,27 +1490,27 @@ mov R4,#%d""" % (TAG_Y1 - TAG_TY - PF_TAG.H) + """
 lcall ht_black
 lcall ht_xw
 inc R3
-mov R1,#4
+mov R1,#%d""" % (TAG_PAD - 1) + """
 mov R5,#%d""" % TAG_TY + """
 mov R4,#%d""" % PF_TAG.H + """
 lcall ht_black
 lcall ht_xw
 mov DPTR,#0x%04X""" % HM_TWD + """
 movx A,@DPTR
-add A,#5
+add A,#%d""" % TAG_PAD + """
 add A,R3
 mov R3,A
 clr A
 addc A,R2
 mov R2,A           ; x + 5 + text width
-mov R1,#4
+mov R1,#%d""" % (TAG_PAD - 1) + """
 mov R5,#%d""" % TAG_TY + """
 mov R4,#%d""" % PF_TAG.H + """
 lcall ht_black
-; the text at x + 5
+; the text at x + pad
 mov DPTR,#0x%04X""" % HM_TX + """
 movx A,@DPTR
-add A,#%d""" % (5 + TAG_BASE) + """
+add A,#%d""" % (TAG_PAD + TAG_BASE) + """
 mov R7,A
 clr A
 addc A,#0
