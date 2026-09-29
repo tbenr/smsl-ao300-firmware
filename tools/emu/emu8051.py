@@ -7,8 +7,8 @@ Good enough to run stock firmware routines and patch code end to end:
   "指令系统"): most instructions take 1 clock, MOVC 4, MOVX 2-3, LCALL/RET/LJMP/SJMP 3,
   conditional jumps 1 not taken / 3 taken, DJNZ and most CJNE 2 / 3, MUL 2, DIV 6;
 * interrupts only on request: `tick_every` / `on_tick` call back every N clocks,
-  and `interrupt(vector)` runs a handler to completion there (for example the
-  firmware's real 10 ms Timer0 ISR at 0x000B);
+  and `interrupt(vector)` runs a handler to completion there (ao300.Amp uses it for
+  the firmware's real Timer0 ISR at 0x000B and timer3_isr at 0x009B);
 * `hooks[pc] = fn(emu)` runs fn before the instruction at pc; fn may call
   `emu.ret()` to skip a stock routine that needs real hardware;
 * `sfr_watch[addr] = fn(emu, old, new)` runs fn on every write to that SFR; with

@@ -150,10 +150,13 @@ def firmware(cls_name, image):
     amp = Amp(open(image, "rb").read(), emu=cls)
     e = amp.e
     digests = []
-    timer0 = e.on_tick
+    amp_tick = e.on_tick
 
-    def tick(em):
-        timer0(em)
+    def tick(em):                                      # every 0.5 ms; digest on Timer0 ticks
+        n = amp.ticks
+        amp_tick(em)
+        if amp.ticks == n:
+            return
         h = hashlib.sha256(bytes(em.iram) + bytes(em.sfr) + bytes(em.xram))
         h.update(repr((em.pc, em.cycles, em.steps, em.lcd.pixels, len(em.lcd.log))).encode())
         digests.append(h.hexdigest()[:16])

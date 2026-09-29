@@ -910,15 +910,17 @@ class Watch:
         self.on_step = None                  # fn(step record) after each step
         e = amp.e
         e.hooks[LAB["hn_step"]] = self._start
-        e.hooks[STEP_END] = self._end
         e.hooks[LAB["uk_fill"]] = lambda em: self.fills.append(
             (em.cycles, (em.R(2) << 8) | em.R(3), em.R(1), (em.R(6) << 8) | em.R(7)))
 
     def _start(self, em):
         mode = em.xram[bp.HN_MODE]
         self._open = (em.cycles, mode) if mode else None
+        if mode:                             # STEP_END runs on every main pass: hook it only now
+            em.hooks[STEP_END] = self._end
 
     def _end(self, em):
+        em.hooks.pop(STEP_END, None)
         if self._open:
             c0, mode = self._open
             x = em.xram[bp.HN_X] << 8 | em.xram[bp.HN_X + 1]
@@ -1124,7 +1126,9 @@ def tour():
         peak.append(top)
     print("    stack: main-loop SP 0x%02X; deepest idata used 0x%02X on fast-lcd, 0x%02X here" %
           (sp0[1], peak[0], peak[1]))
-    check("stack: deepest idata used in the tour at most 0xB0 (canary)", peak[1] <= 0xB0, "(0x%02X)" % peak[1])
+    # stock's own peak: the delay leaves (0x0006, 0x0016) at SP 0xA0 with timer3_isr on top,
+    # which pushes 4 bytes more than the Timer0 ISR (0xAF while Amp ran Timer0 only)
+    check("stack: deepest idata used in the tour at most 0xB3 (canary)", peak[1] <= 0xB3, "(0x%02X)" % peak[1])
     STEP_MS["tour"] = w.worst()
     print("    worst wipe step in the tour: %.2f ms" % w.worst())
 

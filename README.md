@@ -336,6 +336,22 @@ the emulator, `python3 tools/emu/test_core.py` checks the C core against the Pyt
 reference: every opcode from random states, random programs, and a boot scenario of
 the stock firmware compared at every 10 ms tick.
 
+Whole-firmware scenarios run on `Amp` (`tools/emu/ao300.py`), which fires both timer
+interrupts the stock firmware enables: the Timer0 ISR every 10 ms and `timer3_isr` (0x5040)
+every 0.5 ms, on one grid with Timer0 first when both are due. Until 2026-09-29 `Amp` ran
+Timer0 only. The encoder key 0x2D then stayed 0 instead of 0xFF, and `read_key` handed
+`dispatch_key` a phantom key 0 on every idle main-loop pass on every powered page. Among
+other things that re-armed the Auto OFF countdown 0x2F:0x30 (0x0BBD) on every pass and made
+each idle pass about 640 clocks instead of about 85. With Timer3 the idle home page makes
+about 280,000 main passes a second, not 38,000. A test hook on a per-pass address (such as
+house-numerals' wipe watcher on 0x5B2D) costs 7.5 times as much, so arm such hooks only
+while they are needed. Absolute times in the scenarios moved by up to about 0.07 s (the ISR
+takes about 131 clocks every 12,000, about 1% of the CPU). The fast-lcd and house-numerals
+comparisons against their base images came out the same. The deepest stack in the
+house-numerals tour went from 0xAF to 0xB3: stock's own delay leaves at SP 0xA0 with
+`timer3_isr`'s deeper frame on top. Running Timer3 at the real rate costs about 7% more
+emulator time than not running it.
+
 `stc_release.py rebuild` output was verified by unpacking it again and by checking the
 PE structure with `pefile`. Only the firmware resource differs from the vendor updater.
 
@@ -364,7 +380,7 @@ Two buses share the pins P3.7 (data) and P4.1 (clock):
 | Speaker and headphone relays | two speaker relays, one headphone relay | driven during the power-on sequence | |
 | Display | ST7789-class colour LCD, 320 × 170 as drawn | bit-banged 8-bit bus on P1 (WR P0.5, CS P0.7, D/C P0.3), byte writes 0x567A / 0x5C9C with a delay call per byte; full clear 0x51EE | column offset 0x23. Window 0x4437: firmware y + 0x23 → CASET, firmware x → RASET, so pixels stream one 170-px vertical line at a time; P0 and P1 are push-pull (init 0x45CE). Two 1-bit fonts, stored rotated (glyph rows = screen columns): small 14 × 24 at 0x5DAB (42 bytes/glyph, painter 0x2DF8, status line and menus) and big 32 × 30 at 0x6A23 (120 bytes/glyph, painter 0x3F3C, input name and other centre-line text); glyph index = digits 6..15, A-Z 0x10.., a-z 0x2A.. (small font only). Text colour from the theme table 0x9241 (RGB565: FFFF F800 07E0 33BF CFA0 07FF FC00 F81F). Home (refresh 0x5C8B): output/mute icon at 15,8 (0x5744), volume as two digits at 48,9 (0x5916; speaker volume 0x31 or headphone volume 0x52), format tag at 208,10, EQ tag at 266,10, input name centred at y 75, status line centred at y 135. Page variable 0x45 (1 home, 2 volume, 3+ menus; renderer 0x2101, jump table `ui_page_table` at 0x2143, page 2 entry `volpage_render` at 0x2167). Volume page (page 2): full clear, two digits at 130,75, "volume" at y 135, back home when the Timer0 countdown 0x3F:0x40 (200 ticks, armed by the key tail 0x0F48) runs out (0x3ED9 sets page 1 and 0x22.3); the next render only clears, and the periodic refresh 0x3FE3 draws home 10 main ticks later (0x27:0x28 is that refresh countdown: 10 after a render, 50 after each refresh). The volume keys (`key_volume_up` 0x0D03, `key_volume_up2` 0x0D83, `key_volume_down4` 0x0E2A, `key_volume_down` 0x0ED2) each set page 2 and open it directly, inline right after `mov 0x45,#0x02` (four sites: 0x0D33, 0x0DB3, 0x0E5A, 0x0F02, each `lcall ui_clear_screen` then the "volume" caption); the page-2 renderer at 0x2167 is only a second way in, not the path the keys use |
 | Backlight | LED on GPIO P0.6 | on/off only; "Auto OFF" (0x29 = 2) clears it when the countdown 0x2F:0x30 runs out (0x33DB, main ticks), armed to 500 by every key (0x0BBD): about 6 s in the emulator, as main-loop passes miss some 10 ms ticks | no PWM peripheral on this MCU. Stock never arms it at power-on, see "AO300 PRO firmware" |
-| Front panel | buttons / encoder (nets RE_A, RE_B) | P4.7, P5.4, P5.5, P2.6, P7.4 | Encoder scanned by Timer3 (0x5040, every 0.5 ms) through 0x396D into RAM 0x2D (0xFF idle); `read_key` returns 0x2D on pages 1–2 when no other key is pending. `tools/emu/ao300.py` does not run Timer3, so 0x2D stays 0 there and the dispatcher sees key 0 on every idle pass |
+| Front panel | buttons / encoder (nets RE_A, RE_B) | P4.7, P5.4, P5.5, P2.6, P7.4 | Encoder scanned by Timer3 (0x5040, every 0.5 ms) through 0x396D into RAM 0x2D (0xFF idle); when no IR or panel key is pending, `read_key`'s tail (0x3E37) returns 0x2D on every powered page (menu pages other than 7 and 8 swap 0x1A and 0x1B first), so `dispatch_key` sees 0xFF (no key) on an idle pass. `tools/emu/ao300.py` runs Timer3 as well as Timer0 (see Testing) |
 | Programming header | 4-pin header next to the HDMI receiver | 5V, TXD, RXD, GND (bottom silkscreen also shows RXD TXD GND) | the serial update port |
 | Settings | MCU EEPROM area above 0xF400 | IAP routines 0x5956 / 0x58AF / 0x59D0 | addresses used go up to about 0x0400 |
 

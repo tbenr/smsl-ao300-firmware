@@ -376,7 +376,9 @@ Unit test, worst step per wipe:
 | Exit, USB, "2.8224MHz" | 3.69 ms |
 | Exit, BT, "Searching..." | 4.23 ms |
 
-In the whole firmware the worst step seen is 4.91 ms (entries) and 7.28 ms (optical exit).
+In the whole firmware the worst step seen is 4.96 ms (entries) and 7.37 ms (optical exit).
+That includes the `timer3_isr` calls that land inside a step, about 5 µs every 0.5 ms (before
+`Amp` ran Timer3: 4.91 and 7.28 ms).
 For comparison, a whole hn6 home takes 12.4 ms and the stock periodic home refresh blocks the
 main loop for about 45 ms every 0.5 s.
 
@@ -460,7 +462,9 @@ volume page. Every stock byte is asserted by `build_patch.py`.
 | 0x01A5, 0x01A6 | `HM_TR`, `HM_TL` | `hm_tag`: where the box ends, where the tag's area starts (- 192) |
 
 - **Stack:** the tour (with two entries and two exits) was run with a canary above SP. The
-  deepest idata used is 0xAF, the same as fast-lcd.
+  deepest idata used is 0xB3, the same as fast-lcd. That is stock's own peak: the delay
+  leaves (0x0006, 0x0016) at SP 0xA0 with `timer3_isr` on top. Before `Amp` ran Timer3 the
+  tour measured 0xAF (Timer0 ISR on top).
 
 ## Emulator results
 
@@ -587,7 +591,8 @@ volume page. Every stock byte is asserted by `build_patch.py`.
   against it, including the INT1 case the hn3 review raised).
 - **Stock routines called from a step** (`home_draw_output_icon`, `home_draw_volume`,
   `home_draw_format_tag`, `home_draw_eq_tag`, `big_text_load`) run in the main loop, as
-  they do from `home_refresh_periodic`. The stack peak is unchanged (0xAF).
+  they do from `home_refresh_periodic`. The stack peak is unchanged (0xAF with Timer0
+  only, 0xB3 with Timer3; see Stack above).
 - **Recovery: unchanged.** The reset vector, the standby key handler (0x59B2) and
   `read_key`'s Source-in-standby jump to the bootloader (0x3DB8) are untouched.
 

@@ -9,7 +9,8 @@
   * the image differs from direct-select only in the hook, the version pointer and the
     appended code;
   * whole firmware from reset with the real Timer0 ISR, base and fix side by side. Dimmer is
-    seeded into the emulated EEPROM read (offset 0x020B), and timer3_isr runs too (see Run).
+    seeded into the emulated EEPROM read (offset 0x020B). Amp runs timer3_isr as well, so
+    the idle encoder key 0x2D is 0xFF and read_key does not re-arm the countdown on its own.
     With Auto OFF, after the cold power-up the fix turns the backlight (P0.6) off 500 main
     ticks (~6 s) after post_power_on, where stock stays lit. A key press afterwards times out
     the same on both. After standby -> on the two match as well: the Power key that entered
@@ -138,16 +139,6 @@ class Run:
                 em.sfr[0xC2] = dimmer           # IAP_DATA
         e.hooks[IAP_READ_DATA] = iap
         e.hooks[POST_POWER_ON_TAIL] = lambda em: self.power_ons.append(em.cycles / CLOCK_HZ)
-        # Amp runs only the Timer0 ISR. Without timer3_isr (0x5040) the encoder key 0x2D stays 0
-        # and read_key returns key 0 on every idle pass, which re-arms the countdown forever.
-        # Run it on each tick too (on the amp it runs every 0.5 ms; the encoder is idle here).
-        t0 = e.on_tick
-
-        def tick(em):
-            t0(em)
-            if em.sfr[0xA8] & 0x80 and em.sfr[0xAF] & 0x20:     # EA and ET3 (IE2.5)
-                em.interrupt(0x009B)
-        e.on_tick = tick
         self.amp.boot()
 
     def backlight(self, since=0.0):

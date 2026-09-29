@@ -11,7 +11,8 @@ ST7789 model, and checks:
   * clocks per full-screen fill for both paths, and the number the amp will show;
   * the same commands in standby or in a menu do nothing;
   * every other NEC command behaves exactly as in the direct-select image;
-  * whole firmware from reset, with the real Timer0 ISR every 10 ms: boot, Power,
+  * whole firmware from reset (tools/emu/ao300.py Amp: the real Timer0 ISR every 10 ms and
+    timer3_isr every 0.5 ms): boot, Power,
     Vol+ / Vol- on the home screen, then 7 s of main loop. The bars must stay
     untouched for the 5 s hold and the home screen must come back unchanged. (The
     hook-only checks above missed the read_key tail at 0x3DD6, which turned the
@@ -28,6 +29,7 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(ROOT, "tools", "emu"))
 sys.path.insert(0, HERE)
 from emu8051 import Emu8051  # noqa: E402
+from ao300 import Amp        # noqa: E402
 import build_patch as bp     # noqa: E402
 
 CLOCK_HZ = 24_000_000
@@ -142,18 +144,9 @@ def sweep():
 def boot_scenario(cmd, label):
     """Boot from reset, power on, press cmd on the home screen, watch 7 s of main loop."""
     print("\nFull firmware: boot, Power, then %s on the home screen" % label)
-    e = Emu8051(open(TEST_IMG, "rb").read())
-    e.tick_every = TICK
-
-    def timer0(em):
-        if em.sfr[0xA8] & 0x82 == 0x82:              # EA and ET0
-            em.interrupt(0x000B)
-    e.on_tick = timer0
-    e.start_ticks()
-
-    def press(c):
-        e.iram[0x6A] = c
-        e.iram[0x20] |= 0x10                          # bit 0x20.4: new IR command
+    amp = Amp(open(TEST_IMG, "rb").read(), log_audio=False)   # Timer0 and Timer3 ISRs
+    e = amp.e
+    press = amp.press
 
     e.run_for(1.0)
     check("boots to standby", e.iram[0x4F] == 0)

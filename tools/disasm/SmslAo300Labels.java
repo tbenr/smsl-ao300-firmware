@@ -217,7 +217,7 @@ public class SmslAo300Labels extends GhidraScript {
         {0x27, "g_osd_timer_hi"},  {0x28, "g_osd_timer_lo"},  {0x29, "g_dimmer_mode"},
         // 0x27:0x28, page 1: home_refresh_periodic countdown (10 after a render, 50 after a refresh)
         {0x2B, "g_output"},        {0x2C, "g_filter"},        {0x2F, "g_screen_off_hi"},
-        {0x2D, "g_encoder_key"},   // encoder_scan result; read_key returns it on pages < 3 when no IR or panel key is pending
+        {0x2D, "g_encoder_key"},   // encoder_scan result; read_key's tail returns it on every page when no IR or panel key is pending
         {0x30, "g_screen_off_lo"}, {0x31, "g_volume"},        {0x32, "g_render_req"},
         {0x39, "g_eq"},            {0x3D, "g_format"},        // g_format: 3 DSD, 4 MQA (by 0x75), 5 DoP, else PCM (home_draw_format_tag)
         {0x75, "g_format_mqa"},    // with g_format 4: 3 -> "MQA ", 4 or 5 -> "MQA.", else "PCM "

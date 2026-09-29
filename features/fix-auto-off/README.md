@@ -62,14 +62,16 @@ That build's tests should then expect the two hook bytes 0x55BA/0x55BB in their 
   pages 0..3, match direct-select.
 - **Image diff.** Only 0x55BA, 0x55BB and the version pointer change. The code sits at
   0x9680, a slot no other feature uses.
-- **Full firmware, base and fix side by side.** Both boot from reset with the real Timer0
-  ISR, plus `timer3_isr`. Without it the encoder key 0x2D stays 0 and `read_key` feeds
-  key 0 on every idle pass, which keeps re-arming the countdown. Dimmer is seeded into the
+- **Full firmware, base and fix side by side.** Both boot from reset on `Amp`, which runs
+  the real Timer0 ISR and `timer3_isr`. Without Timer3 the encoder key 0x2D stays 0 and
+  `read_key` feeds key 0 on every idle pass, which keeps re-arming the countdown (the test
+  used to add Timer3 itself; `Amp` does it since 2026-09-29). Dimmer is seeded into the
   EEPROM read at offset 0x020B.
   - Auto OFF, cold power-up: the fix turns the backlight off 5.98 s after `post_power_on`,
     while stock is still lit 15 s after Power.
   - Vol+ afterwards: both light up and go off after 5.66 s.
-  - Standby then Power: both go off at the same moment (40.22 s).
+  - Standby then Power: both go off within one main tick of each other (40.28 s and
+    40.29 s).
   - Always ON: both images produce the same 339 audio and backlight events.
 
 500 main ticks come to about 6 s instead of 5 because main-loop passes miss some 10 ms
