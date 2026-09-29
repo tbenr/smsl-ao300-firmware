@@ -113,29 +113,39 @@ def overlaps(built):
 
 
 def graph(known):
-    """The feature tree, one line per image."""
-    lines = []
+    """The feature tree: ── builds on (BASE), + links in a fix (INCLUDES)."""
+    rows = []                                   # (tree column, details)
     stock = read(fg.STOCK)
-    lines.append("stock  %s" % ("%s…" % sha(stock)[:8] if stock else "missing: original/extracted/flash.bin"))
+    rows.append(("stock", "%s…" % sha(stock)[:8] if stock else "missing: original/extracted/flash.bin"))
+    included_by = {}
+    for n in fg.names():
+        for fx in fg.includes(n):
+            included_by.setdefault(fx, []).append(n)
 
     def walk(name, prefix):
         kids = fg.children(name)
         for i, k in enumerate(kids):
             last = i == len(kids) - 1
             m, img = fg.load(k), read(k)
-            desc = ["%r" % getattr(m, "VERSION_TEXT", "?")]
+            desc = ["%-18r" % getattr(m, "VERSION_TEXT", "?")]
             if img:
-                desc.append("code 0x%04X..0x%04X" % (code_start(k), len(img) - 1))
-                desc.append("%s… %s" % (sha(img)[:8], "known" if sha(img) in known else "NEW"))
+                desc.append("0x%04X..0x%04X  %s… %s" % (code_start(k), len(img) - 1, sha(img)[:8],
+                                                       "known" if sha(img) in known else "NEW"))
             else:
                 desc.append("not built")
             if fg.is_fix(k):
-                desc.append("fix, hook 0x%04X" % fg.fix(k).HOOK[0])
-            if fg.includes(k):
-                desc.append("includes " + ", ".join(fg.includes(k)))
-            lines.append("%s%s %s  %s" % (prefix, "└──" if last else "├──", k, "  ".join(desc)))
-            walk(k, prefix + ("    " if last else "│   "))
+                desc.append("[fix, hook 0x%04X; included by %s]"
+                            % (fg.fix(k).HOOK[0], ", ".join(included_by.get(k, [])) or "none yet"))
+            rows.append(("%s%s %s" % (prefix, "└──" if last else "├──", k), "  ".join(desc)))
+            inner = prefix + ("    " if last else "│   ")
+            for fx in fg.includes(k):
+                rows.append(("%s  + %s" % (inner, fx), "fix linked into %s" % k))
+            walk(k, inner)
     walk(fg.STOCK, "")
+    width = max(len(t) for t, _ in rows) + 2
+    lines = [t.ljust(width) + d for t, d in rows]
+    lines.append("")
+    lines.append("── builds on (BASE)    + links in a fix (INCLUDES)")
     return "\n".join(lines)
 
 

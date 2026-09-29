@@ -170,15 +170,23 @@ BASE_IMAGE = features.image(BASE)  # tools/patch/features.py resolves the path
 BASE_SHA = "b292a648…"             # still pinned: a changed parent must be re-checked
 ```
 
-`python3 tools/build.py --graph` prints the tree:
+`python3 tools/build.py --graph` prints the tree. `──` is BASE (builds on), and `+` is
+INCLUDES (a fix linked into that image). This is how it looks once house-numerals
+includes fix-auto-off:
 
 ```
-stock  85e8ac50…
-└── direct-select  'v1.4 tbenr'  code 0x9400..0x9442  bb468b29… known
-    ├── fast-lcd  'v1.4 tbenr fast'  code 0x9700..0x977B  b292a648… known
-    │   └── house-numerals  'v1.4 tbenr hn6'  code 0x9800..0xD4D4  7b74e950… known
-    └── fix-auto-off  'v1.4 tbenr aof1'  code 0x9680..0x969D  f9b5d14d… known  fix, hook 0x55B9
+stock                         85e8ac50…
+└── direct-select             'v1.4 tbenr'        0x9400..0x9442  bb468b29… known
+    ├── fast-lcd              'v1.4 tbenr fast'   0x9700..0x977B  b292a648… known
+    │   └── house-numerals    'v1.4 tbenr hn6'    0x9800..0xD4E2  ab2eda5c… NEW
+    │         + fix-auto-off  fix linked into house-numerals
+    └── fix-auto-off          'v1.4 tbenr aof1'   0x9680..0x969D  f9b5d14d… known  [fix, hook 0x55B9; included by house-numerals]
 ```
+
+House-numerals then depends on fast-lcd (its base, and so on down to stock) and on
+fix-auto-off (included). An image has exactly one BASE, because images stack, but can
+include any number of fixes. Including a fix uses the fix's source, not its standalone
+image; that image stays a separate branch of the tree.
 
 A fix is a feature whose folder also holds `<name>.py` (dashes as underscores) exporting
 `HOOK` and `emit(a)`. Its own image is only a standalone build on direct-select. A build
