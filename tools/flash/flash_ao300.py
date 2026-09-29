@@ -61,6 +61,7 @@ KNOWN_IMAGES = {
     "eae8f6eda5f0cf4b07dc797b3a311706aca4195666b392a8b68002418083e8d0": "direct-select + tuned-blit test on Vol+/Vol-, 5 s hold fixed, 'v1.4 tbenr blit' (features/blit-test/build/flash_blittest.bin)",
     "b292a64855975584dda5fe3fb282103bfde77f7f7237ca9945ac4b5442dae859": "direct-select + fast LCD paths, 'v1.4 tbenr fast' (features/fast-lcd/build/flash_fastlcd.bin)",
     "deada16ae67023e7fd9bb5c9668dc5a77f35b5738a19350ac138cd06470f86f1": "fast-lcd + House Numerals home and volume page, 'v1.4 tbenr hn' (features/house-numerals/build/flash_house_numerals.bin)",
+    "2819e0b0f935f93012fd88d9799b6efcdd253c04269375a0d1acbb52965d787f": "fast-lcd + House Numerals v2 (200 ms wipe after the volume write, none while the unmute countdown runs), 'v1.4 tbenr hn2' (features/house-numerals/build/flash_house_numerals.bin)",
 }
 
 

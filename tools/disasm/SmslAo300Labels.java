@@ -72,6 +72,7 @@ public class SmslAo300Labels extends GhidraScript {
         {0x2302, "expander_read_pin"}, {0x47BA, "expander_init"},
         {0x4D9E, "dac_i2c_write"},     {0x51AD, "expander_write"},
         {0x5232, "signal_present_update"}, {0x54EA, "njw1194_write"},
+        {0x4DDC, "volume_apply"},      // R7 = volume (0x31): saves it in 0x5B, looks up 0x9289, njw1194_write(R7=0x10)
         // main loop and timers
         {0x3325, "main_tick_tasks"},   {0x5585, "post_power_on"},
         {0x5A62, "mute_state_set"},    // R7=0: clear 0x22.4, P2.2 on; else 0x5B39 by output
@@ -94,14 +95,14 @@ public class SmslAo300Labels extends GhidraScript {
         {0x98C0, "hn_text"},           // features/house-numerals
         {0x990D, "hn_digit2x"},        // features/house-numerals
         {0x9999, "hn_draw_volume"},    // features/house-numerals
-        {0x9A24, "hn_vol_static"},     // features/house-numerals
-        {0x9A5C, "hn_volpage"},        // features/house-numerals
-        {0x9A67, "hn_enter_vol"},      // features/house-numerals
-        {0x9A6D, "hn_clear"},          // features/house-numerals
-        {0x9A72, "hn_wipe"},           // features/house-numerals
-        {0x9AEE, "hn_home_tail"},      // features/house-numerals
-        {0x9B07, "hn_align_big"},      // features/house-numerals
-        {0x9B21, "hn_align_small"},    // features/house-numerals
+        {0x9A32, "hn_vol_static"},     // features/house-numerals
+        {0x9A6A, "hn_volpage"},        // features/house-numerals
+        {0x9A75, "hn_enter_vol"},      // features/house-numerals
+        {0x9A7C, "hn_clear"},          // features/house-numerals
+        {0x9A86, "hn_wipe"},           // features/house-numerals
+        {0x9B10, "hn_home_tail"},      // features/house-numerals
+        {0x9B2E, "hn_align_big"},      // features/house-numerals
+        {0x9B48, "hn_align_small"},    // features/house-numerals
     };
 
     Object[][] codeLabels = {
@@ -120,6 +121,7 @@ public class SmslAo300Labels extends GhidraScript {
         {0x442F, "lcd_set_window_x1_from_a"},
         {0x2A25, "big_text_start_x_stored"},   // big_text_render: clr A ; mov R0,#2 ; movx @R0,A (hooked, features/house-numerals)
         {0x3A82, "small_text_start_x_stored"}, // small_text_render: same shape (hooked, features/house-numerals)
+        {0x0F48, "vol_key_tail"},            // common tail of the volume keys: volume_apply, 0x5D7D, draw (0x5936), arm page timers
         {0x0D30, "volpage_enter_a"},         // mov 0x45,#2 before volume-entry site 0x0D33, in key_volume_up
         {0x0DB0, "volpage_enter_b"},         // mov 0x45,#2 before volume-entry site 0x0DB3, in key_volume_up2
         {0x0E57, "volpage_enter_c"},         // mov 0x45,#2 before volume-entry site 0x0E5A, in key_volume_down4

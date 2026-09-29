@@ -15,7 +15,16 @@ A reduced first build of study 3 in features/ui-theme/ui_themes.html:
             redraw only the number and the line. Page 2 is actually entered from
             the four volume-key sites (0x0D33, 0x0DB3, 0x0E5A, 0x0F02), not through
             the page renderer alone; those sites get `lcall hn_enter_vol ; sjmp`
-            past the stock "volume" caption, straight into the same static page.
+            past the stock "volume" caption. hn_enter_vol only sets a pending flag
+            (HN_PEND). The key handler's common tail (0x0F48) writes the volume to the
+            NJW1194 first, then calls 0x5936, and hn_draw_volume sees the flag, runs
+            the wipe (about 200 ms, WIPE_DELAY_N) and the static page, then draws the
+            number and the line. So the sound changes at once and only the picture
+            takes its time. The page-2 renderer path (0x2106 / 0x2143) is unchanged
+            and wipes too. While the unmute countdown (RAM 0x43:0x44, after power-on
+            and input switches) is running, hn_wipe does the fast clear instead of the
+            wipe, on both paths: the main loop counts that timer down and a 200 ms
+            block would delay the unmute. The static page and the number still draw.
 
 Accent: the theme colour (RAM 0x48:0x49), SMSL orange 0xFC43 on the White theme.
 Everything goes through the fast pixel path of fast-lcd; hn_fill and hn_digit2x
@@ -23,7 +32,7 @@ stream bytes themselves, the text goes through the stock glyph painters.
 
 Register use: every hn_* routine may clobber A, B, DPTR, PSW and R0-R7 (the stock
 routines they replace or wrap do the same). 0x48:0x49 is saved and restored
-around every drawing sequence. New state lives in XDATA 0x0100..0x010F.
+around every drawing sequence. New state lives in XDATA 0x0100..0x0110.
 """
 import hashlib
 import os
@@ -53,6 +62,7 @@ UI_CLEAR_SCREEN = 0x5D42
 CLEAR_SMALL_BUF = 0x5CBC
 CLEAR_BIG_BUF = 0x5CCB
 RENDER_DONE = 0x22FA
+LCD_CLEAR_BLACK = 0x51EE
 INPUT_NAMES = [(1, 0x904F, "USB"), (2, 0x9053, "OPTICAL"), (3, 0x905B, "COAXIAL"),
                (4, 0x9048, "BT"), (5, 0x904B, "ARC"), (6, 0x9063, "AUX")]
 
@@ -74,6 +84,11 @@ HN_TX = 0x010A
 HN_TY = 0x010C
 HN_VOL = 0x010D                     # volume being drawn (0..60)
 HN_WX = 0x010E                      # wipe position (hi, lo)
+HN_PEND = 0x0110                    # volume page pending: set by hn_enter_vol, cleared by hn_draw_volume
+
+# hn_wipe delay per 2-px step: `mov R6,#N ; d1: mov R7,#0 ; d2: djnz R7,d2 ; djnz R6,d1` is about
+# 772 clocks per N (24 MHz). With N = 30 the 160 steps take about 200 ms in all.
+WIPE_DELAY_N = 30
 
 # (address, original bytes, new opcode, target label); the new bytes are opcode + target
 HOOKS = [
@@ -96,7 +111,7 @@ def vol_entry_bytes(target):
     return bytes([0x12, target >> 8, target & 0xFF, 0x80, len(VOL_ENTRY_ORIG) - 5])
 
 
-VERSION_TEXT = "v1.4 tbenr hn"
+VERSION_TEXT = "v1.4 tbenr hn2"
 VERSION_PTR_ADDR = 0x22CA
 VERSION_MAX_LEN = 20
 
@@ -360,9 +375,6 @@ def build_volume_page(a):
     a.i("jz hdv_spk", 0x60, rel("hdv_spk"))
     a.i("mov R7,0x52       ; headphone volume, as stock", 0xAF, 0x52)
     a.L("hdv_spk")
-    a.i("mov R0,#5", 0x78, 0x05)
-    a.i("mov A,#2", 0x74, 0x02)
-    a.i("movx @R0,A        ; stock leaves the digit count 2 in XDATA 0x05", 0xF2)
     a.i("mov A,R7", 0xEF)
     a.i("cjne A,#61,hdv_c", 0xB4, 61, rel("hdv_c"))
     a.L("hdv_c")
@@ -371,6 +383,17 @@ def build_volume_page(a):
     a.L("hdv_ok")
     mov_dptr(a, HN_VOL)
     a.i("movx @DPTR,A", 0xF0)
+    mov_dptr(a, HN_PEND)
+    a.i("movx A,@DPTR      ; page opened by a volume key? wipe first", 0xE0)
+    a.i("jz hdv_draw", 0x60, rel("hdv_draw"))
+    a.i("clr A", 0xE4)
+    a.i("movx @DPTR,A", 0xF0)
+    call(a, "hn_wipe")
+    call(a, "hn_vol_static")
+    a.L("hdv_draw")
+    a.i("mov R0,#5", 0x78, 0x05)
+    a.i("mov A,#2", 0x74, 0x02)
+    a.i("movx @R0,A        ; stock leaves the digit count 2 in XDATA 0x05", 0xF2)
     call(a, "hn_begin")
     call(a, "hn_white")
     mov_dptr(a, HN_VOL)
@@ -436,19 +459,32 @@ def build_volume_page(a):
     call(a, "hn_draw_volume")
     jump(a, RENDER_DONE, "clears 0x22.3, 0x32, 0x46 like every page")
 
-    a.comment("hn_enter_vol: where a volume key opens page 2 (4 sites): wipe, then the static page")
+    a.comment("hn_enter_vol: where a volume key opens page 2 (4 sites): only flag it; the wipe and the")
+    a.comment("static page are drawn by hn_draw_volume, after the key handler has written the volume")
     a.L("hn_enter_vol")
-    call(a, "hn_wipe")
-    jump(a, "hn_vol_static")
+    mov_dptr(a, HN_PEND)
+    a.i("mov A,#1", 0x74, 0x01)
+    a.i("movx @DPTR,A", 0xF0)
+    a.i("ret", 0x22)
 
     a.comment("hn_clear: replaces lcall ui_clear_screen at 0x2106; page in 0x59")
     a.L("hn_clear")
     a.i("mov A,0x59", 0xE5, 0x59)
     a.i("cjne A,#2,hc_stock", 0xB4, 0x02, rel("hc_stock"))
+    a.i("sjmp hn_wipe", 0x80, rel("hn_wipe"))
+    a.L("hc_stock")
+    jump(a, UI_CLEAR_SCREEN, "other pages: stock clear")
     a.comment("hn_wipe: clear the text buffers, then the accent edge from x 318 to 0")
     a.L("hn_wipe")
     call(a, CLEAR_SMALL_BUF, "as ui_clear_screen")
     call(a, CLEAR_BIG_BUF)
+    a.comment("while the unmute countdown (RAM 0x43:0x44, decremented by the main loop) runs, a 200 ms")
+    a.comment("wipe would freeze it and delay the unmute: open the page with the fast clear instead")
+    a.i("mov A,0x43", 0xE5, 0x43)
+    a.i("orl A,0x44", 0x45, 0x44)
+    a.i("jz hw_go", 0x60, rel("hw_go"))
+    jump(a, LCD_CLEAR_BLACK, "the fast clear ui_clear_screen ends with; returns to our caller")
+    a.L("hw_go")
     call(a, "hn_begin")
     mov_dptr(a, HN_WX)
     a.i("mov A,#0x01", 0x74, 0x01); a.i("movx @DPTR,A", 0xF0); a.i("inc DPTR", 0xA3)
@@ -469,6 +505,13 @@ def build_volume_page(a):
     movr(a, 1, 2); movr(a, 5, 0); movr(a, 4, 170); movr(a, 6, 0); movr(a, 7, 0)
     call(a, "hn_fill", "black where the edge was")
     a.L("hc_dec")
+    a.comment("delay: R6, R7 are free here (hc_load reloads them); N = WIPE_DELAY_N for a ~200 ms wipe")
+    movr(a, 6, WIPE_DELAY_N)
+    a.L("hc_d1")
+    movr(a, 7, 0)
+    a.L("hc_d2")
+    a.i("djnz R7,hc_d2", 0xDF, rel("hc_d2"))
+    a.i("djnz R6,hc_d1", 0xDE, rel("hc_d1"))
     call(a, "hc_load")
     a.i("mov A,R2", 0xEA); a.i("orl A,R3", 0x4B)
     a.i("jz hc_last", 0x60, rel("hc_last"))
@@ -482,8 +525,6 @@ def build_volume_page(a):
     rect(a, 0, 2, 0, 170, 0x0000)
     call(a, "hn_fill", "the edge leaves at x 0")
     jump(a, "hn_end")
-    a.L("hc_stock")
-    jump(a, UI_CLEAR_SCREEN, "other pages: stock clear")
     a.L("hc_load")
     mov_dptr(a, HN_WX)
     a.i("movx A,@DPTR", 0xE0); a.i("mov R2,A", 0xFA); a.i("inc DPTR", 0xA3)
@@ -494,6 +535,9 @@ def build_volume_page(a):
 def build_home(a):
     a.comment("hn_home_tail: replaces home_refresh's ljmp 0x5916; adds the accent bar")
     a.L("hn_home_tail")
+    mov_dptr(a, HN_PEND)
+    a.i("clr A             ; no volume page pending on the home screen", 0xE4)
+    a.i("movx @DPTR,A", 0xF0)
     call(a, HOME_DRAW_VOLUME, "as before, R7 = volume")
     call(a, "hn_begin")
     call(a, "hn_accent")

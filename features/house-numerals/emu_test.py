@@ -206,6 +206,11 @@ def test_draw_volume():
     check("headphone output draws RAM 0x52 (33), as stock", expect_volume(e, 33, bp.ORANGE))
     e = emu(); e.iram[0x2B] = 1; e.setR(7, 75); e.call(0x5936)
     check("a value above 60 is drawn as 60", expect_volume(e, 60, bp.ORANGE))
+    e = emu(); e.iram[0x2B] = 1; e.setR(7, 25)
+    wiped = []
+    e.hooks[LAB["hn_wipe"]] = lambda em: wiped.append(em.cycles)
+    e.call(0x5936)
+    check("HN_PEND = 0: 0x5936 never calls hn_wipe", not wiped and e.xram[bp.HN_PEND] == 0)
     e = emu(); e.iram[0x2B] = 1
     e.setR(7, 45); e.call(0x5936)
     e.setR(7, 44); e.call(0x5936)
@@ -267,7 +272,7 @@ def test_wipe():
     check("black 2 px behind the edge, then over x 0", blacks == list(range(318, 0, -2)) + [0], str(blacks[:3]))
     check("screen fully black afterwards", not ink_in(e, 0, 0, W, H))
     check("text buffers cleared as by ui_clear_screen", {0x5CBC, 0x5CCB} <= seen and 0x51EE not in seen)
-    check("wipe takes 30-200 ms", 30 <= ms <= 200, "(%.0f ms)" % ms)
+    check("wipe takes 190-215 ms", 190 <= ms <= 215, "(%.0f ms)" % ms)
     check("page argument 0x59 kept, theme restored",
           e.iram[0x59] == 2 and (e.iram[0x48], e.iram[0x49]) == (0xFF, 0xFF))
     fills.clear(); seen.clear()
@@ -277,25 +282,68 @@ def test_wipe():
     e.hooks[0x51EE] = lambda em: seen.add(0x51EE)
     e.call(LAB["hn_clear"])
     check("other pages: stock clear, no wipe", 0x51EE in seen and not fills)
+    # while the unmute countdown (RAM 0x43:0x44) runs, the page opens with the fast clear
+    for entry, page in (("hn_clear", 2), ("hn_wipe", 3)):
+        for cd in ((0x00, 0x1F), (0x01, 0x00)):
+            fills.clear(); seen.clear()
+            e = emu()
+            e.lcd.gram = [0xFFFF] * len(e.lcd.gram)
+            e.iram[0x59] = page
+            e.iram[0x43], e.iram[0x44] = cd
+            e.hooks[LAB["hn_fill"]] = on_fill
+            for addr in (0x5CBC, 0x5CCB, 0x51EE):
+                e.hooks[addr] = lambda em, addr=addr: seen.add(addr)
+            c0 = e.cycles
+            e.call(LAB[entry])
+            ms = (e.cycles - c0) * 1000 / CLOCK_HZ
+            check("%s, countdown %02X%02X: fast clear, no edge fills, black screen" % (entry, cd[0], cd[1]),
+                  {0x5CBC, 0x5CCB, 0x51EE} <= seen and not fills and not ink_in(e, 0, 0, W, H)
+                  and (e.iram[0x48], e.iram[0x49]) == (0xFF, 0xFF), "(%.1f ms)" % ms)
 
 
 def test_enter_vol():
-    print("\nhn_enter_vol (the four volume-key sites)")
+    print("\nhn_enter_vol (the four volume-key sites) and the wipe drawn by 0x5936")
     ref = emu()
-    ref.iram[0x47] = 3
+    ref.iram[0x47], ref.iram[0x2B] = 3, 1
     ref.call(LAB["hn_vol_static"])
+    ref.setR(7, 7)
+    ref.call(0x5936)
     e = emu()
     e.lcd.gram = [0xFFFF] * len(e.lcd.gram)
-    e.iram[0x47] = 3
-    edges = []
+    e.iram[0x47], e.iram[0x2B] = 3, 1
+    edges, fills, wipes = [], [], []
+    e.hooks[LAB["hn_fill"]] = lambda em: (fills.append(em.cycles), edges.append((em.R(2) << 8) | em.R(3))
+                                          if (em.R(1), (em.R(6) << 8) | em.R(7)) == (2, bp.ORANGE) else None)
+    e.hooks[LAB["hn_wipe"]] = lambda em: wipes.append(em.cycles)
+    e.call(LAB["hn_enter_vol"])
+    check("hn_enter_vol draws nothing: screen still white, hn_fill never called",
+          not fills and not wipes and all(px(e, x, y) == 0xFFFF for x in range(W) for y in range(H)))
+    check("HN_PEND = 1 (volume page pending)", e.xram[bp.HN_PEND] == 1, "(%d)" % e.xram[bp.HN_PEND])
+    e.setR(7, 7)
+    e.call(0x5936)
+    check("then 0x5936: edge wipe from x 318 to 0", edges == list(range(318, -1, -2)), str(edges[:3]))
+    same = all(px(e, x, y) == px(ref, x, y) for x in range(W) for y in range(H))
+    check("final screen = hn_vol_static + 0x5936 (R7 = 7) on black", same and ink_in(e, 16, 30, 98, 24))
+    check("HN_PEND back to 0", e.xram[bp.HN_PEND] == 0)
+    check("theme colour restored", (e.iram[0x48], e.iram[0x49]) == (0xFF, 0xFF))
+    edges.clear(); wipes.clear()
+    e.setR(7, 8)
+    e.call(0x5936)
+    check("a second 0x5936 call does no wipe", not edges and not wipes)
+    e = emu()
+    e.lcd.gram = [0xFFFF] * len(e.lcd.gram)
+    e.iram[0x47], e.iram[0x2B] = 3, 1
+    e.iram[0x43], e.iram[0x44] = 0, 20               # unmute countdown running
+    edges, seen = [], set()
     e.hooks[LAB["hn_fill"]] = lambda em: edges.append((em.R(2) << 8) | em.R(3)) \
         if (em.R(1), (em.R(6) << 8) | em.R(7)) == (2, bp.ORANGE) else None
+    e.hooks[0x51EE] = lambda em: seen.add(0x51EE)
     e.call(LAB["hn_enter_vol"])
-    check("edge wipe from x 318 to 0 first", edges == list(range(318, -1, -2)), str(edges[:3]))
+    e.setR(7, 7)
+    e.call(0x5936)
+    check("countdown running: 0x5936 fast-clears, no edge fills", 0x51EE in seen and not edges)
     same = all(px(e, x, y) == px(ref, x, y) for x in range(W) for y in range(H))
-    check("then name, divider and VOL on black, as hn_vol_static draws them",
-          same and ink_in(e, 16, 30, 98, 24))
-    check("theme colour restored", (e.iram[0x48], e.iram[0x49]) == (0xFF, 0xFF))
+    check("countdown running: same final screen, HN_PEND back to 0", same and e.xram[bp.HN_PEND] == 0)
     for s in bp.VOL_ENTRY_SITES:
         e = emu()
         e.iram[0x47] = 1
@@ -321,6 +369,10 @@ def test_home_tail():
                    if not (18 <= x < 46 and 114 <= y < 117))
         check("theme %02X%02X: volume as stock, accent bar 28x3 at 18,114" % theme, bar and rest)
         check("theme %02X%02X: theme colour restored" % theme, (e.iram[0x48], e.iram[0x49]) == theme)
+    e = emu(); e.iram[0x2B] = 1; e.setR(7, 37)
+    e.xram[bp.HN_PEND] = 0xAA
+    e.call(LAB["hn_home_tail"])
+    check("HN_PEND 0xAA cleared by hn_home_tail", e.xram[bp.HN_PEND] == 0)
 
 
 def text_render(img, page, entry, buf, text, y):
@@ -352,6 +404,7 @@ TOUR = [                                 # (step, NEC command or None, seconds, 
     ("vol_timeout", None, 2.5, "home"),
     ("standby", NEC_POWER, 3.0, "same"),
 ]
+VOL_ENTRY_STEPS = ("vol_up", "vol_down")  # Vol keys pressed on the home page: they open page 2
 HOME_BANDS = [(75, 32), (135, 24)]       # input name, status line
 
 
@@ -421,8 +474,43 @@ def tour():
         amp.set_pin(0xC0, 5, 0)                         # USB audio present
         amp.boot()
     ref, new = amps
+    wipes, fills = [], []
+    new.e.hooks[LAB["hn_wipe"]] = lambda em: wipes.append(em.cycles)
+    new.e.hooks[LAB["hn_fill"]] = lambda em: fills.append(
+        (em.cycles, (em.R(2) << 8) | em.R(3), em.R(1), (em.R(6) << 8) | em.R(7)))
+    entry, kinds = {}, []
+
+    def vol_entry_checks(step, new, entry):
+        """A volume-key entry from home: with the unmute countdown (RAM 0x43:0x44) running at the
+        press, the page opens with the fast clear; otherwise with the 160-step edge wipe. The
+        NJW1194 volume write comes before the wipe routine either way."""
+        edges = [x for c, x, w, col in fills[entry["fills"]:] if w == 2 and col != 0]
+        running = entry["countdown"] != 0
+        kinds.append(running)
+        print("    %-12s unmute countdown at the press: %d -> %s" %
+              (step, entry["countdown"], "fast clear" if running else "edge wipe"))
+        if running:
+            check("%-12s countdown running: fast clear, no edge fills" % step, not edges, "(%d)" % len(edges))
+        else:
+            check("%-12s countdown over: 160 edge steps, 318 down to 0" % step,
+                  edges == list(range(318, -1, -2)), "(%d steps)" % len(edges))
+        vol_writes = [c for c, nm, d in new.events[entry["events"]:]
+                      if nm == "njw1194_write" and "R7=10" in d]
+        first = wipes[entry["wipes"]:entry["wipes"] + 1]
+        check("%-12s NJW1194 volume write before the wipe routine" % step,
+              bool(first) and bool(vol_writes) and vol_writes[0] < first[0],
+              "(write at %s, wipe at %s clocks)" % (vol_writes[:1], first))
+        if first and vol_writes:
+            print("    %-12s volume write %.1f ms before the wipe routine" %
+                  (step, (first[0] - vol_writes[0]) * 1000 / CLOCK_HZ))
+        if not running:
+            check("%-12s first edge fill after the volume write" % step,
+                  bool(vol_writes) and fills[entry["fills"]][0] > vol_writes[0])
     for step, cmd, secs, kind in TOUR:
         w0 = time.time()
+        if step in VOL_ENTRY_STEPS:
+            entry = {"wipes": len(wipes), "events": len(new.events), "fills": len(fills),
+                     "countdown": (new.e.iram[0x43] << 8) | new.e.iram[0x44]}
         for amp in amps:
             if cmd is not None:
                 amp.press(cmd)
@@ -447,15 +535,17 @@ def tour():
             check("%-12s screen identical to fast-lcd" % step, new.lcd.gram == ref.lcd.gram)
         if step in ("menu", "menu_down"):
             check("%-12s really in the menu (page >= 3)" % step, new.page >= 3, "(page %d)" % new.page)
-        if step == "vol_up":
-            check("vol_up       wipe and page drawn within 350 ms", draw_time(act[1]) <= 0.35,
-                  "(%.0f ms)" % (draw_time(act[1]) * 1000))
+        if step in VOL_ENTRY_STEPS:
+            vol_entry_checks(step, new, entry)
         if step in ("back_home", "vol_timeout"):
+            # The page timer is armed after the volume write, which now follows the 200 ms
+            # wipe and page draw, so home comes back that much later than on fast-lcd (0 to 0.30 s).
             both = None not in home_at
-            check("%-12s home returns within 0.1 s of fast-lcd" % step,
-                  both and abs(home_at[0] - home_at[1]) <= 0.1, str(home_at))
+            check("%-12s home returns 0..0.30 s after fast-lcd" % step,
+                  both and 0 <= home_at[1] - home_at[0] <= 0.30, str(home_at))
         new.lcd.save_png(os.path.join(HERE, "build", "tour_%s.png" % step))
 
+    check("tour covers a fast-clear entry and a wiped entry", True in kinds and False in kinds, str(kinds))
     print("\n  Audio state, after every write that changes it")
     backlight = ("pin", "P0.6 backlight")
 
@@ -523,6 +613,14 @@ def test_align():
 SWEEP_STATES = ["standby", "home", "volume", "volume_hp", "menu"]
 
 
+# A key press arms a timer (RAM 0x37:0x38) whose expiry, in the main loop, clears the IR key
+# state (0x492b). A command injected in the very iteration where it expires is lost (a race in
+# the stock firmware too, it makes the key read as "go home" on page 2). Without the wipe the
+# first Vol+ arms that timer at its press, so it expires exactly 0.5 s later; press the second
+# key at 0.6 s, away from that instant, whichever image's timing.
+VOL_SETTLE = 0.6
+
+
 def reach(img, st):
     """A fresh amp driven from reset into state st (the C core's ctypes pointers can't be
     deep-copied, so every job replays from reset instead of cloning a snapshot)."""
@@ -532,20 +630,22 @@ def reach(img, st):
     if st != "standby":
         a.press(NEC_POWER); a.wait(8.0)
     if st == "volume":
-        a.press(NEC_VOL_UP); a.wait(0.5)
+        a.press(NEC_VOL_UP); a.wait(VOL_SETTLE)
     elif st == "volume_hp":
         a.e.iram[0x2B] = 2                       # headphone branch of 0x5936
-        a.press(NEC_VOL_UP); a.wait(0.5)
+        a.press(NEC_VOL_UP); a.wait(VOL_SETTLE)
     elif st == "menu":
         a.press(NEC_MENU_OPEN); a.wait(1.5)      # see NEC_MENU_OPEN above the tour
     return a
 
 
 def run(img, st, cmd):
-    """A fresh amp reached into state st, cmd pressed and settled 0.3 s later."""
+    """A fresh amp reached into state st, cmd pressed and settled 0.5 s later (the 200 ms
+    wipe and the page it draws take about 0.22 s; the volume page times out after 2 s and the
+    menu after 9 s, so both still hold)."""
     amp = reach(img, st)
     amp.press(cmd)
-    amp.wait(0.3)
+    amp.wait(0.5)
     return amp
 
 
