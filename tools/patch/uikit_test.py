@@ -18,6 +18,7 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(ROOT, "tools", "emu"))
 import uikit  # noqa: E402
+import pfont  # noqa: E402
 import uitest as ut  # noqa: E402
 from asm51 import Asm  # noqa: E402
 from ao300 import CLOCK_HZ  # noqa: E402
@@ -27,6 +28,17 @@ BASE_SHA = "b292a64855975584dda5fe3fb282103bfde77f7f7237ca9945ac4b5442dae859"
 CODE_ADDR = 0x9800
 WHITE_ACCENT = 0xFC43
 W, H = ut.W, ut.H
+
+TP_BASE = 0x0160
+# proportional test fonts: both formats, large and small, a sparse map (a character in the range
+# that is not in the font), glyphs with and without side bearings
+PFONTS = {f.name: f for f in (
+    pfont.PFont("tf_num84", "num84", "0123456789.- ", bpp=2, alias={"-": "\u2212"}),
+    pfont.PFont("tf_disp52", "disp52", "ABCILOPSTUX ", bpp=2),
+    pfont.PFont("tf_mono11", "mono11", pfont.ASCII, bpp=1),
+    pfont.PFont("tf_mono11r", "mono11", pfont.ASCII, bpp=2),
+    pfont.PFont("tf_num22", "num22", "0123456789", bpp=1),
+)}
 
 fails = []
 
@@ -40,12 +52,15 @@ def check(name, ok, detail=""):
 def build():
     base = open(BASE_IMAGE, "rb").read()
     assert hashlib.sha256(base).hexdigest() == BASE_SHA, "fast-lcd image is not the registered build"
-    kit = uikit.Kit()
+    kit = uikit.Kit(tp_base=TP_BASE)
     a = Asm(CODE_ADDR)
     kit.emit_font_data(a)
     kit.emit_fill(a)
     kit.emit_accent(a, WHITE_ACCENT)
     kit.emit_painter(a)
+    kit.emit_text(a)
+    for f in PFONTS.values():
+        f.emit(a)
     code = a.resolve()
     img = bytearray(base) + b"\xFF" * (CODE_ADDR - len(base)) + code
     assert len(img) <= uikit.CODE_END
@@ -208,14 +223,131 @@ def test_clip_and_speed():
           t1 / 6720 <= 14 and t2 / 7680 <= 10, "(%.1f, %.1f)" % (t1 / 6720, t2 / 7680))
 
 
+def ref_text(font, s, x, y, ink=0xFFFF, bg=0, clip=(0, 319), align=0, spacing=0, ground=0x1234):
+    fb = [[ground] * W for _ in range(H)]
+    end = PFONTS[font].render(fb, s, x, y, ink, bg, clip, align, spacing)
+    return fb, end
+
+
+def same(e, fb):
+    return all(ut.px(e, x, y) == fb[y][x] for y in range(H) for x in range(W))
+
+
+def utext(font, s, x, y, ground=0x1234, **kw):
+    e = emu(); ut.fill_screen(e, ground)
+    t = ut.text(e, LAB, KIT, font, s, x, y, **kw)
+    return e, t
+
+
+def test_avg():
+    print("\nuk_avg (the 2-bit fonts' middle colours)")
+    import random
+    rnd = random.Random(1)
+    bad = []
+    e = emu()
+    for a_, b_ in [(0xFFFF, 0), (0, 0xFFFF), (0xF800, 0x07FF), (0xFC43, 0x0000), (0x0821, 0x0821)] + \
+            [(rnd.randrange(65536), rnd.randrange(65536)) for _ in range(200)]:
+        for n, v in ((2, a_ >> 8), (3, a_ & 0xFF), (4, b_ >> 8), (5, b_ & 0xFF)):
+            e.setR(n, v)
+        e.call(LAB["uk_avg"])
+        if (e.R(6) << 8 | e.R(7)) != pfont.avg565(a_, b_) or (e.R(2) << 8 | e.R(3)) != a_:
+            bad.append((a_, b_))
+    check("205 colour pairs: the per-channel average, R2..R5 kept", not bad, str(bad[:3]))
+
+
+def test_text_glyphs():
+    print("\nuk_text: every glyph of the test fonts against pfont.render")
+    for name, f in PFONTS.items():
+        bad = []
+        for ch in f.order:
+            y = 20 if f.H > 40 else 60
+            kw = dict(ink=0xFC43, bg=0x0841)
+            e, _ = utext(name, ch, 100, y, **kw)
+            fb, end = ref_text(name, ch, 100, y, **kw)
+            inked = ch == " " or any(0xFC43 in row for row in fb)
+            if not inked or not same(e, fb) or ut.tp_end(e, KIT) != end:
+                bad.append(ch)
+        check("%-10s format %d, %2d rows, %3d glyphs, %5d bytes: pixel-identical, TP_END"
+              % (name, f.bpp, f.H, len(f.order), f.size()), not bad, str(bad[:8]))
+
+
+def test_text_strings():
+    print("\nuk_text: strings, alignment, spacing, missing characters, tints")
+    cases = [
+        ("tf_num84", "60", 304, 51, dict(align=1)),
+        ("tf_num84", "-29.0", 304, 51, dict(align=1)),
+        ("tf_num84", "7", 160, 51, dict(align=2)),
+        ("tf_disp52", "OPTICAL", 16, 61, dict(spacing=1)),
+        ("tf_disp52", "BLUETOOTH", 16, 61, dict(spacing=1)),      # E, H, N, O not all in the font
+        ("tf_disp52", "USB", 160, 61, dict(align=2, spacing=1)),
+        ("tf_mono11", "44.1kHz  No signal", 18, 68, {}),
+        ("tf_mono11", "VOL", 158, 24, dict(spacing=3)),
+        ("tf_mono11r", "max 60", 304, 148, dict(align=1)),
+        ("tf_mono11r", "step 32 / 60", 16, 148, {}),
+        ("tf_num22", "5", 36, 8, {}),
+        ("tf_num22", "", 36, 8, {}),
+        ("tf_mono11", "\x7f\x01", 36, 8, {}),                     # outside the map: skipped
+    ]
+    bad = []
+    for font, s, x, y, kw in cases:
+        for ink, bg in ((0xFFFF, 0x0000), (0xFC43, 0x0000), (0x07E0, 0x2104)):
+            e, _ = utext(font, s, x, y, ink=ink, bg=bg, **kw)
+            fb, end = ref_text(font, s, x, y, ink=ink, bg=bg, **kw)
+            inked = s in ("", "\x7f\x01") or any(ink in row for row in fb)
+            if not inked or not same(e, fb) or ut.tp_end(e, KIT) != end:
+                bad.append((font, s, "%04X/%04X" % (ink, bg)))
+    check("%d strings x 3 ink/background pairs: pixel-identical, TP_END" % len(cases), not bad, str(bad[:4]))
+    e, _ = utext("tf_mono11", "", 40, 8)
+    check("empty string: TP_END = x - 1, nothing drawn",
+          ut.tp_end(e, KIT) == 39 and all(v == 0x1234 for v in e.lcd.gram))
+
+
+def test_text_clip_and_speed():
+    print("\nuk_text: clip windows (the run-length skip and cut paths), measurements, speed")
+    bad = []
+    for font, s, x, y, kw in (("tf_num84", "-48.5", 304, 51, dict(align=1)),
+                              ("tf_disp52", "COAXIAL", 16, 61, dict(spacing=1)),
+                              ("tf_mono11", "Analog input", 18, 68, {}),
+                              ("tf_mono11r", "Analog input", 18, 68, {})):
+        e0, _ = utext(font, s, x, y, clip=(0, 0xFFFF), **kw)
+        _, end = ref_text(font, s, x, y, **kw)
+        x0 = x if kw.get("align") != 1 else end - PFONTS[font].width(s, kw.get("spacing", 0)) + 1
+        for c0, c1 in ((0, 319), (x0 + 1, x0 + 1), (x0 + 3, x0 + 40), (x0 + 17, 400), (0, x0 + 5),
+                       (x0 + 30, x0 + 30), (x0 + 11, x0 + 62), (end, end), (end - 20, end - 2), (end + 1, 319)):
+            e, _ = utext(font, s, x, y, clip=(c0, c1), **kw)
+            fb, _ = ref_text(font, s, x, y, clip=(c0, c1), **kw)
+            if not same(e, fb):
+                bad.append((font, c0, c1))
+    check("4 strings x 10 clip windows (mid-glyph, mid-run, one column): only those columns, same pixels",
+          not bad, str(bad[:4]))
+    e, _ = utext("tf_disp52", "OPTICAL", 16, 61, clip=(256, 0), spacing=1)
+    _, end = ref_text("tf_disp52", "OPTICAL", 16, 61, spacing=1)
+    check("empty clip window: nothing drawn, TP_END as drawn (%d)" % end,
+          all(v == 0x1234 for v in e.lcd.gram) and ut.tp_end(e, KIT) == end)
+    f84, f11 = PFONTS["tf_num84"], PFONTS["tf_mono11"]
+    _, t1 = utext("tf_num84", "88", 16, 51)
+    n1 = f84.width("88") * f84.H
+    _, t2 = utext("tf_mono11", "2.8224MHz Connected", 16, 68)
+    n2 = f11.width("2.8224MHz Connected") * f11.H
+    _, t3 = utext("tf_mono11r", "2.8224MHz Connected", 16, 68)
+    print("    88 (84 px, run-length, %d px) %.2f ms; 2.8224MHz Connected (11 px, %d px): 1-bit %.2f ms, "
+          "run-length %.2f ms" % (n1, t1 * 1000 / CLOCK_HZ, n2, t2 * 1000 / CLOCK_HZ, t3 * 1000 / CLOCK_HZ))
+    check("at most 16 clocks per pixel on large run-length glyphs, 24 on 11 px text (per-cell setup)",
+          t1 / n1 <= 16 and t2 / n2 <= 24 and t3 / n2 <= 24, "(%.1f, %.1f, %.1f)" % (t1 / n1, t2 / n2, t3 / n2))
+
+
 def main():
-    print("uikit: %d bytes of kit code at 0x%04X, XDATA 0x%04X..0x%04X" %
-          (len(IMG) - CODE_ADDR, CODE_ADDR, KIT.fill_n, KIT.FP + KIT.FP_SIZE - 1))
+    print("uikit: %d bytes of kit code and test fonts at 0x%04X, XDATA 0x%04X..0x%04X, uk_text 0x%04X..0x%04X" %
+          (len(IMG) - CODE_ADDR, CODE_ADDR, KIT.fill_n, KIT.FP + KIT.FP_SIZE - 1, TP_BASE, TP_BASE + KIT.TP_SIZE - 1))
     test_fill()
     test_accent()
     test_glyphs()
     test_strings()
     test_clip_and_speed()
+    test_avg()
+    test_text_glyphs()
+    test_text_strings()
+    test_text_clip_and_speed()
     print("\nALL PASS" if not fails else "\nFAILURES: %s" % fails)
     sys.exit(1 if fails else 0)
 

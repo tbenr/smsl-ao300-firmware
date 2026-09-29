@@ -39,6 +39,8 @@ tools/
   patch/asm51.py                  label-resolving 8051 assembler used by the build scripts
   patch/uikit.py                  shared building blocks for UI themes (see "UI themes")
   patch/uikit_test.py             the kit's own emulator tests, on fast-lcd + the kit
+  patch/pfont.py                  proportional fonts for uk_text, packed from tools/fonts/raster
+  fonts/                          the UI mock's typefaces as glyph coverage (see its README)
 
 features/
   status-line-flicker/            analysis of the "flickering C" display bug (no build yet)
@@ -228,13 +230,21 @@ The parts every theme needs live in `tools/patch/uikit.py`, extracted from house
   - `uk_paint`: streaming text painter for the stock fonts. It takes ink and background
     colours, an x clip window and scale 1 or 2, and is pixel-identical to the stock text
     renderers. `uk_home_x` gives a string's page-1 start x.
+  - `uk_text`: painter for proportional fonts made from the UI mock's typefaces
+    (`tools/patch/pfont.py`, `tools/fonts/`). Glyphs are 1-bit, or anti-aliased with 4 levels
+    stored run-length (background, 1/4, 3/4 and ink colour, mixed on the amp by `uk_avg`).
+    It takes left, right or centred alignment, letter spacing and an x clip window, and
+    reports the last column drawn. About 12 clocks per pixel on the 84 px numerals.
   - `uk_acc`: the accent colour (the COLOR tint, or the theme's own colour on White).
   - `uk_tasks`: the per-tick driver. It is hooked on `main_tasks_on`'s call to
     `main_tick_tasks` (0x5B2A) and runs the theme's step routine once per 10 ms tick,
     after the stock tick work and only while the amp is on. Animations never block the
     main loop.
-- **Fonts:** descriptors and character maps of the two stock fonts. A new font only needs
-  a descriptor, a map and glyph data in the same column-major layout.
+- **Fonts:** descriptors and character maps of the two stock fonts for `uk_paint`; for
+  `uk_text`, a `pfont.PFont` cuts a rasterised face down to the characters a theme needs and
+  emits it. Sizes, for example: the 84 px numerals (digits) about 2.2 KB, the 52 px display face
+  (the input-name letters) 1.3 KB, 11 px mono (all of ASCII) 1.7 KB at 1 bit or 3.3 KB
+  anti-aliased.
 - **Stock facts:** the stock routines, buffers and variables themes use, and a catalogue of
   hook sites with their original bytes (`STOCK_SITES`, and `VOL_ENTRY_SITES`, where the
   volume keys open page 2).
@@ -243,13 +253,15 @@ The parts every theme needs live in `tools/patch/uikit.py`, extracted from house
 
 `tools/patch/uikit_test.py` tests the kit on its own. It builds fast-lcd plus the kit and
 compares `uk_paint` against the stock glyph painters and text renderers for every character
-and every string in the firmware. `tools/emu/uitest.py` holds the helpers theme tests share.
+and every string in the firmware, and `uk_text` against `PFont.render` (every glyph of five
+test fonts in both formats, alignment, spacing, tints, clip windows through the middle of
+glyphs and runs). `tools/emu/uitest.py` holds the helpers theme tests share.
 `tools/emu/panel_video.py` renders what the glass shows, with the panel's 60 Hz line-by-line
 refresh, for checking animations.
 
 Not in the kit yet: the wipe's step engine and page-element model (still in house-numerals),
-shapes (dots, arcs, 7-segment), colour blending, per-pixel transitions and fonts other than
-the stock two.
+shapes (dots, arcs, 7-segment), per-pixel transitions, and a y clip for `uk_text` (for text
+that slides).
 
 ## Testing
 
