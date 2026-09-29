@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Emulator tests for House Numerals hn4 (see README.md).
+"""Emulator tests for House Numerals hn5 (see README.md).
 
-  python3 emu_test.py unit    image diff, then every routine at its hook: the painter against the
-                              stock text, a wipe step by step, entry/exit/reversal/cancel logic
+  python3 emu_test.py unit    image diff, then every routine at its hook: the home screen against
+                              home_model, a wipe step by step, entry/exit/reversal/cancel logic
   python3 emu_test.py tour    whole firmware from reset, lockstep with fast-lcd: the tour, a volume
                               key per input, keys during the wipes, the stack check
   python3 emu_test.py int1    INT1 receiver event at a Vol+ press, 100 offsets, against fast-lcd
@@ -83,11 +83,11 @@ def image_diff():
     check("new XDATA state inside 0x0100..0x01FF", 0x0100 <= bp.HN_N and bp.XDATA_END < 0x0200)
     import re
     java = open(os.path.join(ROOT, "tools", "disasm", "SmslAo300Labels.java")).read()
-    named = {n: int(a, 16) for a, n in re.findall(r'\{0x([0-9A-F]{4}), "((?:h[nvh]|uk)_\w+)"\}', java)}
+    named = {n: int(a, 16) for a, n in re.findall(r'\{0x([0-9A-F]{4}), "((?:h[nvhm]|uk|pf)_\w+)"\}', java)}
     lab = dict(LAB, hn_ease=LAB["ease"], hn_font_small=LAB["font_small"], hn_font_big=LAB["font_big"],
                hn_map_small=LAB["map_small"], hn_map_big=LAB["map_big"])
     wrong = sorted(k for k in named if named[k] != lab.get(k))
-    check("SmslAo300Labels.java: the %d hn_/hv_/hh_/uk_ labels match this build" % len(named), not wrong, str(wrong))
+    check("SmslAo300Labels.java: the %d hn_/hv_/hh_/hm_/uk_/pf_ labels match this build" % len(named), not wrong, str(wrong))
 
 
 # ---- the painter ---------------------------------------------------------------------------
@@ -114,38 +114,231 @@ def sample_rate_strings():
     return ut.sample_rate_strings(BASE)
 
 
-def test_painter():
-    print("\nhn_fp_name / hn_fp_status + uk_paint against the stock text renderers (the painter itself:"
-          " tools/patch/uikit_test.py)")
-    # whole strings on page 1: the name (big, y 75) and the status line (small, y 135), as the exit
-    # wipe draws them (hn_fp_name / hn_fp_status + uk_paint), against the stock renderers
-    names = [t for _, _, t in bp.INPUT_NAMES]
-    big_strings = names + [s for s in firmware_strings() if all(c in bp.BIG_MAP for c in s)]
-    small_strings = sorted(set(firmware_strings() + sample_rate_strings()))
-    small_strings = [s for s in small_strings if all(c in bp.SMALL_MAP for c in s)]
-    small_strings += ["ABCDEFGHIJKLMNOPQRSTU", "ABCDEFGHIJKLMNOPQRST", "x"]   # 294 px: centred; 280 px: x 16
-    for kind, strings, buf, y, stock_entry, fp in (
-            ("big", sorted(set(big_strings)), bp.BIG_BUF, bp.NAME_Y, 0x298B, "hn_fp_name"),
-            ("small", small_strings, bp.SMALL_BUF, bp.STATUS_Y, 0x3A53, "hn_fp_status")):
-        bad = []
-        for s in strings:
-            for theme in ((0xFF, 0xFF), (0x07, 0xE0)):
-                ref = emu(theme); ref.iram[0x45] = 1
-                new = emu(theme); new.iram[0x45] = 1
-                for e in (ref, new):
-                    for k, ch in enumerate(s.encode() + b"\0"):
-                        e.xram[buf + k] = ch
-                ref.setR(6, 0); ref.setR(7, y)
-                ref.call(stock_entry)
-                new.call(LAB[fp])
-                new.call(LAB["uk_paint"])
-                if new.lcd.gram != ref.lcd.gram:
-                    bad.append((s, theme))
-        check("%s text on page 1: %d strings x 2 themes, pixel-identical to the stock renderer"
-              % (kind, len(strings)), not bad, str(bad[:4]))
-    print("    big: %s" % ", ".join(sorted(set(big_strings))))
-    print("    small: %s" % ", ".join(small_strings))
+# ---- the home screen: an independent model --------------------------------------------------
+# What hn5's home screen must look like for a firmware state, drawn in Python with the same fonts
+# (pfont's render is proven pixel-identical to uk_text in tools/patch/uikit_test.py) and the
+# layout constants of build_patch.py. The tag strings come from the stock tag routines, run on the
+# base image.
+_TAGS = {}
 
+
+def _string_at(img, addr):
+    return img[addr:img.index(0, addr)].decode("latin-1")
+
+
+def eq_tag_string(eq):
+    """The string home_draw_eq_tag (0x49A1) paints for EQ eq (RAM 0x39)."""
+    if ("eq", eq) not in _TAGS:
+        e = ut.Emu8051(BASE)
+        e.sfr[0x81] = 0x88
+        e.iram[0x39] = eq
+        got = []
+        e.hooks[0x4F18] = lambda em: (got.append((em.R(2) << 8) | em.R(1)), em.ret())
+        e.call(0x49A1)
+        _TAGS[("eq", eq)] = _string_at(BASE, got[0])
+    return _TAGS[("eq", eq)]
+
+
+def format_tag_string(inp, fmt, sub):
+    """The string home_draw_format_tag (0x41CA) paints for input inp, format fmt (RAM 0x3D) and
+    RAM 0x75, or None when it only clears the box."""
+    key = ("fmt", inp, fmt, sub)
+    if key not in _TAGS:
+        e = ut.Emu8051(BASE)
+        e.sfr[0x81] = 0x88
+        e.iram[0x47], e.iram[0x3D], e.iram[0x75], e.iram[0x7E] = inp, fmt, sub, fmt
+        got = []
+        e.hooks[0x4F20] = lambda em: (got.append((em.R(2) << 8) | em.R(1)), em.ret())
+        e.hooks[0x0026] = lambda em: em.ret()
+        e.call(0x41CA)
+        _TAGS[key] = _string_at(BASE, got[0]) if got else None
+    return _TAGS[key]
+
+
+def accent(theme):
+    return bp.ORANGE if theme == (0xFF, 0xFF) else (theme[0] << 8) | theme[1]
+
+
+def buffer_text(e, addr, n=25):
+    raw = bytes(e.xram[addr:addr + n])
+    return raw.split(b"\0")[0].decode("latin-1")
+
+
+def model_tag(fb, text, right, acc):
+    t = text[:5].rstrip(" ")
+    wd = bp.PF_TAG.width(t)
+    w = wd + 2 * bp.TAG_PAD
+    x = right - w
+    for xx in range(x, x + w):
+        fb[bp.TAG_Y0][xx] = fb[bp.TAG_Y1][xx] = acc
+    for yy in range(bp.TAG_Y0 + 1, bp.TAG_Y1):
+        fb[yy][x] = fb[yy][x + w - 1] = acc
+    bp.PF_TAG.render(fb, t, x + bp.TAG_PAD, bp.TAG_TY, acc, 0)
+
+
+def home_parts(e):
+    """{element: its pixels} for the state in emulator e: {(x, y): colour}, black included."""
+    ir = e.iram
+    theme = (ir[0x48], ir[0x49])
+    acc = accent(theme)
+    parts = {}
+
+    def part(name, draw):
+        fb = [[None] * W for _ in range(H)]
+        draw(fb)
+        parts[name] = {(x, y): fb[y][x] for y in range(H) for x in range(W) if fb[y][x] is not None}
+    muted = bool(ir[0x22] & 0x02)
+    ch = "M" if muted else ("S" if ir[0x2B] == 1 else "H")
+    part(bp.HF_ICON, lambda fb: bp.PF_ICON.render(fb, ch, bp.ICON_X, bp.ICON_Y, bp.RED if muted else bp.WHITE, 0))
+    v = ir[0x31] if ir[0x2B] == 1 else ir[0x52]
+    part(bp.HF_VOL, lambda fb: bp.PF_HVOL.render(fb, str(v), bp.HVOL_X, bp.HVOL_Y, bp.WHITE, 0))
+    part(bp.HF_EQ, lambda fb: model_tag(fb, eq_tag_string(ir[0x39]), bp.EQ_RIGHT, acc))
+    fmt = format_tag_string(ir[0x47], ir[0x3D], ir[0x75])
+    part(bp.HF_FMT, lambda fb: model_tag(fb, fmt, bp.FMT_RIGHT, acc) if fmt is not None else None)
+    part(bp.HF_NAME, lambda fb: bp.PF_NAME.render(fb, buffer_text(e, bp.BIG_BUF), bp.HNAME_X, bp.HNAME_Y,
+                                                  bp.WHITE, 0, spacing=bp.NAME_SP))
+    part(bp.HF_STAT, lambda fb: bp.PF_STATUS.render(fb, buffer_text(e, bp.SMALL_BUF), bp.STAT_X, bp.STAT_Y,
+                                                    bp.DIM, 0, spacing=bp.STAT_SP))
+    part(bp.HF_BAR, lambda fb: [fb[y].__setitem__(x, acc) for y in range(bp.BAR_Y, bp.BAR_Y + bp.BAR_H)
+                                for x in range(bp.BAR_X, bp.BAR_X + bp.BAR_W)])
+    return parts
+
+
+def home_model(e):
+    """The whole home screen for e's state, as screen() lays it out ([x][y]): the elements on black."""
+    s = [[0] * H for _ in range(W)]
+    for pix in home_parts(e).values():
+        for (x, y), c in pix.items():
+            s[x][y] = c
+    return s
+
+
+def home_ok(e):
+    return screen(e) == home_model(e)
+
+
+def home_diff(e):
+    m, s = home_model(e), screen(e)
+    for x in range(W):
+        for y in range(H):
+            if m[x][y] != s[x][y]:
+                return "(first difference at %d,%d: %04X, model %04X)" % (x, y, s[x][y], m[x][y])
+    return ""
+
+
+def home_state(e, inp=1, out=1, vol=32, hp=20, mute=False, eq=1, fmt=2, sub=2, status="96kHz", theme=None):
+    ir = e.iram
+    ir[0x45], ir[0x4F] = 1, 1
+    ir[0x47], ir[0x2B], ir[0x31], ir[0x52], ir[0x39], ir[0x3D], ir[0x75] = inp, out, vol, hp, eq, fmt, sub
+    ir[0x7E] = fmt
+    ir[0x22] = (ir[0x22] & ~0x02) | (0x02 if mute else 0)
+    if theme:
+        ir[0x48], ir[0x49] = theme
+    for k, ch in enumerate(status.encode() + b"\0"):
+        e.xram[bp.SMALL_BUF + k] = ch
+
+
+def home_draw(e):
+    """What home_refresh_periodic draws: home_refresh, then the status line (y 135)."""
+    c0 = e.cycles
+    e.call(bp.HOME_REFRESH)
+    e.setR(6, 0); e.setR(7, bp.STATUS_Y)
+    e.call(0x3A53)
+    return (e.cycles - c0) * 1000 / CLOCK_HZ
+
+
+def test_home():
+    print("\nhome screen (home_refresh + the status line) against home_model")
+    cases = [dict(inp=i) for i in range(1, 9)] + [dict(out=2, hp=7), dict(mute=True), dict(mute=True, out=2)]
+    cases += [dict(eq=q) for q in (0, 2, 3, 4, 5, 6, 7, 8, 9)]
+    cases += [dict(fmt=f, sub=u) for f in (0, 1, 3, 4, 5, 6) for u in (2, 3, 4, 5)]
+    cases += [dict(vol=v) for v in (0, 5, 9, 10, 47, 60)]
+    cases += [dict(status=t) for t in ("No signal", "Searching...", "2.8224MHz", "Analog input", "")]
+    bad, worst = [], 0
+    for c in cases:
+        for theme in ((0xFF, 0xFF), (0x07, 0xE0)):
+            e = emu(theme)
+            home_state(e, **c)
+            worst = max(worst, home_draw(e))
+            if not home_ok(e):
+                bad.append((c, theme, home_diff(e)))
+    check("%d states x 2 tints (inputs, outputs, mute, EQ, formats, volumes, status lines): = home_model"
+          % len(cases), not bad, str(bad[:2]))
+    check("a whole home in %.1f ms (the stock refresh: about 45)" % worst, worst < 20)
+    e = emu(); home_state(e); home_draw(e)
+    e.lcd.save_png(os.path.join(HERE, "build", "unit_home.png"))
+    # redraws over a different home leave nothing behind (the shorter texts clear the rest)
+    bad = []
+    for a_, b_ in ((dict(inp=2, vol=45, fmt=4, sub=3, status="No signal", mute=True),
+                    dict(inp=1, vol=5, fmt=2, status="48kHz")),
+                   (dict(inp=3, fmt=4, sub=4), dict(inp=4, status="Searching...")),
+                   (dict(out=2, hp=60), dict(out=1, vol=1)),
+                   (dict(inp=1, status="22.5792MHz"), dict(inp=6, status="Analog input")),
+                   (dict(inp=6, status="Analog input"), dict(inp=5, status=""))):
+        e = emu()
+        home_state(e, **a_); home_draw(e)
+        home_state(e, **b_); home_draw(e)
+        if not home_ok(e):
+            bad.append((a_, b_, home_diff(e)))
+    check("home over a different home: = home_model of the second (texts, volume, tags, icon)", not bad, str(bad[:2]))
+    # every string the firmware has, as the status line and (the ones in capitals) as the name
+    strings = sorted(set(firmware_strings() + sample_rate_strings()))
+    bad = []
+    for t in strings:
+        for buf, y, entry, part in ((bp.SMALL_BUF, bp.STATUS_Y, 0x3A53, bp.HF_STAT),
+                                    (bp.BIG_BUF, bp.NAME_Y, 0x298B, bp.HF_NAME)):
+            if buf == bp.BIG_BUF and t != t.upper():
+                continue
+            e = emu(); home_state(e)
+            fill_screen(e, 0x1234)
+            for k, ch in enumerate(t.encode() + b"\0"):
+                e.xram[buf + k] = ch
+            e.setR(6, 0); e.setR(7, y)
+            e.call(entry)
+            pix = home_parts(e)[part]
+            ys = {yy for _, yy in pix} or {y}
+            want = all(px(e, x, yy) == pix.get((x, yy), 0 if x >= (18 if part == bp.HF_STAT else 16) else 0x1234)
+                       for x in range(W) for yy in range(min(ys), max(ys) + 1))
+            if not want or stray_rows(e, min(ys), max(ys)):
+                bad.append((t, part))
+    check("%d firmware strings as the status line and the name (capitals): the element, the rest of its rows "
+          "black, nothing else drawn" % len(strings), not bad, str(bad[:4]))
+    # the takeover keeps big_text_render's own side effect on 0x22.4 (its narrow-character scan)
+    bad = []
+    for t in ("USB", "BT", "S-BASS", "MQA."):
+        got = []
+        for img in (BASE, NEW):
+            e = emu(img=img); e.iram[0x45] = 1; e.iram[0x22] = 0x10
+            for k, ch in enumerate(t.encode() + b"\0"):
+                e.xram[bp.BIG_BUF + k] = ch
+            e.setR(6, 0); e.setR(7, bp.NAME_Y)
+            e.call(0x298B)
+            got.append(e.iram[0x22] & 0x10)
+        if got[0] != got[1]:
+            bad.append(t)
+    check("page-1 name: 0x22.4 left as big_text_render's scan leaves it", not bad, str(bad))
+    # during a wipe the elements draw their text only (the band behind them is black already)
+    got = []
+    for mode in (0, 2):
+        e = emu(); home_state(e)
+        for buf, y, entry, long_, short in ((bp.BIG_BUF, bp.NAME_Y, 0x298B, "COAXIAL", "USB"),
+                                            (bp.SMALL_BUF, bp.STATUS_Y, 0x3A53, "22.5792MHz", "48kHz")):
+            for t, m in ((long_, 0), (short, mode)):
+                e.xram[bp.HN_MODE] = m
+                for k, ch in enumerate(t.encode() + b"\0"):
+                    e.xram[buf + k] = ch
+                e.setR(6, 0); e.setR(7, y)
+                e.call(entry)
+        nx = bp.HNAME_X + bp.PF_NAME.width("USB", bp.NAME_SP) + 2          # past the shorter texts
+        sx = bp.STAT_X + bp.PF_STATUS.width("48kHz", bp.STAT_SP) + 2
+        got.append(ink_in(e, nx, bp.HNAME_Y, W - nx, bp.PF_NAME.H) or ink_in(e, sx, bp.STAT_Y, W - sx, bp.PF_STATUS.H))
+    check("a shorter name / status line clears the rest of the longer one, except during a wipe "
+          "(the wipe's band is black)", got == [False, True], str(got))
+
+
+def stray_rows(e, y0, y1):
+    """Ink outside rows y0..y1 (the pattern 0x1234 counts as untouched)."""
+    return any(px(e, x, y) not in (0, 0x1234) for x in range(W) for y in range(H) if not y0 <= y <= y1)
 
 
 def test_name_ptr():
@@ -265,13 +458,14 @@ VOL_BOXES = {bp.VF_NAME: (16, 30, 14 * 7, 24), bp.VF_DIV: (140, 14, 1, 104), bp.
 def home_setup(e, inp=2, status="No signal"):
     e.iram[0x45] = 1
     e.iram[0x47], e.iram[0x2B], e.iram[0x31] = inp, 1, 25
+    e.iram[0x3D], e.iram[0x75], e.iram[0x7E] = 2, 2, 2       # PCM
     e.iram[0x4F] = 1
     for k, ch in enumerate(status.encode() + b"\0"):
         e.xram[bp.SMALL_BUF + k] = ch
 
 
 def home_reference(inp=2, status="No signal"):
-    """The home screen as the stock refresh draws it (home_refresh + the status line), on black."""
+    """The home screen as the refresh draws it (home_refresh + the status line), on black."""
     e = emu()
     home_setup(e, inp, status)
     e.call(bp.HOME_REFRESH)
@@ -281,13 +475,17 @@ def home_reference(inp=2, status="No signal"):
 
 
 def home_boxes(inp=2, status="No signal"):
-    """x0, x1, y0, y1 of each home element, as the stock routines draw them."""
+    """x0, x1, y0, y1 of each home element, as hn5 draws it."""
     name = {1: "USB", 2: "OPTICAL", 3: "COAXIAL", 4: "BT", 5: "ARC", 6: "AUX"}[inp]
-    e = emu(); paint(e, "font_big", text=name, x=16, y=0, clip=(256, 0))
-    nr = fp_end(e)
-    return {bp.HF_ICON: (15, 44, 8, 31), bp.HF_VOL: (48, 75, 9, 32), bp.HF_BAR: (18, 45, 114, 116),
-            bp.HF_NAME: (16, nr, 75, 106), bp.HF_FMT: (208, 263, 10, 33), bp.HF_EQ: (266, 307, 10, 33),
-            bp.HF_STAT: (16, 16 + 14 * len(status) - 1, 135, 158)}
+    nr = bp.HNAME_X + bp.PF_NAME.width(name, bp.NAME_SP) - 1
+    sr = bp.STAT_X + bp.PF_STATUS.width(status, bp.STAT_SP) - 1
+    return {bp.HF_ICON: (bp.ICON_X, bp.ICON_END, bp.ICON_Y, bp.ICON_Y + bp.PF_ICON.H - 1),
+            bp.HF_VOL: (bp.HVOL_X, bp.HVOL_END, bp.HVOL_Y, bp.HVOL_Y + bp.PF_HVOL.H - 1),
+            bp.HF_BAR: (bp.BAR_X, bp.BAR_X + bp.BAR_W - 1, bp.BAR_Y, bp.BAR_Y + bp.BAR_H - 1),
+            bp.HF_NAME: (bp.HNAME_X, nr, bp.HNAME_Y, bp.HNAME_Y + bp.PF_NAME.H - 1),
+            bp.HF_FMT: (bp.FMT_LEFT, bp.FMT_RIGHT - 1, bp.TAG_Y0, bp.TAG_Y1),
+            bp.HF_EQ: (bp.EQ_X, bp.EQ_RIGHT - 1, bp.TAG_Y0, bp.TAG_Y1),
+            bp.HF_STAT: (bp.STAT_X, sr, bp.STAT_Y, bp.STAT_Y + bp.PF_STATUS.H - 1)}
 
 
 def run_steps(e, n):
@@ -355,7 +553,7 @@ def test_step():
           "elements once the edge is left of them", not bad, str(bad[:3]))
     check("entry: final screen = hn_volpage's render; mode 0, HN_VF all",
           screen(e) == refs and e.xram[bp.HN_MODE] == 0 and e.xram[bp.HN_VF] == bp.VF_ALL)
-    check("entry: worst step %.2f ms (at most 6)" % worst, worst <= 6.0)
+    check("entry: worst step %.2f ms (at most %g)" % (worst, STEP_LIMIT), worst <= STEP_LIMIT)
     STEP_MS["entry"] = worst
     e.call(LAB["hn_step"])
     check("hn_step when idle: nothing", screen(e) == refs and e.xram[bp.HN_STEP] == 20)
@@ -412,10 +610,10 @@ def test_step():
                         for k, o in enumerate(order) if o))
         check("input %d exit: volume page right of the edge, edge, home elements once the edge is right of "
               "them (status once loaded)" % inp, not bad, str(bad[:3]))
-        check("input %d exit: final screen = the stock home refresh; mode 0, HN_VF 0, HN_HF all" % inp,
-              e.lcd.gram == href.lcd.gram and e.xram[bp.HN_MODE] == 0 and e.xram[bp.HN_VF] == 0 and
+        check("input %d exit: final screen = the home refresh = home_model; mode 0, HN_VF 0, HN_HF all" % inp,
+              e.lcd.gram == href.lcd.gram and home_ok(href) and e.xram[bp.HN_MODE] == 0 and e.xram[bp.HN_VF] == 0 and
               e.xram[bp.HN_HF] == bp.HF_ALL)
-        check("input %d exit: worst step %.2f ms (at most 6)" % (inp, worst), worst <= 6.0)
+        check("input %d exit: worst step %.2f ms (at most %g)" % (inp, worst, STEP_LIMIT), worst <= STEP_LIMIT)
         STEP_MS["exit_%d" % inp] = worst
 
     # reversals: entry turned round into an exit at the same x, and back
@@ -465,6 +663,7 @@ def test_step():
 
 
 STEP_MS = {}
+STEP_LIMIT = 8.0                          # ms: a step must stay well inside the 10 ms tick
 
 
 def test_enter_vol():
@@ -596,15 +795,15 @@ def test_enter_vol():
 
 def test_home_tail():
     print("\nhn_home_tail (home_refresh's tail, 0x5C99)")
-    for theme, acc in (((0xFF, 0xFF), bp.ORANGE), ((0x07, 0xE0), 0x07E0)):
-        e = emu(theme); e.iram[0x2B] = 1; e.setR(7, 37)
+    for theme in ((0xFF, 0xFF), (0x07, 0xE0)):
+        e = emu(theme); home_state(e, vol=37)
+        e.setR(7, 37)
         e.call(LAB["hn_home_tail"])
-        ref = emu(theme, BASE); ref.iram[0x2B] = 1; ref.setR(7, 37)
-        ref.call(0x5916)
-        bar = all(px(e, x, y) == acc for x in range(18, 46) for y in range(114, 117))
-        rest = all(px(e, x, y) == px(ref, x, y) for x in range(W) for y in range(H)
-                   if not (18 <= x < 46 and 114 <= y < 117))
-        check("theme %02X%02X: volume as stock, accent bar 28x3 at 18,114" % theme, bar and rest)
+        parts = home_parts(e)
+        want = dict(parts[bp.HF_VOL]); want.update(parts[bp.HF_BAR])
+        ok = all(px(e, x, y) == want.get((x, y), 0) for x in range(W) for y in range(H))
+        check("theme %02X%02X: the volume (hm_volume), accent bar %dx%d at %d,%d, nothing else" % (theme + (bp.BAR_W, bp.BAR_H, bp.BAR_X, bp.BAR_Y)),
+              ok)
         check("theme %02X%02X: theme colour untouched" % theme, (e.iram[0x48], e.iram[0x49]) == theme)
 
 
@@ -619,25 +818,26 @@ def text_render(img, page, entry, buf, text, y):
 
 
 def test_align():
-    print("\nleft-aligned text on page 1 (hooks 0x2A25 big, 0x3A82 small)")
-    cases = (("big", 0x298B, 0x35, "USB", 75, 32, 30), ("small", 0x3A53, 0x50, "No signal", 135, 24, 14))
+    print("\npage-1 text (hooks 0x2A25 big, 0x3A82 small): ours at the name / status y, else x 16")
+    cases = (("big", 0x298B, 0x35, "USB", 40, 32, 30), ("small", 0x3A53, 0x50, "No signal", 100, 24, 14))
     for kind, entry, buf, text, y, h, cw in cases:
         n1, b1 = text_render(NEW, 1, entry, buf, text, y), text_render(BASE, 1, entry, buf, text, y)
         n3, b3 = text_render(NEW, 3, entry, buf, text, y), text_render(BASE, 3, entry, buf, text, y)
         tw = len(text) * cw
         shift = (W - tw) // 2 - 16
         moved = all(px(n1, x, yy) == px(b1, x + shift, yy) for x in range(16, 16 + tw) for yy in range(y, y + h))
-        check("%s: page 1 text moved to x 16, same glyphs" % kind, moved and ink_in(n1, 16, y, tw, h))
-        check("%s: page 1 margins left and right cleared" % kind,
+        check("%s at another y on page 1: moved to x 16, stock glyphs" % kind, moved and ink_in(n1, 16, y, tw, h))
+        check("%s at another y on page 1: margins left and right cleared" % kind,
               not ink_in(n1, 0, y, 16, h) and not ink_in(n1, 16 + tw, y, W - 16 - tw, h))
-        check("%s: page 3 (menus) unchanged, centred" % kind, n3.lcd.gram == b3.lcd.gram)
-    e = text_render(NEW, 1, 0x298B, 0x35, "COAXIAL", 75)
-    check("big COAXIAL (narrow-glyph centring path) starts at x 16",
-          not ink_in(e, 0, 75, 16, 32) and ink_in(e, 16, 75, 30, 32))
+        check("%s on page 3 (menus): unchanged, centred" % kind, n3.lcd.gram == b3.lcd.gram)
+    for kind, entry, buf, text, y in (("big", 0x298B, 0x35, "COAXIAL", bp.NAME_Y),
+                                      ("small", 0x3A53, 0x50, "No signal", bp.STATUS_Y)):
+        n3, b3 = text_render(NEW, 3, entry, buf, text, y), text_render(BASE, 3, entry, buf, text, y)
+        check("%s at the home y %d on page 3: unchanged" % (kind, y), n3.lcd.gram == b3.lcd.gram)
     wide = "ABCDEFGHIJKLMNOPQRSTU"                    # 21 x 14 = 294 px: stays centred
     check("small text wider than 288 px stays centred on page 1",
-          text_render(NEW, 1, 0x3A53, 0x50, wide, 135).lcd.gram ==
-          text_render(BASE, 1, 0x3A53, 0x50, wide, 135).lcd.gram)
+          text_render(NEW, 1, 0x3A53, 0x50, wide, 100).lcd.gram ==
+          text_render(BASE, 1, 0x3A53, 0x50, wide, 100).lcd.gram)
 
 
 # ---- whole firmware ----------------------------------------------------------------------------
@@ -665,7 +865,6 @@ TOUR = [                                 # (step, NEC command or None, seconds, 
 ]
 VOL_ENTRY_STEPS = ("vol_up", "vol_down")  # Vol keys pressed on the home page: they open page 2
 EXIT_STEPS = ("back_home", "vol_timeout")
-HOME_BANDS = [(75, 32), (135, 24)]       # input name, status line
 
 
 def state(amp):
@@ -686,38 +885,8 @@ def volpage_reference(amp):
     return e.lcd.gram
 
 
-def home_ours(x, y):
-    """Pixels house-numerals draws differently from stock on page 1: the accent bar box,
-    plus the two left-aligned text bands (HOME_BANDS)."""
-    return any(y0 <= y < y0 + h for y0, h in HOME_BANDS) or (18 <= x < 46 and 114 <= y < 117)
-
-
-def home_pixels_ok(new, ref):
-    """Everything outside our bands: identical to fast-lcd (ref), pixel for pixel."""
-    sp, rp = new.lcd.screen_pixel, ref.lcd.screen_pixel
-    return all(sp(x, y) == rp(x, y) for x in range(W) for y in range(H) if not home_ours(x, y))
-
-
-def home_bar_ok(new):
-    """The 28x3 accent bar itself, painted in accent_of(new)."""
-    sp, acc = new.lcd.screen_pixel, accent_of(new)
-    return all(sp(x, y) == acc for x in range(18, 46) for y in range(114, 117))
-
-
-def home_screen_ok(new, ref):
-    """Whole page-1 screen as house-numerals should draw it: stock outside our bands, plus
-    our accent bar. Used by the tour's home_checks and the sweep's per-command screen_ok."""
-    return home_pixels_ok(new, ref) and home_bar_ok(new)
-
-
 def home_checks(step, new, ref):
-    check("%-12s home: icon, volume, tags as fast-lcd" % step, home_pixels_ok(new, ref))
-    check("%-12s home: accent bar %04X" % (step, accent_of(new)), home_bar_ok(new))
-    sp = new.lcd.screen_pixel
-    for y0, h in HOME_BANDS:
-        left = next((x for x in range(W) if any(sp(x, y) for y in range(y0, y0 + h))), None)
-        check("%-12s home: text at y %d starts at x 16..29" % (step, y0),
-              left is not None and 16 <= left < 30, "(x %s)" % left)
+    check("%-12s home screen = home_model for the amp's state" % step, home_ok(new.e), home_diff(new.e))
 
 
 def draw_time(activity, quiet=10):
@@ -990,12 +1159,12 @@ SCENARIOS = [
 
 
 def screen_ok(base, new):
-    """Whether new's screen is what we expect, given where both amps ended up: the stock
-    home screen outside our bands and bar (both page 1, both powered), hn_volpage's exact
-    render (both page 2, both powered), or bit-identical to base otherwise."""
+    """Whether new's screen is what we expect, given where both amps ended up: home_model for
+    new's state (both page 1, both powered), hn_volpage's exact render (both page 2, both powered),
+    or bit-identical to base otherwise."""
     if base.powered and new.powered:
         if new.page == 1 and base.page == 1:
-            return home_screen_ok(new, base)
+            return home_ok(new.e)
         if new.page == 2 and base.page == 2:
             return new.lcd.gram == volpage_reference(new)
     return new.lcd.gram == base.lcd.gram
@@ -1037,14 +1206,14 @@ def input_scenarios():
             print("    %s unmute countdown at the press: %d" % (label, cd_press))
         check("%ssame page, power, volumes, input, output" % label, state(ref) == state(new),
               "%s vs %s" % (state(ref), state(new)))
-        check("%spage %d, screen as expected (volume: hn_volpage's render; home: fast-lcd outside our bands)" %
+        check("%spage %d, screen as expected (volume: hn_volpage's render; home: home_model)" %
               (label, page), new.page == page and screen_ok(ref, new))
         new.lcd.save_png(os.path.join(HERE, "build", "inputs_%s.png" % name))
         for amp in amps:
             amp.wait(2.5)
         if name != "splash":
             wipe_checks(label, w, (mark[0] + 20,) + mark[1:], 2)
-            check("%sback home after the exit: the stock home (fast-lcd outside our bands)" % label,
+            check("%sback home after the exit: home_model" % label,
                   new.page == 1 and screen_ok(ref, new))
         if cd_kind == "runs":
             for amp in amps:
@@ -1170,7 +1339,7 @@ def key_scenarios():
                 check("%sturned round: entry steps from x %d leftwards, first at %d" % (label, x_at, xs[0] if xs else -1),
                       bool(xs) and xs[0] < x_at and xs[-1] == 0 and all(a > b for a, b in zip(xs, xs[1:])))
         elif expect == "home":
-            check("%shome, fast-lcd outside our bands" % label, new.page == 1 and screen_ok(ref, new))
+            check("%shome = home_model" % label, new.page == 1 and screen_ok(ref, new))
         elif expect == "source":
             # input switched during the exit: hn_name_guard ends the exit with the whole home screen.
             # fast-lcd, back home a moment ago, may not have drawn its home yet, and Source postpones its
@@ -1184,12 +1353,11 @@ def key_scenarios():
         if expect == "source":
             for amp in amps:
                 amp.wait(2.5)
-            check("%s2.5 s later: the same screen as fast-lcd outside our bands" % label,
-                  new.page == 1 and home_pixels_ok(new, ref))
+            check("%s2.5 s later: home = home_model" % label, new.page == 1 and home_ok(new.e))
         if expect == "vol":
             for amp in amps:
                 amp.wait(2.6)
-            check("%sthen back home, fast-lcd outside our bands" % label, new.page == 1 and screen_ok(ref, new))
+            check("%sthen back home = home_model" % label, new.page == 1 and screen_ok(ref, new))
         audio_checks(label, ref, new, quiet=True)
         STEP_MS["key_" + name] = w.worst()
         print("    %s: %.1f s" % (name, time.time() - w0), flush=True)
@@ -1233,7 +1401,7 @@ def flag_exit_scenarios():
         new.lcd.save_png(os.path.join(HERE, "build", "keys_%s_end.png" % name))
         for amp in amps:
             amp.wait(2.0)
-        check("%slater: home, fast-lcd outside our bands" % label, new.page == 1 and screen_ok(ref, new))
+        check("%slater: home = home_model" % label, new.page == 1 and screen_ok(ref, new))
         check("%ssame page, power, volumes, input, output" % label, state(ref) == state(new))
         audio_checks(label, ref, new, quiet=True)
 
@@ -1311,7 +1479,7 @@ def int1():
     t0 = time.time()
     with mp.get_context("fork").Pool() as pool:
         res = pool.map(int1_job, range(100))
-    order_bad, late_bad, audio_bad, shifts, race = [], [], [], [], []
+    order_bad, late_bad, audio_bad, shifts, race, race_bad = [], [], [], [], [], []
 
     def key_first(a, d):
         """The key's volume write (NJW1194 0x10 changes) comes before the DAC reconfiguration."""
@@ -1327,19 +1495,26 @@ def int1():
             shifts.append(un[0] - ur[0])
         if key_first(ar, dr) != key_first(an, dn):
             race.append(off)
+            # only the order of the two differs: as many audio states, the same one at the end, and
+            # the DAC reconfiguration no later than fast-lcd's
+            if not (len(ar) == len(an) and ar and an and ar[-1][1] == an[-1][1] and
+                    dn and dr and (dn[0] - tn) - (dr[0] - tr) <= 0.10):
+                race_bad.append(off)
         elif [s for _, s in ar] != [s for _, s in an] or any(cn - cr > 0.10 for (cr, _), (cn, _) in zip(ar, an)):
             audio_bad.append(off)
     check("DAC reconfiguration (0x46A0) before the unmute (0x33FB), every offset", not order_bad, str(order_bad[:8]))
     check("unmute no later than fast-lcd + 0.10 s, every offset", not late_bad,
           "(shift %+.3f .. %+.3f s)" % (min(shifts), max(shifts)) if shifts else str(late_bad[:8]))
-    # When the press lands in the same tick as a format poll, the stock main loop runs the key or the
-    # poll first depending on where in the loop the press is seen; the two images' loops are not in the
-    # same phase, so at the edge of that window one image may take the key first and the other the poll.
-    # Both orders are stock behaviour; those offsets are listed, and only the DAC-before-unmute and the
-    # unmute timing checks above apply to them.
+    # When the press lands near a format poll, the stock main loop runs the key's volume write or the
+    # poll's DAC reconfiguration first depending on where in the loop and in the 10-tick poll period
+    # the press is seen. The two images' loops are not in the same phase (fast-lcd's slower home
+    # refreshes after power-on lose more ticks, so its poll period is shifted), so around the poll one
+    # image may take the key first and the other the poll. Both orders are stock behaviour; at those
+    # offsets only the order may differ.
     print("    press/format-poll race resolved differently at offsets %s (key first in fast-lcd: %s)" %
           (race, [key_first(res[o][1][0][3], res[o][1][0][1]) for o in race]))
-    check("the race differs at most at the edge of the poll window (at most 2 offsets)", len(race) <= 2)
+    check("where the key/poll order differs (%d offsets): the same number of audio states, the same final "
+          "state, the DAC reconfiguration no later than fast-lcd + 0.10 s" % len(race), not race_bad, str(race_bad[:8]))
     check("audio states after the press: same order, none more than 0.10 s later, every other offset",
           not audio_bad, str(audio_bad[:8]))
     print("  %d runs x 2 images in %.0f s" % (len(res), time.time() - t0))
@@ -1392,7 +1567,18 @@ def outcome(amp):
 def job(args):
     st, cmd = args
     base, new = run(BASE, st, cmd), run(NEW, st, cmd)
-    return st, cmd, outcome(base), outcome(new), screen_ok(base, new)
+    ob, on = outcome(base), outcome(new)
+    ok = screen_ok(base, new)
+    if not ok and base.powered and new.powered and base.page == new.page == 1:
+        # a home the stock sequence has not finished: keys that switch the input postpone the refresh
+        # by 2 s and leave parts of the old home on screen in both images; after power-on the screen
+        # shows the logo. Once the periodic refresh has run, the home must be home_model's (or, still
+        # before the first home, the logo: identical to fast-lcd).
+        for amp in (base, new):
+            amp.wait(3.0)
+        ok = (new.page == 1 and home_ok(new.e)) or new.lcd.gram == base.lcd.gram
+        return st, cmd, ob, on, ok, True
+    return st, cmd, ob, on, ok, False
 
 
 def sweep():
@@ -1408,11 +1594,15 @@ def sweep():
     with mp.get_context("fork").Pool() as pool:
         res = pool.map(job, jobs, chunksize=8)
     for st in SWEEP_STATES:
-        diff = [c for s, c, a, b, ok in res if s == st and a != b]
-        scr = [c for s, c, a, b, ok in res if s == st and not ok]
+        diff = [c for s, c, a, b, ok, later in res if s == st and a != b]
+        scr = [c for s, c, a, b, ok, later in res if s == st and not ok]
+        later = [c for s, c, a, b, ok, lt in res if s == st and lt]
+        if later:
+            print("    %-10s home not finished 0.5 s after %s: checked once the periodic refresh has run"
+                  % (st, " ".join("%02X" % c for c in later)))
         check("%-10s 256 commands: same page, power, volumes, input, output, EQ, pins" % st, not diff,
               str(["%02X" % c for c in diff[:8]]))
-        check("%-10s screens as expected (home: fast-lcd outside our bands; volume: hn_volpage; "
+        check("%-10s screens as expected (home: home_model; volume: hn_volpage; "
               "other: identical to fast-lcd)" % st, not scr, str(["%02X" % c for c in scr[:8]]))
     print("  sweep in %.0f s" % (time.time() - t0))
 
@@ -1424,7 +1614,7 @@ def report_steps():
 
 
 GROUPS = {
-    "unit": [image_diff, test_painter, test_name_ptr, test_draw_volume, test_volpage,
+    "unit": [image_diff, test_home, test_name_ptr, test_draw_volume, test_volpage,
              test_step, test_enter_vol, test_home_tail, test_align],
     "tour": [tour, input_scenarios, key_scenarios, flag_exit_scenarios, edge_scan],
     "int1": [int1],

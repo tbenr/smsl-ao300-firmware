@@ -1,0 +1,26 @@
+{
+  "id": "num22",
+  "font": "600 22px \"Barlow Condensed\"",
+  "px": 22,
+  "ascent": 22,
+  "descent": 4,
+  "engine": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Claude/2.9939.4 Chrome/152.0.7977.130 Safari/537.36",
+  "coverage": "4-bit alpha, one hex digit per pixel",
+  "glyphs": {
+    " ": {"adv":4.399993896484375,"x":0,"y":0,"rows":[]},
+    "-": {"adv":7.149993896484375,"x":0,"y":-8,"rows":["bfffffd","bfffffd","6aaaaa7"]},
+    ".": {"adv":4.641998291015625,"x":0,"y":-4,"rows":["0260","2ffe","6fff","1efa","0000"]},
+    "0": {"adv":9.899993896484375,"x":0,"y":-16,"rows":["005dfed300","07ffffff50","0fffffffe0","4ffe00fff1","7ffb00dff4","7ffb00cff5","7ffb00cff5","7ffb00cff5","7ffb00cff5","7ffb00cff5","7ffb00cff5","7ffb00cff5","5ffd00eff3","1fffbcfff0","0bffffff90","00bffffa00","0001440000"]},
+    "1": {"adv":6.0279998779296875,"x":0,"y":-16,"rows":["06cdd2","dffff5","fffff5","a9eff5","00cff5","00cff5","00cff5","00cff5","00cff5","00cff5","00cff5","00cff5","00cff5","00cff5","00cff5","00cff4"]},
+    "2": {"adv":9.349990844726562,"x":0,"y":-16,"rows":["006deea000","0afffffe00","3fffefff80","8ffc09ffc0","bff905ffd0","6bb409ffb0","00000eff80","00006fff10","0001fff900","000bffe000","006fff4000","02fffa0000","0dffe00000","8fffbaaaa0","affffffff0","9ffffffff0"]},
+    "3": {"adv":9.371994018554688,"x":0,"y":-16,"rows":["4ddddddd8","7fffffffc","5eeeefffc","00009fff3","0004fff80","001fffc00","00afffb10","004ffffe0","00021bff5","000004ffb","022002ffc","aff703ffc","affa06ffb","6fffaeff6","1efffffe0","03dfffe40","000142000"]},
+    "4": {"adv":10.097991943359375,"x":0,"y":-16,"rows":["0009dd5000","001fff3000","007ffe0000","00dffa0000","01fff30000","07ffe00000","0dffb0bca0","1fff40fff0","7fff00fff0","dfffccfffa","efffffffff","efffffffff","000000fff0","000000fff0","000000fff0","000000ffe0"]},
+    "5": {"adv":9.416000366210938,"x":0,"y":-16,"rows":["4ddddddd9","6fffffffd","6fffeeeeb","6ffb00000","6ffb00000","6ffb00000","6ffddfe60","6fffffff2","6fffefffa","5ffc04ffe","000000fff","177300fff","5ffe02fff","1fffadffd","0cffffff7","01cffff80","000032000"]},
+    "6": {"adv":9.43798828125,"x":0,"y":-16,"rows":["005deeb10","08fffffe0","1fffffff9","4fff08ffd","6ffc02ffe","6ffc01232","6ffffff60","6fffffff1","6fffadffa","6ffe01ffe","6ffc00fff","5ffc00fff","4ffe02fff","0fffadffe","0bffffff7","00bffff90","000032000"]},
+    "7": {"adv":8.623992919921875,"x":0,"y":-16,"rows":["addddddd7","efffffffa","effeefffa","efb00eff7","00001fff1","00007ffe0","0000cff90","0000fff30","0004fff00","000affc00","000eff700","001fff100","007ffe000","00cff9000","00fff3000","02ffe0000"]},
+    "8": {"adv":9.547988891601562,"x":0,"y":-16,"rows":["007dfeb20","07fffffe1","0fffdfffa","3ffe05ffd","6ffb00ffe","2ffd03ffd","0effaeff8","04fffffc0","08ffffff2","0fff2affa","3ffc02ffd","6ffb00ffe","4ffd03ffd","0fffaeffa","08fffffe1","00afffd40","000031000"]},
+    "9": {"adv":9.305999755859375,"x":0,"y":-16,"rows":["01aeed800","0efffffc0","7fffefff4","bffb0bff9","cff607ffb","dff506ffc","cff708ffc","6ffd1dffc","0fffffffc","07ffffffc","002887ffc","7ee606ffc","9ffc0affb","5fffbfff8","0effffff1","02dfffe30","000141000"]},
+    "\u2212": {"adv":9.657989501953125,"x":0,"y":-9,"rows":["1222222220","bffffffff5","bffffffff5","1222222220"]},
+    "\u221e": {"adv":15.68359375,"x":0,"y":-12,"rows":["008cc5001adb400","0cffff51effff70","7ffbefecff8aff1","ce1004fff6002f7","e90000efd0000da","ea0004ff80001f8","cf402ffff706df3","3ffefff2fffffd0","06ffff506fffe10","000440000152000"]}
+  }
+}

@@ -126,3 +126,31 @@ def sample_rate_strings(base):
         if s:
             seen.add(s.decode())
     return sorted(seen)
+
+
+def set_tp(e, labels, kit, font, text, x=0, y=0, ink=0xFFFF, bg=0, clip=(0, 319), align=0, spacing=0,
+           code_ptr=None):
+    """Fill uk_text's parameter block: text goes to scratch XDATA (STR_AT), or code_ptr is used."""
+    if code_ptr is None:
+        for k, ch in enumerate(text.encode() + b"\0"):
+            e.xram[STR_AT + k] = ch
+        ptr, spc = STR_AT, 0
+    else:
+        ptr, spc = code_ptr, 1
+    f = labels[font]
+    vals = [f >> 8, f & 0xFF, ptr >> 8, ptr & 0xFF, spc, x >> 8, x & 0xFF, y, ink >> 8, ink & 0xFF,
+            bg >> 8, bg & 0xFF, clip[0] >> 8, clip[0] & 0xFF, clip[1] >> 8, clip[1] & 0xFF, align, spacing]
+    for k, v in enumerate(vals):
+        e.xram[kit.tp_base + k] = v
+
+
+def tp_end(e, kit):
+    return (e.xram[kit.TP["END"]] << 8) | e.xram[kit.TP["END"] + 1]
+
+
+def text(e, labels, kit, *args, **kw):
+    """set_tp, then uk_text; returns the clocks it took."""
+    set_tp(e, labels, kit, *args, **kw)
+    c0 = e.cycles
+    e.call(labels["uk_text"])
+    return e.cycles - c0

@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>AO300 font raster</title>
+<style>
+body{font:14px/1.5 system-ui,sans-serif;background:#111;color:#ddd;padding:16px}
+pre{white-space:pre-wrap}
+</style>
+<p>Renders the fonts in <code>specs.json</code> with the browser's text engine, as the UI mock does,
+and posts each one's glyph coverage to <code>rasterize.py</code>, which writes <code>raster/&lt;id&gt;.json</code>.
+<code>raster.html?only=num84,mono11</code> renders only those.</p>
+<pre id="log"></pre>
+<script src="glyphs.js"></script>
+<script>
+const log = s => { document.getElementById('log').textContent += s + '\n'; };
+async function main(){
+  const cfg = await (await fetch('specs.json')).json();
+  await Glyphs.loadFonts();
+  const only = new URLSearchParams(location.search).get('only');
+  let done = 0;
+  for (const sp of cfg.specs){
+    if (only && !only.split(',').includes(sp.id)) continue;
+    const out = Glyphs.raster(sp);
+    const r = await fetch('save?id=' + encodeURIComponent(sp.id), {method: 'POST', body: JSON.stringify(out)});
+    log(sp.id + ': ' + Object.keys(out.glyphs).length + ' glyphs, ' + (await r.text()));
+    done++;
+  }
+  log('done: ' + done + ' fonts');
+  document.title = 'AO300 font raster: done';
+}
+main().catch(e => log('ERROR ' + e.message));
+</script>

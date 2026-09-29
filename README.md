@@ -39,6 +39,9 @@ tools/
   patch/asm51.py                  label-resolving 8051 assembler used by the build scripts
   patch/uikit.py                  shared building blocks for UI themes (see "UI themes")
   patch/uikit_test.py             the kit's own emulator tests, on fast-lcd + the kit
+  patch/pfont.py                  proportional fonts for uk_text, packed from tools/fonts/raster
+  fonts/                          the UI mock's typefaces as glyph coverage, the font bench
+                                  server and the shared rasteriser glyphs.js (see its README)
 
 features/
   status-line-flicker/            analysis of the "flickering C" display bug (no build yet)
@@ -58,13 +61,15 @@ features/
   fast-lcd/                       the stock UI through the tuned pixel path, on top of
                                   direct-select; emulator-verified, see its README
     build_patch.py, emu_test.py   build build/flash_fastlcd.bin, lockstep UI tour vs stock
-  house-numerals/                 stock UI + House Numerals home and volume page, on top
-                                  of fast-lcd, built with tools/patch/uikit.py; tried on
-                                  the amp on 2026-09-29 (hn4.1), see its README
-    build_patch.py, emu_test.py   build build/flash_house_numerals.bin (hn4: non-blocking
-                                   eased wipes in and out of the volume page, text painter),
-                                   lockstep UI tour, keys during wipes, INT1 sweep,
-                                   256-command sweep vs fast-lcd
+  house-numerals/                 House Numerals home and volume page, on top of fast-lcd,
+                                  built with tools/patch/uikit.py; hn4.1 tried on the amp
+                                  on 2026-09-29, hn5 emulator-verified; see its README
+    build_patch.py, emu_test.py   build build/flash_house_numerals.bin (hn5: the mock's home
+                                   in its own typefaces, non-blocking eased wipes in and out
+                                   of the volume page), home model, lockstep UI tour, keys
+                                   during wipes, INT1 sweep, 256-command sweep vs fast-lcd
+    layout.json, sizing.html      the home layout the build reads, and the page that edits it
+                                   (preview exact to the firmware; served by tools/fonts/rasterize.py)
     house_numerals.asm            annotated listing of the patch code at 0x9800
   fix-auto-off/                   stock-bug fix, ported from the AO300 PRO V1.2: Dimmer Auto
                                   OFF also times out after a cold power-up. Standalone on
@@ -198,7 +203,11 @@ the stock UI through the fast pixel path. Longer listening tests are still to co
 
 Tried on 2026-09-29 and looks OK: `features/house-numerals/build/flash_house_numerals.bin`
 (hn4.1, `v1.4 tbenr hn4.1`), the House Numerals home and volume page with the non-blocking
-eased wipe. Longer use is still to come.
+eased wipe. Longer use is still to come. Its successor hn5 (`v1.4 tbenr hn5`, the mock's
+home screen in the mock's typefaces) was tried on 2026-09-29: it looks great and the
+anti-aliased text works on the panel, but the tags, status line and volume are too small.
+hn6 (`v1.4 tbenr hn6`) has them larger, sized in `features/house-numerals/sizing.html`; it is
+emulator-verified and not yet tried on the amp.
 
 Built and emulator-tested, not yet tried on the amp: `features/fix-auto-off/build/flash_fixautooff.bin`
 (`v1.4 tbenr aof1`), direct-select plus the PRO's Auto OFF power-on fix.
@@ -238,13 +247,21 @@ The parts every theme needs live in `tools/patch/uikit.py`, extracted from house
   - `uk_paint`: streaming text painter for the stock fonts. It takes ink and background
     colours, an x clip window and scale 1 or 2, and is pixel-identical to the stock text
     renderers. `uk_home_x` gives a string's page-1 start x.
+  - `uk_text`: painter for proportional fonts made from the UI mock's typefaces
+    (`tools/patch/pfont.py`, `tools/fonts/`). Glyphs are 1-bit, or anti-aliased with 4 levels
+    stored run-length (background, 1/4, 3/4 and ink colour, mixed on the amp by `uk_avg`).
+    It takes left, right or centred alignment, letter spacing and an x clip window, and
+    reports the last column drawn. About 12 clocks per pixel on the 84 px numerals.
   - `uk_acc`: the accent colour (the COLOR tint, or the theme's own colour on White).
   - `uk_tasks`: the per-tick driver. It is hooked on `main_tasks_on`'s call to
     `main_tick_tasks` (0x5B2A) and runs the theme's step routine once per 10 ms tick,
     after the stock tick work and only while the amp is on. Animations never block the
     main loop.
-- **Fonts:** descriptors and character maps of the two stock fonts. A new font only needs
-  a descriptor, a map and glyph data in the same column-major layout.
+- **Fonts:** descriptors and character maps of the two stock fonts for `uk_paint`; for
+  `uk_text`, a `pfont.PFont` cuts a rasterised face down to the characters a theme needs and
+  emits it. Sizes, for example: the 84 px numerals (digits) about 2.2 KB, the 52 px display face
+  (the input-name letters) 1.3 KB, 11 px mono (all of ASCII) 1.7 KB at 1 bit or 3.3 KB
+  anti-aliased.
 - **Stock facts:** the stock routines, buffers and variables themes use, and a catalogue of
   hook sites with their original bytes (`STOCK_SITES`, and `VOL_ENTRY_SITES`, where the
   volume keys open page 2).
@@ -253,13 +270,47 @@ The parts every theme needs live in `tools/patch/uikit.py`, extracted from house
 
 `tools/patch/uikit_test.py` tests the kit on its own. It builds fast-lcd plus the kit and
 compares `uk_paint` against the stock glyph painters and text renderers for every character
-and every string in the firmware. `tools/emu/uitest.py` holds the helpers theme tests share.
+and every string in the firmware, and `uk_text` against `PFont.render` (every glyph of five
+test fonts in both formats, alignment, spacing, tints, clip windows through the middle of
+glyphs and runs). `tools/emu/uitest.py` holds the helpers theme tests share.
 `tools/emu/panel_video.py` renders what the glass shows, with the panel's 60 Hz line-by-line
 refresh, for checking animations.
 
 Not in the kit yet: the wipe's step engine and page-element model (still in house-numerals),
-shapes (dots, arcs, 7-segment), colour blending, per-pixel transitions and fonts other than
-the stock two.
+shapes (dots, arcs, 7-segment), per-pixel transitions, and a y clip for `uk_text` (for text
+that slides).
+
+### Sizing a theme's home screen
+
+House Numerals takes its home layout from `features/house-numerals/layout.json`: every
+element's font (by raster id), position, the tag boxes, the status colour and the bar.
+`features/house-numerals/sizing.html` edits it. The page shows the home exactly as the
+firmware draws it (same rasteriser, packing and anti-aliasing; checked pixel for pixel against
+the emulator). It also shows each text's cap height on the panel in millimetres and each
+font's exact size in flash, and flags overlaps and texts wider than the screen.
+
+1. Start the font bench, a local server for the page (127.0.0.1 only; it builds nothing):
+
+       python3 tools/fonts/rasterize.py
+
+2. Open the sizing page at the address it prints
+   (`http://127.0.0.1:8767/features/house-numerals/sizing.html`). Pick a starting point or
+   `layout.json`, set the amp's state (input, status, tags, volume, mute, tint) and move
+   the sliders until the checks under the screen are clear.
+3. Press **Save layout and fonts**. It writes the fonts at the chosen sizes
+   (`tools/fonts/raster/<id>.json`, added to `tools/fonts/specs.json`) and `layout.json`.
+4. Rebuild and test by hand:
+
+       python3 features/house-numerals/build_patch.py
+       python3 tools/run_tests.py house-numerals
+
+5. Before flashing, add the new image's sha256 (the build prints it) to `KNOWN_IMAGES` in
+   `tools/flash/flash_ao300.py`, set a new `VERSION_TEXT` in `build_patch.py`, and commit
+   `layout.json` with the new rasters.
+
+The build stops with a message when `layout.json` names a font that has no raster, and asserts
+that the elements don't overlap. The page needs the font bench to save; opened any other way it
+previews only.
 
 ## Testing
 
@@ -382,7 +433,7 @@ Measured from the images; the code/EEPROM split is the chip's own setting (0xF40
 
 | Region | Size | Used | Free |
 |---|---|---|---|
-| Code flash, 0x0000..0xF3FF | 62464 bytes | 42913 bytes (features/house-numerals build) | ~19 KB |
+| Code flash, 0x0000..0xF3FF | 62464 bytes | 54485 bytes (features/house-numerals hn6, 9 KB of it fonts) | ~7.8 KB |
 | EEPROM area, 0xF400..0xFDFF | 2560 bytes, 5 sectors of 512 | sectors at offsets 0x0000, 0x0200, 0x0400 | 2 sectors, 1 KB |
 | Internal direct RAM, 0x00..0x7F | 128 bytes | all (registers, bit flags, variables up to 0x7F) | none |
 | Internal indirect RAM, 0x80..0xFF | 128 bytes | stack from 0x88 (`mov SP,#0x88` at 0x44A5) | stack headroom only |
