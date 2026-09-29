@@ -24,13 +24,16 @@ public class SmslAo300Labels extends GhidraScript {
         {0x0006, "delay_30"},   {0x000E, "delay_6"},   {0x0016, "delay_30b"},
         {0x001E, "delay_1"},    {0x0BB4, "dispatch_key"},
         {0x0CD2, "key_power_off"},     {0x0CE9, "key_exit_to_home"},
-        {0x0D03, "key_volume_up"},     {0x0ED2, "key_volume_down"},
+        {0x0D03, "key_volume_up"},     {0x0D83, "key_volume_up2"},    // +2 steps; key codes 0x5A/0x5B (bit 0x40: probably a held key / remote repeat, not confirmed)
+        {0x0E2A, "key_volume_down4"},  // -4 steps; key codes 0x5A/0x5B (bit 0x40: probably a held key / remote repeat, not confirmed); 0x0ED2 is the -1 handler
+        {0x0ED2, "key_volume_down"},
         {0x0F62, "key_59"},            {0x0F93, "key_source_next"},
         {0x0FC8, "key_source_prev"},   {0x1006, "key_output_toggle"},
         {0x1047, "key_1c"},            {0x106D, "key_bt_function"},
         {0x10BE, "key_toggle_29"},     {0x10E1, "key_38_combo"},
-        {0x10FC, "key_menu_nav"},      {0x126F, "key_up"},
-        {0x135A, "key_down"},          {0x144E, "key_menu"},
+        {0x10FC, "key_menu_nav"},      // reached by NEC 0x04, which opens the menu (page -> 3) from home
+        {0x126F, "key_up"},
+        {0x135A, "key_down"},          {0x144E, "key_menu"},          // NEC 0x03 (NEC_MENU in ao300.py); acts only inside a menu, does not open it
         {0x14E3, "key_default"},       {0x2072, "keil_switch_case"},
         {0x202C, "cmp_u32"},           {0x24D6, "input_set_hw"},
         {0x2681, "nec_decode"},        {0x2F46, "settings_load_eeprom"},
@@ -54,6 +57,11 @@ public class SmslAo300Labels extends GhidraScript {
         {0x42F5, "draw_num_small"},    {0x4384, "draw_num_big"},
         {0x5744, "home_draw_output_icon"}, {0x5916, "home_draw_volume"},
         {0x5936, "volpage_draw_volume"},   {0x5C8B, "home_refresh"},
+        {0x5CBC, "ui_clear_small_buf"},    {0x5CCB, "ui_clear_big_buf"},
+        {0x4C8F, "big_text_load"},         {0x4D3A, "small_text_load"},
+        {0x5119, "lcd_clear_column24"},    {0x49A1, "home_draw_eq_tag"},
+        {0x41CA, "home_draw_format_tag"},  {0x4A85, "home_draw_input_name"},
+        {0x1F7F, "keil_imul"},             {0x2167, "volpage_render"},
         // LCD bus (P1 data, P0.5 WR, P0.7 CS, P0.3 D/C)
         {0x2808, "lcd_init"},          {0x4437, "lcd_set_window"},
         {0x51EE, "lcd_clear_black"},   {0x567A, "lcd_write_data"},
@@ -77,6 +85,23 @@ public class SmslAo300Labels extends GhidraScript {
         {0x9450, "blit_test"},         // features/blit-test
         {0x9700, "fast_pixel"},        // features/fast-lcd, replaces lcd_write_pixel
         {0x9716, "fast_clear"},        // features/fast-lcd, replaces lcd_clear_black's loop
+        {0x9810, "hn_fill"},           // features/house-numerals
+        {0x9866, "hn_begin"},          // features/house-numerals
+        {0x9888, "hn_end"},            // features/house-numerals
+        {0x9893, "hn_accent"},         // features/house-numerals
+        {0x98A0, "hn_white"},          // features/house-numerals
+        {0x98A7, "hn_name_ptr"},       // features/house-numerals
+        {0x98C0, "hn_text"},           // features/house-numerals
+        {0x990D, "hn_digit2x"},        // features/house-numerals
+        {0x9999, "hn_draw_volume"},    // features/house-numerals
+        {0x9A24, "hn_vol_static"},     // features/house-numerals
+        {0x9A5C, "hn_volpage"},        // features/house-numerals
+        {0x9A67, "hn_enter_vol"},      // features/house-numerals
+        {0x9A6D, "hn_clear"},          // features/house-numerals
+        {0x9A72, "hn_wipe"},           // features/house-numerals
+        {0x9AEE, "hn_home_tail"},      // features/house-numerals
+        {0x9B07, "hn_align_big"},      // features/house-numerals
+        {0x9B21, "hn_align_small"},    // features/house-numerals
     };
 
     Object[][] codeLabels = {
@@ -91,9 +116,18 @@ public class SmslAo300Labels extends GhidraScript {
         {0x3335, "main_tick_10ms"},         // runs once per 0x20.7 tick flag; missed ticks are lost
         {0x33ED, "mute_timer_expired"},     // 0x43:0x44 reaches 0 -> mute_state_set(1)
         {0x45CE, "port_init"},              {0x5C79, "lcd_write_pixel_black"},
+        {0x2143, "ui_page_table"},          // jump-table entry for page 2 (data: 02 21 67, ljmp volpage_render)
+        {0x442F, "lcd_set_window_x1_from_a"},
+        {0x2A25, "big_text_start_x_stored"},   // big_text_render: clr A ; mov R0,#2 ; movx @R0,A (hooked, features/house-numerals)
+        {0x3A82, "small_text_start_x_stored"}, // small_text_render: same shape (hooked, features/house-numerals)
+        {0x0D30, "volpage_enter_a"},         // mov 0x45,#2 before volume-entry site 0x0D33, in key_volume_up
+        {0x0DB0, "volpage_enter_b"},         // mov 0x45,#2 before volume-entry site 0x0DB3, in key_volume_up2
+        {0x0E57, "volpage_enter_c"},         // mov 0x45,#2 before volume-entry site 0x0E5A, in key_volume_down4
+        {0x0EFF, "volpage_enter_d"},         // mov 0x45,#2 before volume-entry site 0x0F02, in key_volume_down
         // data
         {0x5DAB, "font_small_14x24"},       {0x6A23, "font_big_32x30"},
         {0x9241, "theme_colours_rgb565"},   {0x9289, "volume_code_table"},
+        {0x9048, "input_name_strings"},     {0x9347, "str_volume"},
     };
 
     Object[][] ramLabels = {
@@ -111,6 +145,7 @@ public class SmslAo300Labels extends GhidraScript {
         {0x6B, "g_ir_state"},      {0x6C, "g_ir_repeat_cnt"}, {0x6D, "g_ir_shift_hi"},
         {0x6E, "g_ir_shift_lo"},   {0x6F, "g_ir_key2"},       {0x70, "g_ir_bit_cnt"},
         {0x68, "g_pixel_hi"},      {0x69, "g_pixel_lo"},      {0x7F, "g_blink_timer"},
+        {0x59, "l_render_page"},  // page argument saved inside ui_render_page (0x2101)
     };
 
     static final int TABLE_ADDR = 0x9398;

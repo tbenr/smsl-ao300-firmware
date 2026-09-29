@@ -23,7 +23,12 @@ tools/
   disasm/SmslAo300Labels.java     Ghidra script that names routines, globals and tables
   flash/flash_ao300.py            guarded stcgal-based flasher for macOS/Linux (see below)
   emu/emu8051.py                  full 8051 emulator with STC8 clock counts and an ST7789
-                                  model of the LCD bus (renders the screen to PNG)
+                                  model of the LCD bus (renders the screen to PNG); the
+                                  Python reference implementation
+  emu/core8051.c, emu/cemu8051.py the same emulator in C, loaded through ctypes and
+                                  compiled on first use; what Emu8051() runs, ~100x faster
+  emu/test_core.py                differential test: C core against the Python reference
+  run_tests.py                    runs every features/*/emu_test.py in parallel
   emu/ao300.py                    harness: boot the whole firmware, press remote keys, log
                                   audio-chip writes and pins per 10 ms tick
   patch/asm51.py                  label-resolving 8051 assembler used by the build scripts
@@ -46,6 +51,12 @@ features/
   fast-lcd/                       the stock UI through the tuned pixel path, on top of
                                   direct-select; emulator-verified, see its README
     build_patch.py, emu_test.py   build build/flash_fastlcd.bin, lockstep UI tour vs stock
+  house-numerals/                 stock UI + House Numerals home and volume page, on top
+                                  of fast-lcd; emulator-verified, not yet tried on
+                                  hardware, see its README
+    build_patch.py, emu_test.py   build build/flash_house_numerals.bin, lockstep UI tour,
+                                   256-command sweep vs fast-lcd
+    house_numerals.asm            annotated listing of the patch code at 0x9800
 
 ghidraPRG/                    * Ghidra project (import original/extracted/flash.bin as
                                 8051:BE:16:default, block CODE at 0)
@@ -58,7 +69,9 @@ ghidraPRG/                    * Ghidra project (import original/extracted/flash.
 - `stcgal` 1.10 or newer for the flasher (`tools/flash/flash_ao300.py`); it pulls in
   `pyserial`. A USB-to-serial adapter (3.3 V logic) on the amp's 4-pin header.
 - The disassembler, the patch builder and the emulator test need only the standard
-  library.
+  library, plus a C compiler (`cc`; on macOS the Xcode command-line tools) for the
+  emulator's C core. Without one the emulator falls back to the Python reference,
+  about 100 times slower.
 - Optional: Ghidra (with a JDK 17 or newer) for `tools/disasm/SmslAo300Labels.java`.
 
 Use a virtual environment so the tools don't touch the system Python. From the project
@@ -207,6 +220,12 @@ The RESET menu page shows `v1.4 tbenr` instead of `v1.4`. Change `VERSION_TEXT` 
 clocks counted from the STC8 instruction table. The LCD bus is decoded into an ST7789
 model and saved as PNG.
 
+`python3 tools/run_tests.py` runs all the feature tests at once, on the C core, in
+about 5 s (the Python reference, `EMU8051=py`, took about 8 minutes). After changing
+the emulator, `python3 tools/emu/test_core.py` checks the C core against the Python
+reference: every opcode from random states, random programs, and a boot scenario of
+the stock firmware compared at every 10 ms tick.
+
 `stc_release.py rebuild` output was verified by unpacking it again and by checking the
 PE structure with `pefile`. Only the firmware resource differs from the vendor updater.
 
@@ -233,7 +252,7 @@ Two buses share the pins P3.7 (data) and P4.1 (clock):
 | Input routing | mux control + NJW1194 selector | P0.1, P0.2, P4.6, P2.4 plus expander bits (0x24D6) | |
 | Power amplifier | MA5332MS, analogue in | mute / enable via expander | no control interface |
 | Speaker and headphone relays | two speaker relays, one headphone relay | driven during the power-on sequence | |
-| Display | ST7789-class colour LCD, 320 × 170 as drawn | bit-banged 8-bit bus on P1 (WR P0.5, CS P0.7, D/C P0.3), byte writes 0x567A / 0x5C9C with a delay call per byte; full clear 0x51EE | column offset 0x23. Window 0x4437: firmware y + 0x23 → CASET, firmware x → RASET, so pixels stream one 170-px vertical line at a time; P0 and P1 are push-pull (init 0x45CE). Two 1-bit fonts, stored rotated (glyph rows = screen columns): small 14 × 24 at 0x5DAB (42 bytes/glyph, painter 0x2DF8, status line and menus) and big 32 × 30 at 0x6A23 (120 bytes/glyph, painter 0x3F3C, input name and other centre-line text); glyph index = digits 6..15, A-Z 0x10.., a-z 0x2A.. (small font only). Text colour from the theme table 0x9241 (RGB565: FFFF F800 07E0 33BF CFA0 07FF FC00 F81F). Home (refresh 0x5C8B): output/mute icon at 15,8 (0x5744), volume as two digits at 48,9 (0x5916; speaker volume 0x31 or headphone volume 0x52), format tag at 208,10, EQ tag at 266,10, input name centred at y 75, status line centred at y 135. Page variable 0x45 (1 home, 2 volume, 3+ menus; renderer 0x2101). Volume page: full clear, two digits at 130,75, "volume" at y 135, back home when the 200-tick timer at 0x27/0x28 expires |
+| Display | ST7789-class colour LCD, 320 × 170 as drawn | bit-banged 8-bit bus on P1 (WR P0.5, CS P0.7, D/C P0.3), byte writes 0x567A / 0x5C9C with a delay call per byte; full clear 0x51EE | column offset 0x23. Window 0x4437: firmware y + 0x23 → CASET, firmware x → RASET, so pixels stream one 170-px vertical line at a time; P0 and P1 are push-pull (init 0x45CE). Two 1-bit fonts, stored rotated (glyph rows = screen columns): small 14 × 24 at 0x5DAB (42 bytes/glyph, painter 0x2DF8, status line and menus) and big 32 × 30 at 0x6A23 (120 bytes/glyph, painter 0x3F3C, input name and other centre-line text); glyph index = digits 6..15, A-Z 0x10.., a-z 0x2A.. (small font only). Text colour from the theme table 0x9241 (RGB565: FFFF F800 07E0 33BF CFA0 07FF FC00 F81F). Home (refresh 0x5C8B): output/mute icon at 15,8 (0x5744), volume as two digits at 48,9 (0x5916; speaker volume 0x31 or headphone volume 0x52), format tag at 208,10, EQ tag at 266,10, input name centred at y 75, status line centred at y 135. Page variable 0x45 (1 home, 2 volume, 3+ menus; renderer 0x2101, jump table `ui_page_table` at 0x2143, page 2 entry `volpage_render` at 0x2167). Volume page (page 2): full clear, two digits at 130,75, "volume" at y 135, back home when the 200-tick timer at 0x27/0x28 expires. The volume keys (`key_volume_up` 0x0D03, `key_volume_up2` 0x0D83, `key_volume_down4` 0x0E2A, `key_volume_down` 0x0ED2) each set page 2 and open it directly, inline right after `mov 0x45,#0x02` (four sites: 0x0D33, 0x0DB3, 0x0E5A, 0x0F02, each `lcall ui_clear_screen` then the "volume" caption); the page-2 renderer at 0x2167 is only a second way in, not the path the keys use |
 | Backlight | LED on GPIO P0.6 | on/off only; "Auto OFF" clears it on a timer | no PWM peripheral on this MCU |
 | Front panel | buttons / encoder (nets RE_A, RE_B) | P4.7, P5.4, P5.5, P2.6, P7.4 | |
 | Programming header | 4-pin header next to the HDMI receiver | 5V, TXD, RXD, GND (bottom silkscreen also shows RXD TXD GND) | the serial update port |
@@ -304,7 +323,7 @@ Measured from the images; the code/EEPROM split is the chip's own setting (0xF40
 
 | Region | Size | Used | Free |
 |---|---|---|---|
-| Code flash, 0x0000..0xF3FF | 62464 bytes | 37955 bytes (custom build) | ~24 KB |
+| Code flash, 0x0000..0xF3FF | 62464 bytes | 39753 bytes (features/house-numerals build) | ~22 KB |
 | EEPROM area, 0xF400..0xFDFF | 2560 bytes, 5 sectors of 512 | sectors at offsets 0x0000, 0x0200, 0x0400 | 2 sectors, 1 KB |
 | Internal direct RAM, 0x00..0x7F | 128 bytes | all (registers, bit flags, variables up to 0x7F) | none |
 | Internal indirect RAM, 0x80..0xFF | 128 bytes | stack from 0x88 (`mov SP,#0x88` at 0x44A5) | stack headroom only |
