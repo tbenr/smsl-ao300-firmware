@@ -2,7 +2,8 @@
 """Emulator tests for House Numerals (see README.md).
 
   python3 emu_test.py unit    image diff, then every routine at its hook
-  python3 emu_test.py tour    whole firmware from reset, lockstep with fast-lcd
+  python3 emu_test.py tour    whole firmware from reset, lockstep with fast-lcd, then a volume
+                              key after each input settles (Bluetooth, no signal, power-on, ...)
   python3 emu_test.py sweep   all 256 IR commands in five states, against fast-lcd
   python3 emu_test.py         all three
 """
@@ -282,23 +283,124 @@ def test_wipe():
     e.hooks[0x51EE] = lambda em: seen.add(0x51EE)
     e.call(LAB["hn_clear"])
     check("other pages: stock clear, no wipe", 0x51EE in seen and not fills)
-    # while the unmute countdown (RAM 0x43:0x44) runs, the page opens with the fast clear
+    # unmute countdown (RAM 0x43:0x44) at 1..HN_CD_MIN-1: the unmute falls due during the wipe, so
+    # the page opens with the fast clear; 0 (not running) or HN_CD_MIN and up: the wipe
     for entry, page in (("hn_clear", 2), ("hn_wipe", 3)):
-        for cd in ((0x00, 0x1F), (0x01, 0x00)):
+        for cd in (0x0001, bp.HN_CD_MIN - 1, bp.HN_CD_MIN, 0x001F, 0x0100):
             fills.clear(); seen.clear()
             e = emu()
             e.lcd.gram = [0xFFFF] * len(e.lcd.gram)
             e.iram[0x59] = page
-            e.iram[0x43], e.iram[0x44] = cd
+            e.iram[0x43], e.iram[0x44] = cd >> 8, cd & 0xFF
             e.hooks[LAB["hn_fill"]] = on_fill
             for addr in (0x5CBC, 0x5CCB, 0x51EE):
                 e.hooks[addr] = lambda em, addr=addr: seen.add(addr)
             c0 = e.cycles
             e.call(LAB[entry])
             ms = (e.cycles - c0) * 1000 / CLOCK_HZ
-            check("%s, countdown %02X%02X: fast clear, no edge fills, black screen" % (entry, cd[0], cd[1]),
-                  {0x5CBC, 0x5CCB, 0x51EE} <= seen and not fills and not ink_in(e, 0, 0, W, H)
-                  and (e.iram[0x48], e.iram[0x49]) == (0xFF, 0xFF), "(%.1f ms)" % ms)
+            edges = [x for x, w, c in fills if c == bp.ORANGE and w == 2]
+            common = (not ink_in(e, 0, 0, W, H) and (e.iram[0x48], e.iram[0x49]) == (0xFF, 0xFF)
+                      and {0x5CBC, 0x5CCB} <= seen)
+            if cd < bp.HN_CD_MIN:
+                check("%s, countdown %d: fast clear, no edge fills, black screen" % (entry, cd),
+                      common and 0x51EE in seen and not fills, "(%.1f ms)" % ms)
+            else:
+                check("%s, countdown %d: the wipe, 318 down to 0, black screen" % (entry, cd),
+                      common and 0x51EE not in seen and edges == list(range(318, -1, -2)), "(%.0f ms)" % ms)
+            check("%s, countdown %d: countdown and tick flag untouched without ticks" % (entry, cd),
+                  (e.iram[0x43] << 8 | e.iram[0x44]) == cd and not e.iram[0x20] & 0x80)
+    # post_power_on still to run (0x20.3, a key queued during the power-on splash): fast clear
+    for cd in (0, 300):
+        fills.clear(); seen.clear()
+        e = emu()
+        e.iram[0x59] = 2
+        e.iram[0x20] |= 0x08
+        e.iram[0x43], e.iram[0x44] = cd >> 8, cd & 0xFF
+        e.hooks[LAB["hn_fill"]] = on_fill
+        e.hooks[0x51EE] = lambda em: seen.add(0x51EE)
+        e.call(LAB["hn_clear"])
+        check("hn_clear, 0x20.3 set, countdown %d: fast clear, no edge fills" % cd,
+              0x51EE in seen and not fills and e.iram[0x20] & 0x08)
+
+
+def test_tick():
+    print("\nhn_tick and the wipe's tick compensation (unmute countdown RAM 0x43:0x44, tick flag 0x20.7)")
+    # (flag, countdown, taken before) -> (flag, countdown, taken after)
+    cases = [((0, 100, 0), (0, 100, 0)),      # no tick: nothing
+             ((1, 0, 0), (1, 0, 0)),          # countdown not running: the tick stays with the main loop
+             ((1, 1, 0), (1, 1, 0)),          # at 1: the main loop's own tick expires it (and unmutes)
+             ((1, 1, 1), (1, 1, 1)),
+             ((1, 2, 0), (0, 2, 1)),          # first tick taken: counted by the main loop after the wipe
+             ((1, 2, 1), (0, 1, 1)),          # later ticks: counted here, never below 1
+             ((1, 0x100, 1), (0, 0xFF, 1)),   # borrow into the high byte
+             ((1, 300, 1), (0, 299, 1))]
+    for (f0, c0, t0), want in cases:
+        e = emu()
+        e.iram[0x20] = 0x80 if f0 else 0
+        e.iram[0x43], e.iram[0x44] = c0 >> 8, c0 & 0xFF
+        e.xram[bp.HN_TICK] = t0
+        e.call(LAB["hn_tick"])
+        got = (e.iram[0x20] >> 7, (e.iram[0x43] << 8) | e.iram[0x44], e.xram[bp.HN_TICK])
+        check("hn_tick flag %d, countdown %3d, taken %d -> flag %d, countdown %3d, taken %d" %
+              ((f0, c0, t0) + want), got == want, str(got))
+
+    # the re-mute request 0x21.4: answered once per wipe, as main_tick_tasks 0x3325 answers it
+    for req, done, calls_want in ((0, 0, 0), (1, 0, 1), (1, 1, 0)):
+        e = emu()
+        e.iram[0x21] = 0x10 if req else 0
+        e.iram[0x22] = 0x10                          # 0x22.4: unmuted
+        e.xram[bp.HN_REMUTE] = done
+        calls = []
+        e.hooks[bp.AUDIO_APPLY_MUTE] = lambda em: calls.append(em.iram[0x22] & 0x10)
+        e.call(LAB["hn_tick"])
+        if calls_want:
+            ok = calls == [0] and not e.iram[0x21] & 0x10 and e.xram[bp.HN_REMUTE] == 1
+        else:
+            ok = not calls and e.iram[0x21] & 0x10 == (0x10 if req else 0) and e.iram[0x22] & 0x10
+        check("hn_tick re-mute request %d, answered before %d -> audio_apply_mute %s" %
+              (req, done, "called with 0x22.4 clear, request cleared" if calls_want else "not called"), ok)
+
+    def wipe_with_ticks(cd, poke=None, remute=False):
+        """hn_wipe with a Timer0 that only sets the tick flag every 10 ms (no main loop runs); with
+        remute it also raises the re-mute request 0x21.4 every tick, as on optical without lock."""
+        e = emu()
+        e.iram[0x59] = 3
+        e.iram[0x43], e.iram[0x44] = cd >> 8, cd & 0xFF
+        ticks, seen, calls = [], [], []
+        e.tick_every = CLOCK_HZ // 100
+        e.on_tick = lambda em: (ticks.append(em.cycles), em.iram.__setitem__(0x20, em.iram[0x20] | 0x80),
+                                remute and em.iram.__setitem__(0x21, em.iram[0x21] | 0x10))
+        e.hooks[LAB["hn_tick"]] = lambda em: (seen.append(((em.iram[0x43] << 8) | em.iram[0x44], len(ticks))),
+                                              poke and poke(em, len(seen)))
+        e.hooks[bp.AUDIO_APPLY_MUTE] = lambda em: calls.append(em.cycles)
+        e.start_ticks()
+        c0 = e.cycles
+        e.call(LAB["hn_wipe"])
+        return e, len(ticks), seen, [c - c0 for c in calls], (e.cycles - c0) * 1000 / CLOCK_HZ
+    e, n, seen, calls, ms = wipe_with_ticks(100)
+    cd = (e.iram[0x43] << 8) | e.iram[0x44]
+    polled = seen[-1][1]                             # ticks the last hn_tick call could see
+    check("wipe from countdown 100: %d ticks taken, %d counted here, one handed back to the main loop" %
+          (polled, polled - 1), len(seen) == 160 and cd == 100 - (polled - 1) and e.iram[0x20] & 0x80
+          and e.xram[bp.HN_TICK] == 1 and not calls, "(countdown %d, %d ticks in all)" % (cd, n))
+    check("every tick seen: at most one per wipe step",
+          all(b[1] - a[1] <= 1 for a, b in zip(seen, seen[1:])))
+    check("wipe spans %d ticks; HN_CD_MIN %d covers them, one pending before it and the page after it" %
+          (n, bp.HN_CD_MIN), n + 1 < bp.HN_CD_MIN)
+    e, n, seen, calls, ms = wipe_with_ticks(100, remute=True)
+    check("re-mute request every tick: audio_apply_mute once, within 2 ms of the first tick, the rest left set",
+          len(calls) == 1 and calls[0] < (CLOCK_HZ // 100) * 1.2 and e.iram[0x21] & 0x10 and 190 <= ms <= 215,
+          "(%d calls, at %.1f ms, wipe %.0f ms)" % (len(calls), calls[0] * 1000 / CLOCK_HZ if calls else -1, ms))
+    e, n, seen, calls, ms = wipe_with_ticks(0)
+    check("wipe with the countdown at 0: countdown untouched, tick flag left set",
+          (e.iram[0x43], e.iram[0x44]) == (0, 0) and e.iram[0x20] & 0x80 and e.xram[bp.HN_TICK] == 0)
+    # an interrupt lowers the countdown mid-wipe (none in the stock code goes below 30): it stops at 1
+    e, n, seen, calls, ms = wipe_with_ticks(200, lambda em, k: k == 60 and (em.iram.__setitem__(0x43, 0),
+                                                                em.iram.__setitem__(0x44, 3)))
+    cd = (e.iram[0x43] << 8) | e.iram[0x44]
+    check("countdown set to 3 mid-wipe: stops at 1, never 0, tick flag set for the main loop",
+          cd == 1 and min(c for c, _ in seen) >= 1 and e.iram[0x20] & 0x80,
+          "(countdown %d, min %d)" % (cd, min(c for c, _ in seen)))
 
 
 def test_enter_vol():
@@ -333,7 +435,7 @@ def test_enter_vol():
     e = emu()
     e.lcd.gram = [0xFFFF] * len(e.lcd.gram)
     e.iram[0x47], e.iram[0x2B] = 3, 1
-    e.iram[0x43], e.iram[0x44] = 0, 20               # unmute countdown running
+    e.iram[0x43], e.iram[0x44] = 0, 20               # unmute due within the wipe (below HN_CD_MIN)
     edges, seen = [], set()
     e.hooks[LAB["hn_fill"]] = lambda em: edges.append((em.R(2) << 8) | em.R(3)) \
         if (em.R(1), (em.R(6) << 8) | em.R(7)) == (2, bp.ORANGE) else None
@@ -341,9 +443,9 @@ def test_enter_vol():
     e.call(LAB["hn_enter_vol"])
     e.setR(7, 7)
     e.call(0x5936)
-    check("countdown running: 0x5936 fast-clears, no edge fills", 0x51EE in seen and not edges)
+    check("countdown 20: 0x5936 fast-clears, no edge fills", 0x51EE in seen and not edges)
     same = all(px(e, x, y) == px(ref, x, y) for x in range(W) for y in range(H))
-    check("countdown running: same final screen, HN_PEND back to 0", same and e.xram[bp.HN_PEND] == 0)
+    check("countdown 20: same final screen, HN_PEND back to 0", same and e.xram[bp.HN_PEND] == 0)
     for s in bp.VOL_ENTRY_SITES:
         e = emu()
         e.iram[0x47] = 1
@@ -467,6 +569,89 @@ def draw_time(activity, quiet=10):
     return len(activity) * CHUNK
 
 
+def countdown(e):
+    """The unmute countdown, RAM 0x43:0x44 (main-loop ticks of 10 ms)."""
+    return (e.iram[0x43] << 8) | e.iram[0x44]
+
+
+def watch_wipe(amp):
+    """Log hn_wipe's calls (clock, unmute countdown and 0x20.3 on entry) and hn_fill's (clock, x, w, colour)."""
+    wipes, fills = [], []
+    amp.e.hooks[LAB["hn_wipe"]] = lambda em: wipes.append((em.cycles, countdown(em), bool(em.iram[0x20] & 0x08)))
+    amp.e.hooks[LAB["hn_fill"]] = lambda em: fills.append(
+        (em.cycles, (em.R(2) << 8) | em.R(3), em.R(1), (em.R(6) << 8) | em.R(7)))
+    return wipes, fills
+
+
+def entry_mark(amp, wipes, fills):
+    return {"wipes": len(wipes), "events": len(amp.events), "fills": len(fills)}
+
+
+def vol_entry_checks(step, new, entry, wipes, fills):
+    """A volume-key entry from home. hn_wipe decides on what it finds: with post_power_on still to
+    run (0x20.3) or the unmute countdown (RAM 0x43:0x44) at 1..HN_CD_MIN-1 (the unmute falls due
+    within the wipe) the page opens with the fast clear; otherwise with the 160-step edge wipe. The NJW1194 volume write comes
+    before the wipe routine either way, and before the first edge fill. Returns the kind."""
+    edge_fills = [(c, x) for c, x, w, col in fills[entry["fills"]:] if w == 2 and col != 0]
+    edges = [x for c, x in edge_fills]
+    first = wipes[entry["wipes"]:entry["wipes"] + 1]
+    cd = first[0][1] if first else None
+    pending = bool(first) and first[0][2]
+    fast = cd is not None and (pending or 1 <= cd < bp.HN_CD_MIN)
+    print("    %-12s unmute countdown at hn_wipe: %s%s -> %s" % (step, cd, ", post_power_on pending" if pending else "",
+                                                               "fast clear" if fast else "edge wipe") +
+          ("" if fast or not (first and edge_fills) else
+           ", last edge %.0f ms after hn_wipe" % ((edge_fills[-1][0] - first[0][0]) * 1000 / CLOCK_HZ)))
+    if fast:
+        check("%-12s %s: fast clear, no edge fills" %
+              (step, "post_power_on pending" if pending else "countdown %d (unmute due within the wipe)" % cd),
+              not edges, "(%d)" % len(edges))
+    else:
+        check("%-12s countdown %s: 160 edge steps, 318 down to 0" % (step, cd),
+              bool(first) and edges == list(range(318, -1, -2)), "(%d steps)" % len(edges))
+    vol_writes = [c for c, nm, d in new.events[entry["events"]:] if nm == "njw1194_write" and "R7=10" in d]
+    check("%-12s NJW1194 volume write before the wipe routine" % step,
+          bool(first) and bool(vol_writes) and vol_writes[0] < first[0][0],
+          "(write at %s, wipe at %s clocks)" % (vol_writes[:1], first[:1]))
+    if first and vol_writes:
+        print("    %-12s volume write %.1f ms before the wipe routine" %
+              (step, (first[0][0] - vol_writes[0]) * 1000 / CLOCK_HZ))
+    if not fast:
+        check("%-12s first edge fill after the volume write" % step,
+              bool(vol_writes) and len(fills) > entry["fills"] and fills[entry["fills"]][0] > vol_writes[0])
+    return "fast" if fast else "wipe"
+
+
+BACKLIGHT = ("pin", "P0.6 backlight")
+
+
+def audio_transitions(amp):
+    out, last = [], None
+    for c, st in amp.state_changes:
+        st = tuple(kv for kv in st if kv[0] != BACKLIGHT)
+        if st != last:
+            out.append((c / CLOCK_HZ, st))
+            last = st
+    return out
+
+
+def audio_checks(label, ref, new):
+    """Every audio state fast-lcd went through, in the same order, none more than 0.10 s later."""
+    tr_ref, tr_new = audio_transitions(ref), audio_transitions(new)
+    same_order = [s for _, s in tr_ref] == [s for _, s in tr_new]
+    check("%ssame sequence of audio states, in the same order" % label, same_order,
+          "(%d vs %d states)" % (len(tr_ref), len(tr_new)))
+    if same_order:
+        late = [(tn - tr, tr) for (tr, _), (tn, _) in zip(tr_ref, tr_new) if tn - tr > 0.10]
+        check("%sno audio state more than 0.10 s later than fast-lcd" % label, not late,
+              "" if not late else "(%d, first %+.2f s at %.2f s)" % (len(late), late[0][0], late[0][1]))
+        moved = [(tr, tn - tr) for (tr, _), (tn, _) in zip(tr_ref, tr_new) if abs(tn - tr) > 0.05]
+        for tr, d in moved:
+            print("    %saudio state at %7.2f s moves %+.2f s" % (label, tr, d))
+    bl = [[d for _, nm, d in amp.events if nm == BACKLIGHT[1]] for amp in (ref, new)]
+    check("%sbacklight switches the same way" % label, bl[0] == bl[1])
+
+
 def tour():
     print("\nWhole firmware, lockstep with fast-lcd")
     amps = [Amp(BASE), Amp(NEW)]
@@ -474,43 +659,12 @@ def tour():
         amp.set_pin(0xC0, 5, 0)                         # USB audio present
         amp.boot()
     ref, new = amps
-    wipes, fills = [], []
-    new.e.hooks[LAB["hn_wipe"]] = lambda em: wipes.append(em.cycles)
-    new.e.hooks[LAB["hn_fill"]] = lambda em: fills.append(
-        (em.cycles, (em.R(2) << 8) | em.R(3), em.R(1), (em.R(6) << 8) | em.R(7)))
-    entry, kinds = {}, []
-
-    def vol_entry_checks(step, new, entry):
-        """A volume-key entry from home: with the unmute countdown (RAM 0x43:0x44) running at the
-        press, the page opens with the fast clear; otherwise with the 160-step edge wipe. The
-        NJW1194 volume write comes before the wipe routine either way."""
-        edges = [x for c, x, w, col in fills[entry["fills"]:] if w == 2 and col != 0]
-        running = entry["countdown"] != 0
-        kinds.append(running)
-        print("    %-12s unmute countdown at the press: %d -> %s" %
-              (step, entry["countdown"], "fast clear" if running else "edge wipe"))
-        if running:
-            check("%-12s countdown running: fast clear, no edge fills" % step, not edges, "(%d)" % len(edges))
-        else:
-            check("%-12s countdown over: 160 edge steps, 318 down to 0" % step,
-                  edges == list(range(318, -1, -2)), "(%d steps)" % len(edges))
-        vol_writes = [c for c, nm, d in new.events[entry["events"]:]
-                      if nm == "njw1194_write" and "R7=10" in d]
-        first = wipes[entry["wipes"]:entry["wipes"] + 1]
-        check("%-12s NJW1194 volume write before the wipe routine" % step,
-              bool(first) and bool(vol_writes) and vol_writes[0] < first[0],
-              "(write at %s, wipe at %s clocks)" % (vol_writes[:1], first))
-        if first and vol_writes:
-            print("    %-12s volume write %.1f ms before the wipe routine" %
-                  (step, (first[0] - vol_writes[0]) * 1000 / CLOCK_HZ))
-        if not running:
-            check("%-12s first edge fill after the volume write" % step,
-                  bool(vol_writes) and fills[entry["fills"]][0] > vol_writes[0])
+    wipes, fills = watch_wipe(new)
+    entry = {}
     for step, cmd, secs, kind in TOUR:
         w0 = time.time()
         if step in VOL_ENTRY_STEPS:
-            entry = {"wipes": len(wipes), "events": len(new.events), "fills": len(fills),
-                     "countdown": (new.e.iram[0x43] << 8) | new.e.iram[0x44]}
+            entry = entry_mark(new, wipes, fills)
         for amp in amps:
             if cmd is not None:
                 amp.press(cmd)
@@ -536,7 +690,7 @@ def tour():
         if step in ("menu", "menu_down"):
             check("%-12s really in the menu (page >= 3)" % step, new.page >= 3, "(page %d)" % new.page)
         if step in VOL_ENTRY_STEPS:
-            vol_entry_checks(step, new, entry)
+            vol_entry_checks(step, new, entry, wipes, fills)
         if step in ("back_home", "vol_timeout"):
             # The page timer is armed after the volume write, which now follows the 200 ms
             # wipe and page draw, so home comes back that much later than on fast-lcd (0 to 0.30 s).
@@ -545,31 +699,8 @@ def tour():
                   both and 0 <= home_at[1] - home_at[0] <= 0.30, str(home_at))
         new.lcd.save_png(os.path.join(HERE, "build", "tour_%s.png" % step))
 
-    check("tour covers a fast-clear entry and a wiped entry", True in kinds and False in kinds, str(kinds))
     print("\n  Audio state, after every write that changes it")
-    backlight = ("pin", "P0.6 backlight")
-
-    def transitions(amp):
-        out, last = [], None
-        for c, st in amp.state_changes:
-            st = tuple(kv for kv in st if kv[0] != backlight)
-            if st != last:
-                out.append((c / CLOCK_HZ, st))
-                last = st
-        return out
-    tr_ref, tr_new = transitions(ref), transitions(new)
-    same_order = [s for _, s in tr_ref] == [s for _, s in tr_new]
-    check("same sequence of audio states, in the same order", same_order,
-          "(%d vs %d states)" % (len(tr_ref), len(tr_new)))
-    if same_order:
-        late = [(tn - tr, tr) for (tr, _), (tn, _) in zip(tr_ref, tr_new) if tn - tr > 0.10]
-        check("no audio state more than 0.10 s later than fast-lcd", not late,
-              "" if not late else "(%d, first %+.2f s at %.2f s)" % (len(late), late[0][0], late[0][1]))
-        moved = [(tr, tn - tr) for (tr, _), (tn, _) in zip(tr_ref, tr_new) if abs(tn - tr) > 0.05]
-        for tr, d in moved:
-            print("    audio state at %7.2f s moves %+.2f s" % (tr, d))
-    bl = [[d for _, nm, d in amp.events if nm == backlight[1]] for amp in amps]
-    check("backlight switches the same way", bl[0] == bl[1])
+    audio_checks("", ref, new)
 
     def semantic_args(name, regs):
         """The part of a writer's logged R3/R4/R5/R7 that reaches the chip, per
@@ -586,6 +717,90 @@ def tour():
         a = {semantic_args(name, regs) for regs in ref.calls.get(name, set())}
         b = {semantic_args(name, regs) for regs in new.calls.get(name, set())}
         check("%-15s same argument sets (%d distinct)" % (name, len(a)), a == b)
+
+
+NEC_USB, NEC_OPTICAL, NEC_BT = 0x10, 0x11, 0x13   # direct-select inputs 1, 2, 4 (NEC_HDMI: 5)
+UNMUTE_CALL = 0x33FB                     # mute_timer_expired: mov R7,#1 ; lcall mute_state_set
+
+
+def headphone_unplugged(amp):
+    amp.e.iram[0x2B] = 2                 # headphone output
+    amp.set_pin(0xA0, 6, 0)              # P2.6 low: Timer0 holds the countdown at 300 (0x3EE9)
+
+
+# (name, what it shows, setup [(NEC command, callable or None, then wait s)], countdown, expected entry,
+# seconds from the Vol+ press to the screen check, page then). Countdown "held": re-armed by the firmware,
+# never expires (no unmute in either image); "runs": counts down to an unmute during the scenario.
+# In "splash" post_power_on runs right after the key and returns to the home page, in both images.
+SCENARIOS = [
+    ("bt", "Bluetooth, no stream: 0x583F holds the countdown at 40..50",
+     [(NEC_POWER, None, 9.0), (NEC_BT, None, 4.0)], "held", "wipe", 1.0, 2),
+    ("optical", "Optical without signal: Timer0 holds the countdown at 100",
+     [(NEC_POWER, None, 9.0), (NEC_OPTICAL, None, 4.0)], "held", "wipe", 1.0, 2),
+    ("headphone", "headphone output, P2.6 low: Timer0 holds the countdown at 300",
+     [(NEC_POWER, None, 9.0), (None, headphone_unplugged, 1.0)], "held", "wipe", 1.0, 2),
+    ("power_on", "USB, Vol+ during the countdown after power-on",
+     [(NEC_POWER, None, 7.4)], "runs", "wipe", 1.0, 2),
+    ("hdmi_switch", "Vol+ 0.5 s after switching to HDMI",
+     [(NEC_POWER, None, 9.0), (NEC_HDMI, None, 0.5)], "runs", "wipe", 1.0, 2),
+    ("unmute_due", "USB, Vol+ when the unmute is due within the wipe",
+     [(NEC_POWER, None, 8.15)], "runs", "fast", 1.0, 2),
+    ("splash", "Vol+ during the power-on logo, dispatched just before post_power_on",
+     [(NEC_POWER, None, 2.5)], "runs", "fast", 4.0, 1),      # the key waits for the logo (~2.5 s)
+]
+
+
+def input_scenarios():
+    print("\nVolume key after each input settles, whole firmware, against fast-lcd")
+    for name, what, setup, cd_kind, want, settle, page in SCENARIOS:
+        w0 = time.time()
+        print("  %s: %s" % (name, what))
+        amps = [Amp(BASE), Amp(NEW)]
+        ref, new = amps
+        wipes, fills = watch_wipe(new)
+        unmutes = [[], []]
+        for k, amp in enumerate(amps):
+            amp.e.hooks[UNMUTE_CALL] = lambda em, k=k: unmutes[k].append(em.cycles / CLOCK_HZ)
+            amp.set_pin(0xC0, 5, 0)                     # USB audio present
+            amp.boot()
+            for cmd, fn, secs in setup:
+                if cmd is not None:
+                    amp.press(cmd)
+                if fn is not None:
+                    fn(amp)
+                amp.wait(secs)
+        label = "%-11s " % name
+        before = [len(u) for u in unmutes]
+        entry = entry_mark(new, wipes, fills)
+        t_press = new.t
+        for amp in amps:
+            amp.press(NEC_VOL_UP)
+            amp.wait(settle)
+        kind = vol_entry_checks(name, new, entry, wipes, fills)
+        check("%sentry as intended (%s)" % (label, want), kind == want, "(%s)" % kind)
+        check("%ssame page, power, volumes, input, output" % label, state(ref) == state(new),
+              "%s vs %s" % (state(ref), state(new)))
+        check("%spage %d, screen as expected (volume: hn_volpage's render; home: fast-lcd outside our bands)" %
+              (label, page), new.page == page and screen_ok(ref, new))
+        new.lcd.save_png(os.path.join(HERE, "build", "inputs_%s.png" % name))
+        for amp in amps:
+            amp.wait(2.5)
+        if cd_kind == "runs":
+            for amp in amps:
+                amp.wait(3.0)                           # the splash case unmutes 5.85 s after the press
+        after = [u[b:] for u, b in zip(unmutes, before)]
+        if cd_kind == "held":
+            check("%scountdown held: no unmute in either image, still running at the end" % label,
+                  after == [[], []] and countdown(ref.e) > 0 and countdown(new.e) > 0,
+                  "(%s, %d / %d)" % (after, countdown(ref.e), countdown(new.e)))
+        else:
+            ok = len(after[0]) == 1 and len(after[1]) == 1
+            shift = after[1][0] - after[0][0] if ok else None
+            check("%sunmute %s after the press, no later than fast-lcd + 0.10 s" %
+                  (label, "%.2f s" % (after[1][0] - t_press) if ok else "?"),
+                  ok and shift <= 0.10, "(%s)" % ("%+.3f s" % shift if ok else after))
+        audio_checks(label, ref, new)
+        print("    %s: %.1f s" % (name, time.time() - w0), flush=True)
 
 
 def test_align():
@@ -701,8 +916,8 @@ def sweep():
 
 GROUPS = {
     "unit": [image_diff, test_fill, test_digit2x, test_text, test_name_ptr,
-             test_draw_volume, test_volpage, test_wipe, test_enter_vol, test_home_tail, test_align],
-    "tour": [tour],
+             test_draw_volume, test_volpage, test_wipe, test_tick, test_enter_vol, test_home_tail, test_align],
+    "tour": [tour, input_scenarios],
     "sweep": [sweep],
 }
 

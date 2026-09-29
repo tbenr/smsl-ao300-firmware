@@ -21,10 +21,26 @@ A reduced first build of study 3 in features/ui-theme/ui_themes.html:
             the wipe (about 200 ms, WIPE_DELAY_N) and the static page, then draws the
             number and the line. So the sound changes at once and only the picture
             takes its time. The page-2 renderer path (0x2106 / 0x2143) is unchanged
-            and wipes too. While the unmute countdown (RAM 0x43:0x44, after power-on
-            and input switches) is running, hn_wipe does the fast clear instead of the
-            wipe, on both paths: the main loop counts that timer down and a 200 ms
-            block would delay the unmute. The static page and the number still draw.
+            and wipes too.
+  unmute    the wipe blocks the main loop, which counts the unmute countdown RAM 0x43:0x44
+            down once per 10 ms tick flag (0x20.7) and unmutes when it reaches 0. On
+            Bluetooth without a stream (0x583F), optical/coax without lock and the
+            headphone output with P2.6 low (Timer0) the firmware keeps re-arming it, so it
+            never expires there; after power-on and input switches it runs out. hn_wipe:
+            - countdown 1..HN_CD_MIN-1 (25 ticks): the unmute falls due during the wipe and
+              the page after it, so the page opens with the fast clear, as in hn2; the same
+              while post_power_on is still to run (0x20.3): a key pressed during the power-on
+              logo is dispatched just before it, and its sequence must not wait;
+            - otherwise it wipes, and hn_tick, called on each of the 160 steps, stands in for
+              the main loop: it takes the tick flag and counts the countdown down, never
+              below 1, handing the first tick back at the end so every tick is counted once
+              and the main loop still runs the expiry itself. It also answers the first
+              re-mute request 0x21.4 in the wipe (audio_apply_mute 0x58D3), as the main loop
+              would: on optical/coax without lock the key handler's volume write is undone
+              at the next tick.
+            So the page wipes on every input once the unmute countdown is not about to
+            expire, and the unmute comes at most one tick later than on fast-lcd (emulator:
+            +0.01 s at worst). Other main-loop timers still stop for the 200 ms (README, Risks).
 
 Accent: the theme colour (RAM 0x48:0x49), SMSL orange 0xFC43 on the White theme.
 Everything goes through the fast pixel path of fast-lcd; hn_fill and hn_digit2x
@@ -32,7 +48,7 @@ stream bytes themselves, the text goes through the stock glyph painters.
 
 Register use: every hn_* routine may clobber A, B, DPTR, PSW and R0-R7 (the stock
 routines they replace or wrap do the same). 0x48:0x49 is saved and restored
-around every drawing sequence. New state lives in XDATA 0x0100..0x0110.
+around every drawing sequence. New state lives in XDATA 0x0100..0x0112.
 """
 import hashlib
 import os
@@ -85,6 +101,17 @@ HN_TY = 0x010C
 HN_VOL = 0x010D                     # volume being drawn (0..60)
 HN_WX = 0x010E                      # wipe position (hi, lo)
 HN_PEND = 0x0110                    # volume page pending: set by hn_enter_vol, cleared by hn_draw_volume
+HN_TICK = 0x0111                    # hn_wipe: a main-loop tick has been taken (handed back at the end)
+HN_REMUTE = 0x0112                  # hn_wipe: the main loop's re-mute request 0x21.4 answered once
+
+POWER_ON_BIT = 0x03                 # bit 0x20.3: power-on path (0x55E4) set it, main_tasks_on runs post_power_on
+TICK_BIT = 0x07                     # bit 0x20.7: Timer0 sets it every 10 ms, main_tick_10ms (0x3335) clears it
+REMUTE_BIT = 0x0C                   # bit 0x21.4: re-mute request (Timer0 while optical/coax has no lock, INT1)
+UNMUTED_BIT = 0x14                  # bit 0x22.4: audio unmuted (mute_state_set, audio_apply_mute read it)
+AUDIO_APPLY_MUTE = 0x58D3           # 0x22.4 set: volume_apply; clear: NJW1194 to the mute code; then the DAC
+# unmute countdown RAM 0x43:0x44 (main-loop ticks). At 1..HN_CD_MIN-1 the unmute falls due within the
+# wipe (at most 21 ticks, plus one already pending) and the page drawn after it: no wipe then.
+HN_CD_MIN = 25
 
 # hn_wipe delay per 2-px step: `mov R6,#N ; d1: mov R7,#0 ; d2: djnz R7,d2 ; djnz R6,d1` is about
 # 772 clocks per N (24 MHz). With N = 30 the 160 steps take about 200 ms in all.
@@ -111,7 +138,7 @@ def vol_entry_bytes(target):
     return bytes([0x12, target >> 8, target & 0xFF, 0x80, len(VOL_ENTRY_ORIG) - 5])
 
 
-VERSION_TEXT = "v1.4 tbenr hn2"
+VERSION_TEXT = "v1.4 tbenr hn3"
 VERSION_PTR_ADDR = 0x22CA
 VERSION_MAX_LEN = 20
 
@@ -478,18 +505,32 @@ def build_volume_page(a):
     a.L("hn_wipe")
     call(a, CLEAR_SMALL_BUF, "as ui_clear_screen")
     call(a, CLEAR_BIG_BUF)
-    a.comment("while the unmute countdown (RAM 0x43:0x44, decremented by the main loop) runs, a 200 ms")
-    a.comment("wipe would freeze it and delay the unmute: open the page with the fast clear instead")
+    a.comment("fast clear instead of the wipe (1) while post_power_on is still to run (0x20.3: a key queued")
+    a.comment("during the power-on logo is dispatched first; its audio sequence and the unmute countdown")
+    a.comment("must not wait), (2) with the unmute countdown (RAM 0x43:0x44) at 1..HN_CD_MIN-1: the unmute")
+    a.comment("falls due during the wipe and the page after it")
+    a.i("jb 0x20.3,hw_fast   ; post_power_on pending", 0x20, POWER_ON_BIT, rel("hw_fast"))
     a.i("mov A,0x43", 0xE5, 0x43)
-    a.i("orl A,0x44", 0x45, 0x44)
-    a.i("jz hw_go", 0x60, rel("hw_go"))
+    a.i("jnz hw_go         ; 256 or more", 0x70, rel("hw_go"))
+    a.i("mov A,0x44", 0xE5, 0x44)
+    a.i("jz hw_go          ; 0: not running", 0x60, rel("hw_go"))
+    a.i("clr C", 0xC3)
+    a.i("subb A,#%d        ; C = countdown < HN_CD_MIN" % HN_CD_MIN, 0x94, HN_CD_MIN)
+    a.i("jnc hw_go", 0x50, rel("hw_go"))
+    a.L("hw_fast")
     jump(a, LCD_CLEAR_BLACK, "the fast clear ui_clear_screen ends with; returns to our caller")
     a.L("hw_go")
+    mov_dptr(a, HN_TICK)
+    a.i("clr A             ; no main-loop tick taken yet", 0xE4)
+    a.i("movx @DPTR,A", 0xF0)
+    a.i("inc DPTR          ; HN_REMUTE: no re-mute answered yet", 0xA3)
+    a.i("movx @DPTR,A", 0xF0)
     call(a, "hn_begin")
     mov_dptr(a, HN_WX)
     a.i("mov A,#0x01", 0x74, 0x01); a.i("movx @DPTR,A", 0xF0); a.i("inc DPTR", 0xA3)
     a.i("mov A,#0x3E       ; x = 318", 0x74, 0x3E); a.i("movx @DPTR,A", 0xF0)
     a.L("hc_step")
+    call(a, "hn_tick", "count the unmute countdown down while the main loop waits")
     call(a, "hn_accent")
     call(a, "hc_load")
     movr(a, 1, 2); movr(a, 5, 0); movr(a, 4, 170)
@@ -524,7 +565,59 @@ def build_volume_page(a):
     a.L("hc_last")
     rect(a, 0, 2, 0, 170, 0x0000)
     call(a, "hn_fill", "the edge leaves at x 0")
+    a.comment("the first tick hn_tick took is handed back: the main loop runs it (all its countdowns) once")
+    mov_dptr(a, HN_TICK)
+    a.i("movx A,@DPTR", 0xE0)
+    a.i("jz hc_end", 0x60, rel("hc_end"))
+    a.i("setb 0x20.7        ; main-loop tick flag", 0xD2, TICK_BIT)
+    a.L("hc_end")
     jump(a, "hn_end")
+
+    a.comment("hn_tick: once per wipe step (1.25 ms), stands in for the two main-loop duties that touch the")
+    a.comment("audio. First the re-mute request 0x21.4 (main_tick_tasks 0x3325 answers it on every pass): the key")
+    a.comment("handler has just written the new volume to the NJW1194, and on optical/coax without lock Timer0")
+    a.comment("asks for the mute again at the next tick. The first request in the wipe is answered here; after it")
+    a.comment("0x22.4 stays clear until the wipe ends, so repeats would write the same values (5.2 ms each) and")
+    a.comment("wait for the main loop instead.")
+    a.L("hn_tick")
+    a.i("jnb 0x21.4,ht_tick ; no re-mute request", 0x30, REMUTE_BIT, rel("ht_tick"))
+    mov_dptr(a, HN_REMUTE)
+    a.i("movx A,@DPTR", 0xE0)
+    a.i("jnz ht_tick        ; answered once in this wipe", 0x70, rel("ht_tick"))
+    a.i("inc A", 0x04)
+    a.i("movx @DPTR,A", 0xF0)
+    a.i("clr 0x21.4         ; as main_tick_tasks 0x3325..0x332C", 0xC2, REMUTE_BIT)
+    a.i("clr 0x22.4", 0xC2, UNMUTED_BIT)
+    call(a, AUDIO_APPLY_MUTE, "audio_apply_mute: NJW1194 to the mute code, DAC")
+    a.L("ht_tick")
+    a.comment("Then the tick (1.25 ms per step, so no 10 ms tick is missed). While the unmute countdown")
+    a.comment("runs, take the main loop's tick flag 0x20.7 and count 0x43:0x44 down as the main loop would,")
+    a.comment("never below 1: the tick that takes it to 0 (and unmutes) stays with the main loop. The first")
+    a.comment("tick taken is not counted here; hn_wipe sets the flag again at the end and the main loop counts")
+    a.comment("it, so the countdown sees every tick exactly once and the other countdowns one, as before.")
+    a.i("jnb 0x20.7,ht_ret  ; no tick since the last step", 0x30, TICK_BIT, rel("ht_ret"))
+    a.i("mov A,0x43", 0xE5, 0x43)
+    a.i("jnz ht_take", 0x70, rel("ht_take"))
+    a.i("mov A,0x44", 0xE5, 0x44)
+    a.i("clr C", 0xC3)
+    a.i("subb A,#2", 0x94, 2)
+    a.i("jc ht_ret          ; 0 (not running) or 1: leave the tick to the main loop", 0x40, rel("ht_ret"))
+    a.L("ht_take")
+    a.i("clr 0x20.7", 0xC2, TICK_BIT)
+    mov_dptr(a, HN_TICK)
+    a.i("movx A,@DPTR", 0xE0)
+    a.i("jnz ht_dec", 0x70, rel("ht_dec"))
+    a.i("inc A", 0x04)
+    a.i("movx @DPTR,A       ; first tick: counted by the main loop after the wipe", 0xF0)
+    a.i("ret", 0x22)
+    a.L("ht_dec")
+    a.i("mov A,0x44", 0xE5, 0x44)
+    a.i("jnz ht_lo", 0x70, rel("ht_lo"))
+    a.i("dec 0x43", 0x15, 0x43)
+    a.L("ht_lo")
+    a.i("dec 0x44           ; countdown >= 2 here, so it stays >= 1", 0x15, 0x44)
+    a.L("ht_ret")
+    a.i("ret", 0x22)
     a.L("hc_load")
     mov_dptr(a, HN_WX)
     a.i("movx A,@DPTR", 0xE0); a.i("mov R2,A", 0xFA); a.i("inc DPTR", 0xA3)

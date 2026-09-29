@@ -2,14 +2,14 @@
 ; 0x2106: 12 5d 42 -> 12 9a 7c  (hn_clear)
 ; 0x2143: 02 21 67 -> 02 9a 6a  (hn_volpage)
 ; 0x5936: ab 07 e5 -> 02 99 99  (hn_draw_volume)
-; 0x2A25: e4 78 02 -> 02 9b 2e  (hn_align_big)
-; 0x3A82: e4 78 02 -> 02 9b 48  (hn_align_small)
-; 0x5C99: 02 59 16 -> 02 9b 10  (hn_home_tail)
+; 0x2A25: e4 78 02 -> 02 9b 7e  (hn_align_big)
+; 0x3A82: e4 78 02 -> 02 9b 98  (hn_align_small)
+; 0x5C99: 02 59 16 -> 02 9b 60  (hn_home_tail)
 ; 0x0D33: 12 5d 42 7b ff -> 12 9a 75 80 11  (lcall hn_enter_vol ; sjmp 0x0D49)
 ; 0x0DB3: 12 5d 42 7b ff -> 12 9a 75 80 11  (lcall hn_enter_vol ; sjmp 0x0DC9)
 ; 0x0E5A: 12 5d 42 7b ff -> 12 9a 75 80 11  (lcall hn_enter_vol ; sjmp 0x0E70)
 ; 0x0F02: 12 5d 42 7b ff -> 12 9a 75 80 11  (lcall hn_enter_vol ; sjmp 0x0F18)
-; version string 'v1.4 tbenr hn2' at 0x9B62, pointer 0x22CA repointed
+; version string 'v1.4 tbenr hn3' at 0x9BB2, pointer 0x22CA repointed
 
             ; input-name pointers for inputs 1..6 (stock strings), then the VOL label
 names:
@@ -445,137 +445,202 @@ hc_stock:
 hn_wipe:
   9A86: 12 5c bc                 lcall 0x5CBC   ; as ui_clear_screen
   9A89: 12 5c cb                 lcall 0x5CCB
-            ; while the unmute countdown (RAM 0x43:0x44, decremented by the main loop) runs, a 200 ms
-            ; wipe would freeze it and delay the unmute: open the page with the fast clear instead
-  9A8C: e5 43                    mov A,0x43
-  9A8E: 45 44                    orl A,0x44
-  9A90: 60 03                    jz hw_go
-  9A92: 02 51 ee                 ljmp 0x51EE   ; the fast clear ui_clear_screen ends with; returns to our caller
+            ; fast clear instead of the wipe (1) while post_power_on is still to run (0x20.3: a key queued
+            ; during the power-on logo is dispatched first; its audio sequence and the unmute countdown
+            ; must not wait), (2) with the unmute countdown (RAM 0x43:0x44) at 1..HN_CD_MIN-1: the unmute
+            ; falls due during the wipe and the page after it
+  9A8C: 20 03 0d                 jb 0x20.3,hw_fast   ; post_power_on pending
+  9A8F: e5 43                    mov A,0x43
+  9A91: 70 0c                    jnz hw_go         ; 256 or more
+  9A93: e5 44                    mov A,0x44
+  9A95: 60 08                    jz hw_go          ; 0: not running
+  9A97: c3                       clr C
+  9A98: 94 19                    subb A,#25        ; C = countdown < HN_CD_MIN
+  9A9A: 50 03                    jnc hw_go
+hw_fast:
+  9A9C: 02 51 ee                 ljmp 0x51EE   ; the fast clear ui_clear_screen ends with; returns to our caller
 hw_go:
-  9A95: 12 98 66                 lcall hn_begin
-  9A98: 90 01 0e                 mov DPTR,#0x010E
-  9A9B: 74 01                    mov A,#0x01
-  9A9D: f0                       movx @DPTR,A
-  9A9E: a3                       inc DPTR
-  9A9F: 74 3e                    mov A,#0x3E       ; x = 318
-  9AA1: f0                       movx @DPTR,A
+  9A9F: 90 01 11                 mov DPTR,#0x0111
+  9AA2: e4                       clr A             ; no main-loop tick taken yet
+  9AA3: f0                       movx @DPTR,A
+  9AA4: a3                       inc DPTR          ; HN_REMUTE: no re-mute answered yet
+  9AA5: f0                       movx @DPTR,A
+  9AA6: 12 98 66                 lcall hn_begin
+  9AA9: 90 01 0e                 mov DPTR,#0x010E
+  9AAC: 74 01                    mov A,#0x01
+  9AAE: f0                       movx @DPTR,A
+  9AAF: a3                       inc DPTR
+  9AB0: 74 3e                    mov A,#0x3E       ; x = 318
+  9AB2: f0                       movx @DPTR,A
 hc_step:
-  9AA2: 12 98 93                 lcall hn_accent
-  9AA5: 12 9b 07                 lcall hc_load
-  9AA8: 79 02                    mov R1,#0x02
-  9AAA: 7d 00                    mov R5,#0x00
-  9AAC: 7c aa                    mov R4,#0xAA
-  9AAE: 12 98 10                 lcall hn_fill   ; 2-px edge at x
-  9AB1: 12 9b 07                 lcall hc_load
-  9AB4: ea                       mov A,R2
-  9AB5: 60 05                    jz hc_black       ; x < 256
-  9AB7: bb 3e 02                 cjne R3,#0x3E,hc_black
-  9ABA: 80 14                    sjmp hc_dec       ; x = 318: nothing right of the edge yet
+  9AB3: 12 9b 23                 lcall hn_tick   ; count the unmute countdown down while the main loop waits
+  9AB6: 12 98 93                 lcall hn_accent
+  9AB9: 12 9b 57                 lcall hc_load
+  9ABC: 79 02                    mov R1,#0x02
+  9ABE: 7d 00                    mov R5,#0x00
+  9AC0: 7c aa                    mov R4,#0xAA
+  9AC2: 12 98 10                 lcall hn_fill   ; 2-px edge at x
+  9AC5: 12 9b 57                 lcall hc_load
+  9AC8: ea                       mov A,R2
+  9AC9: 60 05                    jz hc_black       ; x < 256
+  9ACB: bb 3e 02                 cjne R3,#0x3E,hc_black
+  9ACE: 80 14                    sjmp hc_dec       ; x = 318: nothing right of the edge yet
 hc_black:
-  9ABC: eb                       mov A,R3
-  9ABD: 24 02                    add A,#2
-  9ABF: fb                       mov R3,A
-  9AC0: e4                       clr A
-  9AC1: 3a                       addc A,R2
-  9AC2: fa                       mov R2,A
-  9AC3: 79 02                    mov R1,#0x02
-  9AC5: 7d 00                    mov R5,#0x00
-  9AC7: 7c aa                    mov R4,#0xAA
-  9AC9: 7e 00                    mov R6,#0x00
-  9ACB: 7f 00                    mov R7,#0x00
-  9ACD: 12 98 10                 lcall hn_fill   ; black where the edge was
+  9AD0: eb                       mov A,R3
+  9AD1: 24 02                    add A,#2
+  9AD3: fb                       mov R3,A
+  9AD4: e4                       clr A
+  9AD5: 3a                       addc A,R2
+  9AD6: fa                       mov R2,A
+  9AD7: 79 02                    mov R1,#0x02
+  9AD9: 7d 00                    mov R5,#0x00
+  9ADB: 7c aa                    mov R4,#0xAA
+  9ADD: 7e 00                    mov R6,#0x00
+  9ADF: 7f 00                    mov R7,#0x00
+  9AE1: 12 98 10                 lcall hn_fill   ; black where the edge was
 hc_dec:
             ; delay: R6, R7 are free here (hc_load reloads them); N = WIPE_DELAY_N for a ~200 ms wipe
-  9AD0: 7e 1e                    mov R6,#0x1E
+  9AE4: 7e 1e                    mov R6,#0x1E
 hc_d1:
-  9AD2: 7f 00                    mov R7,#0x00
+  9AE6: 7f 00                    mov R7,#0x00
 hc_d2:
-  9AD4: df fe                    djnz R7,hc_d2
-  9AD6: de fa                    djnz R6,hc_d1
-  9AD8: 12 9b 07                 lcall hc_load
-  9ADB: ea                       mov A,R2
-  9ADC: 4b                       orl A,R3
-  9ADD: 60 14                    jz hc_last
-  9ADF: c3                       clr C
-  9AE0: eb                       mov A,R3
-  9AE1: 94 02                    subb A,#2
-  9AE3: fb                       mov R3,A
-  9AE4: ea                       mov A,R2
-  9AE5: 94 00                    subb A,#0
-  9AE7: fa                       mov R2,A
-  9AE8: 90 01 0e                 mov DPTR,#0x010E
-  9AEB: ea                       mov A,R2
-  9AEC: f0                       movx @DPTR,A
-  9AED: a3                       inc DPTR
-  9AEE: eb                       mov A,R3
-  9AEF: f0                       movx @DPTR,A
-  9AF0: 02 9a a2                 ljmp hc_step
+  9AE8: df fe                    djnz R7,hc_d2
+  9AEA: de fa                    djnz R6,hc_d1
+  9AEC: 12 9b 57                 lcall hc_load
+  9AEF: ea                       mov A,R2
+  9AF0: 4b                       orl A,R3
+  9AF1: 60 14                    jz hc_last
+  9AF3: c3                       clr C
+  9AF4: eb                       mov A,R3
+  9AF5: 94 02                    subb A,#2
+  9AF7: fb                       mov R3,A
+  9AF8: ea                       mov A,R2
+  9AF9: 94 00                    subb A,#0
+  9AFB: fa                       mov R2,A
+  9AFC: 90 01 0e                 mov DPTR,#0x010E
+  9AFF: ea                       mov A,R2
+  9B00: f0                       movx @DPTR,A
+  9B01: a3                       inc DPTR
+  9B02: eb                       mov A,R3
+  9B03: f0                       movx @DPTR,A
+  9B04: 02 9a b3                 ljmp hc_step
 hc_last:
-  9AF3: 7a 00                    mov R2,#0x00
-  9AF5: 7b 00                    mov R3,#0x00
-  9AF7: 79 02                    mov R1,#0x02
-  9AF9: 7d 00                    mov R5,#0x00
-  9AFB: 7c aa                    mov R4,#0xAA
-  9AFD: 7e 00                    mov R6,#0x00
-  9AFF: 7f 00                    mov R7,#0x00
-  9B01: 12 98 10                 lcall hn_fill   ; the edge leaves at x 0
-  9B04: 02 98 88                 ljmp hn_end
+  9B07: 7a 00                    mov R2,#0x00
+  9B09: 7b 00                    mov R3,#0x00
+  9B0B: 79 02                    mov R1,#0x02
+  9B0D: 7d 00                    mov R5,#0x00
+  9B0F: 7c aa                    mov R4,#0xAA
+  9B11: 7e 00                    mov R6,#0x00
+  9B13: 7f 00                    mov R7,#0x00
+  9B15: 12 98 10                 lcall hn_fill   ; the edge leaves at x 0
+            ; the first tick hn_tick took is handed back: the main loop runs it (all its countdowns) once
+  9B18: 90 01 11                 mov DPTR,#0x0111
+  9B1B: e0                       movx A,@DPTR
+  9B1C: 60 02                    jz hc_end
+  9B1E: d2 07                    setb 0x20.7        ; main-loop tick flag
+hc_end:
+  9B20: 02 98 88                 ljmp hn_end
+            ; hn_tick: once per wipe step (1.25 ms), stands in for the two main-loop duties that touch the
+            ; audio. First the re-mute request 0x21.4 (main_tick_tasks 0x3325 answers it on every pass): the key
+            ; handler has just written the new volume to the NJW1194, and on optical/coax without lock Timer0
+            ; asks for the mute again at the next tick. The first request in the wipe is answered here; after it
+            ; 0x22.4 stays clear until the wipe ends, so repeats would write the same values (5.2 ms each) and
+            ; wait for the main loop instead.
+hn_tick:
+  9B23: 30 0c 0f                 jnb 0x21.4,ht_tick ; no re-mute request
+  9B26: 90 01 12                 mov DPTR,#0x0112
+  9B29: e0                       movx A,@DPTR
+  9B2A: 70 09                    jnz ht_tick        ; answered once in this wipe
+  9B2C: 04                       inc A
+  9B2D: f0                       movx @DPTR,A
+  9B2E: c2 0c                    clr 0x21.4         ; as main_tick_tasks 0x3325..0x332C
+  9B30: c2 14                    clr 0x22.4
+  9B32: 12 58 d3                 lcall 0x58D3   ; audio_apply_mute: NJW1194 to the mute code, DAC
+ht_tick:
+            ; Then the tick (1.25 ms per step, so no 10 ms tick is missed). While the unmute countdown
+            ; runs, take the main loop's tick flag 0x20.7 and count 0x43:0x44 down as the main loop would,
+            ; never below 1: the tick that takes it to 0 (and unmutes) stays with the main loop. The first
+            ; tick taken is not counted here; hn_wipe sets the flag again at the end and the main loop counts
+            ; it, so the countdown sees every tick exactly once and the other countdowns one, as before.
+  9B35: 30 07 1e                 jnb 0x20.7,ht_ret  ; no tick since the last step
+  9B38: e5 43                    mov A,0x43
+  9B3A: 70 07                    jnz ht_take
+  9B3C: e5 44                    mov A,0x44
+  9B3E: c3                       clr C
+  9B3F: 94 02                    subb A,#2
+  9B41: 40 13                    jc ht_ret          ; 0 (not running) or 1: leave the tick to the main loop
+ht_take:
+  9B43: c2 07                    clr 0x20.7
+  9B45: 90 01 11                 mov DPTR,#0x0111
+  9B48: e0                       movx A,@DPTR
+  9B49: 70 03                    jnz ht_dec
+  9B4B: 04                       inc A
+  9B4C: f0                       movx @DPTR,A       ; first tick: counted by the main loop after the wipe
+  9B4D: 22                       ret
+ht_dec:
+  9B4E: e5 44                    mov A,0x44
+  9B50: 70 02                    jnz ht_lo
+  9B52: 15 43                    dec 0x43
+ht_lo:
+  9B54: 15 44                    dec 0x44           ; countdown >= 2 here, so it stays >= 1
+ht_ret:
+  9B56: 22                       ret
 hc_load:
-  9B07: 90 01 0e                 mov DPTR,#0x010E
-  9B0A: e0                       movx A,@DPTR
-  9B0B: fa                       mov R2,A
-  9B0C: a3                       inc DPTR
-  9B0D: e0                       movx A,@DPTR
-  9B0E: fb                       mov R3,A
-  9B0F: 22                       ret
+  9B57: 90 01 0e                 mov DPTR,#0x010E
+  9B5A: e0                       movx A,@DPTR
+  9B5B: fa                       mov R2,A
+  9B5C: a3                       inc DPTR
+  9B5D: e0                       movx A,@DPTR
+  9B5E: fb                       mov R3,A
+  9B5F: 22                       ret
             ; hn_home_tail: replaces home_refresh's ljmp 0x5916; adds the accent bar
 hn_home_tail:
-  9B10: 90 01 10                 mov DPTR,#0x0110
-  9B13: e4                       clr A             ; no volume page pending on the home screen
-  9B14: f0                       movx @DPTR,A
-  9B15: 12 59 16                 lcall 0x5916   ; as before, R7 = volume
-  9B18: 12 98 66                 lcall hn_begin
-  9B1B: 12 98 93                 lcall hn_accent
-  9B1E: 7a 00                    mov R2,#0x00
-  9B20: 7b 12                    mov R3,#0x12
-  9B22: 79 1c                    mov R1,#0x1C
-  9B24: 7d 72                    mov R5,#0x72
-  9B26: 7c 03                    mov R4,#0x03
-  9B28: 12 98 10                 lcall hn_fill   ; accent bar under the input name
-  9B2B: 02 98 88                 ljmp hn_end
+  9B60: 90 01 10                 mov DPTR,#0x0110
+  9B63: e4                       clr A             ; no volume page pending on the home screen
+  9B64: f0                       movx @DPTR,A
+  9B65: 12 59 16                 lcall 0x5916   ; as before, R7 = volume
+  9B68: 12 98 66                 lcall hn_begin
+  9B6B: 12 98 93                 lcall hn_accent
+  9B6E: 7a 00                    mov R2,#0x00
+  9B70: 7b 12                    mov R3,#0x12
+  9B72: 79 1c                    mov R1,#0x1C
+  9B74: 7d 72                    mov R5,#0x72
+  9B76: 7c 03                    mov R4,#0x03
+  9B78: 12 98 10                 lcall hn_fill   ; accent bar under the input name
+  9B7B: 02 98 88                 ljmp hn_end
             ; hn_align_big: on page 1 move the stored start x (XDATA 0x04:0x05) to 16
 hn_align_big:
-  9B2E: e5 45                    mov A,0x45
-  9B30: b4 01 0f                 cjne A,#1,hn_align_big_x
-  9B33: 78 04                    mov R0,#4
-  9B35: e2                       movx A,@R0        ; start x hi
-  9B36: 70 0a                    jnz hn_align_big_x
-  9B38: 08                       inc R0
-  9B39: e2                       movx A,@R0        ; start x lo
-  9B3A: c3                       clr C
-  9B3B: 94 10                    subb A,#16
-  9B3D: 40 03                    jc hn_align_big_x         ; wider than 288 px: keep it centred
-  9B3F: 74 10                    mov A,#16
-  9B41: f2                       movx @R0,A        ; start x = 16
+  9B7E: e5 45                    mov A,0x45
+  9B80: b4 01 0f                 cjne A,#1,hn_align_big_x
+  9B83: 78 04                    mov R0,#4
+  9B85: e2                       movx A,@R0        ; start x hi
+  9B86: 70 0a                    jnz hn_align_big_x
+  9B88: 08                       inc R0
+  9B89: e2                       movx A,@R0        ; start x lo
+  9B8A: c3                       clr C
+  9B8B: 94 10                    subb A,#16
+  9B8D: 40 03                    jc hn_align_big_x         ; wider than 288 px: keep it centred
+  9B8F: 74 10                    mov A,#16
+  9B91: f2                       movx @R0,A        ; start x = 16
 hn_align_big_x:
-  9B42: e4                       clr A             ; the two instructions the hook replaced
-  9B43: 78 02                    mov R0,#2
-  9B45: 02 2a 28                 ljmp 0x2A28
+  9B92: e4                       clr A             ; the two instructions the hook replaced
+  9B93: 78 02                    mov R0,#2
+  9B95: 02 2a 28                 ljmp 0x2A28
             ; hn_align_small: on page 1 move the stored start x (XDATA 0x04:0x05) to 16
 hn_align_small:
-  9B48: e5 45                    mov A,0x45
-  9B4A: b4 01 0f                 cjne A,#1,hn_align_small_x
-  9B4D: 78 04                    mov R0,#4
-  9B4F: e2                       movx A,@R0        ; start x hi
-  9B50: 70 0a                    jnz hn_align_small_x
-  9B52: 08                       inc R0
-  9B53: e2                       movx A,@R0        ; start x lo
-  9B54: c3                       clr C
-  9B55: 94 10                    subb A,#16
-  9B57: 40 03                    jc hn_align_small_x         ; wider than 288 px: keep it centred
-  9B59: 74 10                    mov A,#16
-  9B5B: f2                       movx @R0,A        ; start x = 16
+  9B98: e5 45                    mov A,0x45
+  9B9A: b4 01 0f                 cjne A,#1,hn_align_small_x
+  9B9D: 78 04                    mov R0,#4
+  9B9F: e2                       movx A,@R0        ; start x hi
+  9BA0: 70 0a                    jnz hn_align_small_x
+  9BA2: 08                       inc R0
+  9BA3: e2                       movx A,@R0        ; start x lo
+  9BA4: c3                       clr C
+  9BA5: 94 10                    subb A,#16
+  9BA7: 40 03                    jc hn_align_small_x         ; wider than 288 px: keep it centred
+  9BA9: 74 10                    mov A,#16
+  9BAB: f2                       movx @R0,A        ; start x = 16
 hn_align_small_x:
-  9B5C: e4                       clr A             ; the two instructions the hook replaced
-  9B5D: 78 02                    mov R0,#2
-  9B5F: 02 3a 85                 ljmp 0x3A85
+  9BAC: e4                       clr A             ; the two instructions the hook replaced
+  9BAD: 78 02                    mov R0,#2
+  9BAF: 02 3a 85                 ljmp 0x3A85
