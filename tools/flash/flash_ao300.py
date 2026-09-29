@@ -63,6 +63,7 @@ KNOWN_IMAGES = {
     "deada16ae67023e7fd9bb5c9668dc5a77f35b5738a19350ac138cd06470f86f1": "fast-lcd + House Numerals home and volume page, 'v1.4 tbenr hn' (features/house-numerals/build/flash_house_numerals.bin)",
     "2819e0b0f935f93012fd88d9799b6efcdd253c04269375a0d1acbb52965d787f": "fast-lcd + House Numerals v2 (200 ms wipe after the volume write, none while the unmute countdown runs), 'v1.4 tbenr hn2' (features/house-numerals/build/flash_house_numerals.bin)",
     "2c4809ab470ba0d161c460ffa69ac57fc5b54f42536c2fdbc2077fad00b920b6": "fast-lcd + House Numerals v3 (wipe also on Bluetooth and no-signal inputs, counts the unmute countdown during it), 'v1.4 tbenr hn3' (features/house-numerals/build/flash_house_numerals.bin)",
+    "86aacb8be3f2d811a3bacab3c4316800eed582f07a3682943016ee82e0436623": "fast-lcd + House Numerals v4 (non-blocking eased wipes in and out of the volume page, text painter), 'v1.4 tbenr hn4' (features/house-numerals/build/flash_house_numerals.bin)",
 }
 
 

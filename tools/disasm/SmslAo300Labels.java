@@ -90,6 +90,11 @@ public class SmslAo300Labels extends GhidraScript {
         {0x5463, "signal_monitor"},         // inputs 2/3 or output 2: 0x22.4 from signal_present_update; after a loss, 0x7C:0x7D then clr P2.5
         {0x5A0A, "dac_mute_reg_by_signal"}, // DAC register 9 = 0x01A3 or 0x01A0 by 0x22.5, via 0x4D8A
         {0x5D6E, "dispatch_key_if_any"},
+        {0x3FE3, "home_refresh_periodic"},  // main_tick_10ms on page 1 when 0x27:0x28 runs out (10 ticks after a render, then every 50): loads the status line into XDATA 0x50, then 0x4081 home_refresh + small_text_render at y 135
+        {0x3CDC, "status_rate_text"},       // R7 = sample-rate code -> XDATA 0x50 ("44.1kHz", "2.8224MHz", ...; else "Connected")
+        {0x4F63, "status_bt_text"},         // Bluetooth status line (codec names, "Searching...", "No Connected")
+        {0x5B8F, "strlen_generic"},         // R3:R2:R1 generic pointer -> R6:R7 length
+        {0x5161, "lcd_clear_column32"},     // big_text_render's margins: one 1 x 32 black column at XDATA 0x04:0x05
         // Keil runtime
         {0x1EF5, "keil_cldptr"},       {0x1F91, "keil_ildptr"},
         // patch code, only in the images that carry it
@@ -97,24 +102,41 @@ public class SmslAo300Labels extends GhidraScript {
         {0x9450, "blit_test"},         // features/blit-test
         {0x9700, "fast_pixel"},        // features/fast-lcd, replaces lcd_write_pixel
         {0x9716, "fast_clear"},        // features/fast-lcd, replaces lcd_clear_black's loop
-        {0x9810, "hn_fill"},           // features/house-numerals
-        {0x9866, "hn_begin"},          // features/house-numerals
-        {0x9888, "hn_end"},            // features/house-numerals
-        {0x9893, "hn_accent"},         // features/house-numerals
-        {0x98A0, "hn_white"},          // features/house-numerals
-        {0x98A7, "hn_name_ptr"},       // features/house-numerals
-        {0x98C0, "hn_text"},           // features/house-numerals
-        {0x990D, "hn_digit2x"},        // features/house-numerals
-        {0x9999, "hn_draw_volume"},    // features/house-numerals
-        {0x9A32, "hn_vol_static"},     // features/house-numerals
-        {0x9A6A, "hn_volpage"},        // features/house-numerals
-        {0x9A75, "hn_enter_vol"},      // features/house-numerals
-        {0x9A7C, "hn_clear"},          // features/house-numerals
-        {0x9A86, "hn_wipe"},           // features/house-numerals
-        {0x9B23, "hn_tick"},           // features/house-numerals, the wipe's stand-in for the main loop's tick and re-mute
-        {0x9B60, "hn_home_tail"},      // features/house-numerals
-        {0x9B7E, "hn_align_big"},      // features/house-numerals
-        {0x9B98, "hn_align_small"},    // features/house-numerals
+        // features/house-numerals (hn4)
+        {0x991A, "hn_fill"},           // rectangle in one colour, streamed
+        {0x9970, "hn_acc"},            // R6:R7 = accent (theme colour, SMSL orange on White)
+        {0x9981, "hn_name_ptr"},       // volume page: input 1..6 -> name pointer
+        {0x999A, "hn_fp_load"},        // hn_paint: copy the font descriptor
+        {0x99BA, "hn_fetch"},          // hn_paint: next character (code or XDATA string)
+        {0x99E1, "hn_map"},            // hn_paint: character -> glyph index | narrow
+        {0x99FD, "hn_home_x"},         // stock page-1 start x of a text (centring + x 16 rule)
+        {0x9A6A, "hn_paint"},          // text painter: font, string, x, y, ink, background, x clip, scale 1/2
+        {0x9B43, "hn_cell"},           // hn_paint: one glyph cell, streamed
+        {0x9EB2, "hn_draw_volume"},    // replaces volpage_draw_volume 0x5936
+        {0x9EFF, "hv_num"},            // volume page: number (big font at 2x)
+        {0x9F48, "hv_name"},           // volume page: input name
+        {0x9F99, "hv_vol"},            // volume page: VOL
+        {0x9FE3, "hv_div"},            // volume page: divider
+        {0x9FF4, "hv_line"},           // volume page: whole position line
+        {0xA008, "hn_line_seg"},       // columns HN_S0..HN_S1 of the position line
+        {0xA090, "hn_vol_static"},
+        {0xA099, "hn_volpage"},        // page 2 renderer (jump-table entry 0x2143)
+        {0xA0B8, "hn_enter_vol"},      // volume-key sites and hn_clear page 2: start / turn round the entry wipe
+        {0xA0EB, "hn_reverse"},
+        {0xA101, "hn_clear"},          // ui_render_page's clear (0x2106): entry, exit, or cancel + stock clear
+        {0xA16C, "hn_cancel"},         // ui_clear_screen's first instruction: stops a wipe
+        {0xA17B, "hn_hold"},           // 0x4081: holds the periodic home refresh back during a wipe
+        {0xA18E, "hn_name_guard"},     // home_draw_input_name's entry: cancels an exit wipe first
+        {0xA19E, "hn_name_load"},      // XDATA 0x35 = input name, as 0x4A85 loads it
+        {0xA1BF, "hn_fp_name"},
+        {0xA202, "hn_fp_status"},
+        {0xA245, "hh_icon"},  {0xA248, "hh_vol"},  {0xA24D, "hh_fmt"},  {0xA250, "hh_eq"},
+        {0xA253, "hh_bar"},   {0xA263, "hh_name"}, {0xA269, "hh_stat"}, // exit wipe: home elements
+        {0xA26F, "hn_tasks"},          // replaces main_tasks_on's lcall main_tick_tasks (0x5B2A): one wipe step per tick
+        {0xA27D, "hn_step"},           // one wipe step
+        {0xA74B, "hn_home_tail"},      // home_refresh's tail: volume, accent bar
+        {0xA75E, "hn_align_big"},      // big_text_render on page 1: start x 16
+        {0xA778, "hn_align_small"},    // small_text_render on page 1: start x 16
     };
 
     Object[][] codeLabels = {
@@ -127,6 +149,16 @@ public class SmslAo300Labels extends GhidraScript {
         {0x3DD6, "read_key_volpage_exit"},  // page 2: keys other than Vol+/Vol-/Power -> 0x15 (home)
         {0x3ED9, "t0_return_home"},         // 0x3F:0x40 reaches 0 -> page 1, redraw
         {0x3335, "main_tick_10ms"},         // runs once per 0x20.7 tick flag; missed ticks are lost
+        {0x332F, "main_tick_flag_test"},    // jb 0x20.7: the 10 ms tick path of main_tick_tasks
+        {0x3351, "osd_timer_expired"},      // page 1, 0x27:0x28 ran out: lcall home_refresh_periodic
+        {0x5B2A, "main_tasks_tick_call"},   // main_tasks_on: lcall main_tick_tasks (hooked, features/house-numerals: hn_tasks)
+        {0x5422, "main_loop_tasks_call"},   // main loop, amp on: lcall main_tasks_on
+        {0x4081, "home_refresh_periodic_draw"}, // lcall home_refresh; status line (hooked, features/house-numerals: hn_hold)
+        {0x4A9B, "input_name_table"},       // home_draw_input_name's jump table, inputs 1..8 (7: no load)
+        {0x9820, "hn_ease"},                // features/house-numerals: wipe edge x per step (21 words)
+        {0x984A, "hn_font_small"},          // features/house-numerals: font descriptors and character maps
+        {0x9852, "hn_font_big"},
+        {0x985A, "hn_map_small"},           {0x98BA, "hn_map_big"},
         {0x33ED, "mute_timer_expired"},     // 0x43:0x44 reaches 0 -> mute_state_set(1) (call at 0x33FB)
         {0x341B, "format_poll_tick"},       // inputs 1..5: 0x4B:0x4C reaches 0 -> reload 10, format_poll, on BT bt_hold_mute_poll
         {0x3E92, "t0_remute_no_lock"},      // Timer0: optical/coax and P4.2 high (no lock) -> setb 0x21.4, 0x43:0x44 = 100
@@ -149,12 +181,12 @@ public class SmslAo300Labels extends GhidraScript {
 
     Object[][] ramLabels = {
         {0x10, "g_menu_a"},        {0x17, "g_menu_cursor"},   {0x19, "g_menu_b"},
-        {0x27, "g_osd_timer_hi"},  {0x28, "g_osd_timer_lo"},  {0x29, "g_dimmer_mode"},
+        {0x27, "g_osd_timer_hi"},  {0x28, "g_osd_timer_lo"},  // page 1: home_refresh_periodic countdown (10 after a render, 50 after a refresh)  {0x29, "g_dimmer_mode"},
         {0x2B, "g_output"},        {0x2C, "g_filter"},        {0x2F, "g_screen_off_hi"},
         {0x30, "g_screen_off_lo"}, {0x31, "g_volume"},        {0x32, "g_render_req"},
         {0x39, "g_eq"},
         {0x3F, "g_home_timer_hi"}, {0x40, "g_home_timer_lo"}, {0x43, "g_mute_timer_hi"},
-        {0x44, "g_mute_timer_lo"},      // unmute countdown, main-loop ticks; see 0x33ED, hn_tick
+        {0x44, "g_mute_timer_lo"},      // unmute countdown, main-loop ticks; see 0x33ED
         {0x23, "g_settle_timer_hi"}, {0x24, "g_settle_timer_lo"}, // 1000 at power-on, 500 by input_set_hw, 100 after a format reconfig; reloads 100
         {0x4B, "g_format_poll_hi"},  {0x4C, "g_format_poll_lo"},  // format_poll_tick countdown, 10 ticks
         {0x4E, "g_format_cfg"},      // format the DAC is set up for; 0xFF: none (input switch, INT1)
@@ -169,6 +201,7 @@ public class SmslAo300Labels extends GhidraScript {
         {0x6E, "g_ir_shift_lo"},   {0x6F, "g_ir_key2"},       {0x70, "g_ir_bit_cnt"},
         {0x68, "g_pixel_hi"},      {0x69, "g_pixel_lo"},      {0x7F, "g_blink_timer"},
         {0x59, "l_render_page"},  // page argument saved inside ui_render_page (0x2101)
+        {0x7E, "g_format_tag_drawn"},  // home_draw_format_tag: the format (0x3D) its tag shows; the box is cleared when it changes
     };
 
     static final int TABLE_ADDR = 0x9398;

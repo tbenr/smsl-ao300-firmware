@@ -1,63 +1,47 @@
 #!/usr/bin/env python3
-"""Build the "House Numerals" image for the SMSL AO300 (on top of fast-lcd).
+"""Build the "House Numerals" image for the SMSL AO300 (on top of fast-lcd), hn4.
 
-A reduced first build of study 3 in features/ui-theme/ui_themes.html:
+A reduced build of study 3 in features/ui-theme/ui_themes.html:
 
   home      stock content; on page 1 the input name and the status line are
             left-aligned at x 16 (hooks in big_text_render 0x2A25 and
             small_text_render 0x3A82), and a 28x3 accent bar sits at 18,114
             (hook on home_refresh's tail 0x5C99).
-  volume    entering page 2, a 2-px accent edge sweeps from x 318 to 0 with black
-            behind it (hook on ui_render_page's clear call 0x2106). The page
-            (jump-table entry 0x2143) shows the input name, a divider, "VOL",
-            the volume in the stock big digits at 2x and a 240-px position line.
-            volpage_draw_volume 0x5936 is replaced, so knob and remote steps
-            redraw only the number and the line. Page 2 is actually entered from
-            the four volume-key sites (0x0D33, 0x0DB3, 0x0E5A, 0x0F02), not through
-            the page renderer alone; those sites get `lcall hn_enter_vol ; sjmp`
-            past the stock "volume" caption. hn_enter_vol only sets a pending flag
-            (HN_PEND). The key handler's common tail (0x0F48) writes the volume to the
-            NJW1194 first, then calls 0x5936, and hn_draw_volume sees the flag, runs
-            the wipe (about 200 ms, WIPE_DELAY_N) and the static page, then draws the
-            number and the line. So the sound changes at once and only the picture
-            takes its time. The page-2 renderer path (0x2106 / 0x2143) is unchanged
-            and wipes too.
-  unmute    the wipe blocks the main loop, which counts the unmute countdown RAM 0x43:0x44
-            down once per 10 ms tick flag (0x20.7) and unmutes when it reaches 0. On
-            Bluetooth without a stream (0x583F), optical/coax without lock and the
-            headphone output with P2.6 low (Timer0) the firmware keeps re-arming it, so it
-            never expires there; after power-on and input switches it runs out. hn_wipe:
-            - countdown 1..HN_CD_MIN-1 (25 ticks): the unmute falls due during the wipe and
-              the page after it, so the page opens with the fast clear, as in hn2; the same
-              while post_power_on is still to run (0x20.3): a key pressed during the power-on
-              logo is dispatched just before it, and its sequence must not wait;
-            - otherwise it wipes, and hn_tick, called on each of the 160 steps, stands in for
-              the main loop: it takes the tick flag and counts the countdown down, never
-              below 1, handing the first tick back at the end so every tick is counted once
-              and the main loop still runs the expiry itself. It also answers the first
-              re-mute request 0x21.4 in the wipe (audio_apply_mute 0x58D3), as the main loop
-              would: on optical/coax without lock the key handler's volume write is undone
-              at the next tick.
-            So the page wipes on every input once the unmute countdown is not about to
-            expire, and the unmute comes at most one tick later than on fast-lcd (emulator:
-            +0.01 s at worst). Other main-loop timers still stop for the 200 ms (README, Risks).
+  volume    the input name, a divider, "VOL", the volume in the stock big digits at
+            2x and a 240-px position line. volpage_draw_volume 0x5936 is replaced, so
+            knob and remote steps redraw only the number and the line.
+  wipes     a 2-px accent edge sweeps across the screen with an ease-in-out, 20 steps of
+            one 10 ms main-loop tick each: right to left into the volume page, left to
+            right back home. Nothing blocks: the main loop's tick path (main_tasks_on's
+            lcall main_tick_tasks, 0x5B2A) runs one step after each tick it handles. Each
+            step fills the band the edge swept with black, draws the edge and draws every
+            element of the new page the edge has fully passed (hn_step).
+  text      hn_paint, a streaming painter for the stock fonts (small 14x24 at 0x5DAB,
+            big 30x32 at 0x6A23) at scale 1 or 2, with ink, background and an x clip
+            window. It draws all our text: the volume page's name, "VOL" and number, and
+            the input name and status line revealed by the exit wipe. Outside the wipes
+            the home screen is drawn by the stock routines, as before.
 
-Accent: the theme colour (RAM 0x48:0x49), SMSL orange 0xFC43 on the White theme.
-Everything goes through the fast pixel path of fast-lcd; hn_fill and hn_digit2x
-stream bytes themselves, the text goes through the stock glyph painters.
+Entry: the four volume-key sites and the page-2 renderer only start the animation
+(hn_enter_vol); the key handler's tail still writes the volume before anything is drawn.
+Exit: the Timer0 return home sets page 1 and 0x22.3; ui_render_page's clear (0x2106, hn_clear)
+starts the exit instead of clearing, and home_refresh at 0x4081 (hn_hold) is held back while a
+wipe runs. Any stock clear (ui_clear_screen 0x5D42, hn_cancel) cancels a wipe first; so does
+the name draw 0x4A85 during an exit (Source and direct-select on page 1, hn_name_guard).
 
 Register use: every hn_* routine may clobber A, B, DPTR, PSW and R0-R7 (the stock
-routines they replace or wrap do the same). 0x48:0x49 is saved and restored
-around every drawing sequence. New state lives in XDATA 0x0100..0x0112.
+routines they replace or wrap do the same). RAM 0x48:0x49 (the theme colour) is only read.
+New state lives in XDATA 0x0100..0x0155.
 """
 import hashlib
+import math
 import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(ROOT, "tools", "patch"))
-from asm51 import Asm, rel, ab  # noqa: E402
+from asm51 import Asm, hi8, lo8  # noqa: E402
 
 BASE_IMAGE = os.path.join(ROOT, "features", "fast-lcd", "build", "flash_fastlcd.bin")
 BASE_SHA = "b292a64855975584dda5fe3fb282103bfde77f7f7237ca9945ac4b5442dae859"
@@ -65,66 +49,117 @@ OUT_IMAGE = os.path.join(HERE, "build", "flash_house_numerals.bin")
 OUT_LISTING = os.path.join(HERE, "house_numerals.asm")
 
 CODE_ADDR = 0x9800                  # after fast-lcd (code 0x9700..0x976B, version string)
-NAMES = CODE_ADDR                   # 6 big-endian pointers, inputs 1..6
-STR_VOL = CODE_ADDR + 12            # "VOL\0"
 
 # stock routines and data
 LCD_SET_WINDOW = 0x4437
-SMALL_GLYPH = 0x2DF8
-BIG_GLYPH = 0x3F3C
-FONT_BIG = 0x6A23
+FONT_SMALL = 0x5DAB                 # 14 x 24, 3 bytes per column, MSB = top pixel
+FONT_BIG = 0x6A23                   # 30 x 32, 4 bytes per column
 HOME_DRAW_VOLUME = 0x5916
+HOME_DRAW_OUTPUT_ICON = 0x5744
+HOME_DRAW_FORMAT_TAG = 0x41CA
+HOME_DRAW_EQ_TAG = 0x49A1
+HOME_REFRESH = 0x5C8B
 UI_CLEAR_SCREEN = 0x5D42
 CLEAR_SMALL_BUF = 0x5CBC
 CLEAR_BIG_BUF = 0x5CCB
+BIG_TEXT_LOAD = 0x4C8F
+MAIN_TICK_TASKS = 0x3325
 RENDER_DONE = 0x22FA
-LCD_CLEAR_BLACK = 0x51EE
+BIG_BUF, SMALL_BUF = 0x35, 0x50     # XDATA text buffers of big_text_render / small_text_render
+NAME_Y, STATUS_Y = 75, 135          # stock y of the home input name and status line
+# input names as home_draw_input_name 0x4A85 loads them (its table at 0x4A9B); input 7: none
 INPUT_NAMES = [(1, 0x904F, "USB"), (2, 0x9053, "OPTICAL"), (3, 0x905B, "COAXIAL"),
-               (4, 0x9048, "BT"), (5, 0x904B, "ARC"), (6, 0x9063, "AUX")]
+               (4, 0x9048, "BT"), (5, 0x904B, "ARC"), (6, 0x9063, "AUX"), (8, 0x9067, "PHONO")]
 
 P1 = 0x90
-DC, WR, CS = 0x83, 0x85, 0x87       # bit addresses P0.3, P0.5, P0.7
 
 # colours (RGB565)
 ORANGE = 0xFC43                     # #ff8a1f, accent on the White theme
 DIVIDER = 0x2104                    # #222
 TRACK = 0x18E3                      # #1d1d1d
+WHITE = 0xFFFF
 
 # XDATA
-HN_THEME = 0x0100                   # saved 0x48:0x49
-HN_ACC = 0x0102                     # accent colour
-HN_N = 0x0104                       # hn_fill pixel count (hi, lo) ...
-HN_C = 0x0106                       # ... immediately followed by its colour
-HN_SP = 0x0108                      # hn_text: string pointer, x (2), y (1)
-HN_TX = 0x010A
-HN_TY = 0x010C
-HN_VOL = 0x010D                     # volume being drawn (0..60)
-HN_WX = 0x010E                      # wipe position (hi, lo)
-HN_PEND = 0x0110                    # volume page pending: set by hn_enter_vol, cleared by hn_draw_volume
-HN_TICK = 0x0111                    # hn_wipe: a main-loop tick has been taken (handed back at the end)
-HN_REMUTE = 0x0112                  # hn_wipe: the main loop's re-mute request 0x21.4 answered once
+HN_N = 0x0100                       # hn_fill pixel count (hi, lo) ...
+HN_C = 0x0102                       # ... immediately followed by its colour
+HN_VOL = 0x0104                     # volume being shown (0..60)
+HN_NUM = 0x0105                     # its two characters and a NUL, for hn_paint
+HN_MODE = 0x0108                    # 0 idle, 1 wipe into the volume page, 2 wipe back home
+HN_VF = 0x0109                      # volume-page elements on screen (VF_* bits)
+HN_HF = 0x010A                      # home elements drawn by the exit wipe (HF_* bits)
+HN_STEP = 0x010B                    # wipe step 0..20
+HN_SBUF = 0x010C                    # exit: the stock refresh has loaded the status buffer
+HN_X = 0x010D                       # edge x (hi, lo)
+HN_XP = 0x010F                      # step: the previous edge x
+HN_LIM = 0x0111                     # step: reveal limit (entry: left >= it; exit: right < it)
+HN_D0 = 0x0113                      # step: damaged columns (band and edge) from ...
+HN_D1 = 0x0115                      # ... to
+HN_B0 = 0x0117                      # step: band from ...
+HN_B1 = 0x0119                      # ... to
+HN_NAMER = 0x011B                   # exit: right end of the home input name
+HN_S0 = 0x011D                      # hn_line_seg: columns from ...
+HN_S1 = 0x011F                      # ... to
+HN_SPL = 0x0121                     # hn_line_seg: 40 + 4 * volume
+HN_STATR = 0x0123                   # exit: right end of the status line as drawn
 
-POWER_ON_BIT = 0x03                 # bit 0x20.3: power-on path (0x55E4) set it, main_tasks_on runs post_power_on
-TICK_BIT = 0x07                     # bit 0x20.7: Timer0 sets it every 10 ms, main_tick_10ms (0x3335) clears it
-REMUTE_BIT = 0x0C                   # bit 0x21.4: re-mute request (Timer0 while optical/coax has no lock, INT1)
-UNMUTED_BIT = 0x14                  # bit 0x22.4: audio unmuted (mute_state_set, audio_apply_mute read it)
-AUDIO_APPLY_MUTE = 0x58D3           # 0x22.4 set: volume_apply; clear: NJW1194 to the mute code; then the DAC
-# unmute countdown RAM 0x43:0x44 (main-loop ticks). At 1..HN_CD_MIN-1 the unmute falls due within the
-# wipe (at most 21 ticks, plus one already pending) and the page drawn after it: no wipe then.
-HN_CD_MIN = 25
+# hn_paint parameter block (FP_FONT..FP_SCALE are set by the caller) and work area
+FP = 0x0130
+FP_FONT, FP_STR, FP_SPC, FP_X, FP_Y = 0x0130, 0x0132, 0x0134, 0x0135, 0x0137
+FP_INK, FP_BG, FP_CX0, FP_CX1, FP_SCALE = 0x0138, 0x013A, 0x013C, 0x013E, 0x0140
+FP_W, FP_BPC, FP_BPG, FP_DATA, FP_MAP, FP_NADV = 0x0141, 0x0142, 0x0143, 0x0144, 0x0146, 0x0148
+FP_CUR, FP_END, FP_CW, FP_ADV, FP_GLY = 0x0149, 0x014B, 0x014D, 0x014E, 0x014F
+FP_VX0, FP_VX1, FP_OFF = 0x0151, 0x0153, 0x0155
+XDATA_END = 0x0155
 
-# hn_wipe delay per 2-px step: `mov R6,#N ; d1: mov R7,#0 ; d2: djnz R7,d2 ; djnz R6,d1` is about
-# 772 clocks per N (24 MHz). With N = 30 the 160 steps take about 200 ms in all.
-WIPE_DELAY_N = 30
+# volume-page elements: (bit, name, x0, x1); an element appears once the edge is left of x0
+VF_NAME, VF_DIV, VF_VOL, VF_NUM, VF_LINE = 1, 2, 4, 8, 16
+VF_ALL = 31
+VOL_ELEMENTS = [(VF_NAME, "hv_name", 16, 16 + 14 * 7 - 1), (VF_DIV, "hv_div", 140, 140),
+                (VF_VOL, "hv_vol", 158, 158 + 3 * 14 - 1), (VF_NUM, "hv_num", 184, 303),
+                (VF_LINE, "hv_line", 40, 279)]
+# home elements: (bit, name, x0, x1); they appear once the edge is right of x1. The name and the
+# status line end where their text ends: x1 is read from XDATA (HN_NAMER, HN_STATR) instead.
+HF_ICON, HF_VOL, HF_BAR, HF_NAME, HF_FMT, HF_EQ, HF_STAT = 1, 2, 4, 8, 16, 32, 64
+HF_ALL = 127
+HOME_ELEMENTS = [(HF_ICON, "hh_icon", 15, 44), (HF_VOL, "hh_vol", 48, 75), (HF_BAR, "hh_bar", 18, 45),
+                 (HF_NAME, "hh_name", 0, HN_NAMER), (HF_FMT, "hh_fmt", 208, 263), (HF_EQ, "hh_eq", 266, 307),
+                 (HF_STAT, "hh_stat", 0, HN_STATR)]
+
+STEPS = 20
+EDGE_MAX = 318
+# ease-in-out: edge x for entry step k (318 -> 0); the exit uses 318 - EASE[k]. Symmetric, so a
+# reversal maps step k to 20 - k at the same x.
+EASE = [round(EDGE_MAX * (1 + math.cos(math.pi * k / STEPS)) / 2) for k in range(STEPS + 1)]
+assert all(EASE[k] + EASE[STEPS - k] == EDGE_MAX for k in range(STEPS + 1))
+assert all(EASE[k] - EASE[k + 1] >= 2 for k in range(STEPS))
+
+# font descriptors: width, bytes per column, bytes per glyph, glyph data, character map, narrow advance
+# The character map covers 0x20..0x7F: glyph index, bit 7 = narrow (advance by the narrow width).
+# Characters the stock painters don't map (they reuse the previous glyph) draw as a blank here.
+SMALL_MAP = {" ": 0, ".": 1, ":": 2, "-": 3, "+": 4, "=": 5, "<": 68, ">": 69, "{": 70, "}": 71,
+             "(": 72, ")": 73, "!": 74, "'": 75}
+SMALL_MAP.update({chr(0x30 + i): 6 + i for i in range(10)})
+SMALL_MAP.update({chr(0x41 + i): 16 + i for i in range(26)})
+SMALL_MAP.update({chr(0x61 + i): 42 + i for i in range(26)})
+BIG_MAP = {" ": 0, ".": 1, ":": 2, "-": 3, "+": 4, "=": 5}
+BIG_MAP.update({chr(0x30 + i): 6 + i for i in range(10)})
+BIG_MAP.update({chr(0x41 + i): 16 + i for i in range(26)})
+BIG_NARROW = " .-+=I"               # big_text_render: advance 17 (0x2A9E), centring +13 (0x29C8)
+FONTS = {"font_small": (14, 3, 42, FONT_SMALL, "map_small", 0, SMALL_MAP, ""),
+         "font_big": (30, 4, 120, FONT_BIG, "map_big", 17, BIG_MAP, BIG_NARROW)}
 
 # (address, original bytes, new opcode, target label); the new bytes are opcode + target
 HOOKS = [
-    (0x2106, bytes([0x12, 0x5D, 0x42]), 0x12, "hn_clear"),        # lcall ui_clear_screen
+    (0x2106, bytes([0x12, 0x5D, 0x42]), 0x12, "hn_clear"),        # ui_render_page: lcall ui_clear_screen
     (0x2143, bytes([0x02, 0x21, 0x67]), 0x02, "hn_volpage"),      # page 2 jump-table entry
     (0x5936, bytes([0xAB, 0x07, 0xE5]), 0x02, "hn_draw_volume"),  # volpage_draw_volume entry
     (0x2A25, bytes([0xE4, 0x78, 0x02]), 0x02, "hn_align_big"),    # big_text_render: clr A; mov R0,#2
     (0x3A82, bytes([0xE4, 0x78, 0x02]), 0x02, "hn_align_small"),  # small_text_render: same
     (0x5C99, bytes([0x02, 0x59, 0x16]), 0x02, "hn_home_tail"),    # home_refresh: ljmp home_draw_volume
+    (0x5B2A, bytes([0x12, 0x33, 0x25]), 0x12, "hn_tasks"),        # main_tasks_on: lcall main_tick_tasks
+    (0x4081, bytes([0x12, 0x5C, 0x8B]), 0x02, "hn_hold"),         # periodic refresh: lcall home_refresh
+    (0x5D42, bytes([0x12, 0x5C, 0xBC]), 0x02, "hn_cancel"),       # ui_clear_screen: lcall ui_clear_small_buf
+    (0x4A85, bytes([0xE5, 0x47, 0x14]), 0x02, "hn_name_guard"),   # home_draw_input_name: mov A,0x47; dec A
 ]
 
 # where the volume keys open page 2 themselves (after `mov 0x45,#0x02`); 22 stock bytes each:
@@ -138,531 +173,1648 @@ def vol_entry_bytes(target):
     return bytes([0x12, target >> 8, target & 0xFF, 0x80, len(VOL_ENTRY_ORIG) - 5])
 
 
-VERSION_TEXT = "v1.4 tbenr hn3"
+VERSION_TEXT = "v1.4 tbenr hn4"
 VERSION_PTR_ADDR = 0x22CA
 VERSION_MAX_LEN = 20
 
 
-def mov_dptr(a, v):
-    a.i("mov DPTR,#0x%04X" % v, 0x90, v >> 8, v & 0xFF)
+def hi(v):
+    return "#0x%02X" % (v >> 8)
 
 
-def call(a, target, note=""):
-    t = target if isinstance(target, str) else "0x%04X" % target
-    a.i("lcall %s" % t + ("   ; " + note if note else ""), 0x12, ab(target))
+def lo(v):
+    return "#0x%02X" % (v & 0xFF)
 
 
-def jump(a, target, note=""):
-    t = target if isinstance(target, str) else "0x%04X" % target
-    a.i("ljmp %s" % t + ("   ; " + note if note else ""), 0x02, ab(target))
+def S(a, text):
+    """Assemble lines of text: `label:`, `; comment`, or an instruction (with an optional comment)."""
+    for ln in text.strip("\n").split("\n"):
+        ln = ln.strip()
+        if not ln:
+            continue
+        if ln.startswith(";"):
+            a.comment(ln[1:].strip())
+        elif ln.split(";")[0].strip().endswith(":") and " " not in ln.split(";")[0].strip():
+            a.L(ln.split(";")[0].strip()[:-1])
+        else:
+            a.op(ln)
 
 
-def movr(a, n, v):
-    a.i("mov R%d,#0x%02X" % (n, v), 0x78 + n, v)
+def st_imm16(a, addr, v):
+    S(a, "mov DPTR,#0x%04X\nmov A,%s\nmovx @DPTR,A\ninc DPTR\nmov A,%s\nmovx @DPTR,A" % (addr, hi(v), lo(v)))
+
+
+def ld16(a, rh, rl, addr):
+    S(a, "mov DPTR,#0x%04X\nmovx A,@DPTR\nmov %s,A\ninc DPTR\nmovx A,@DPTR\nmov %s,A" % (addr, rh, rl))
+
+
+def st16(a, addr, rh, rl):
+    S(a, "mov DPTR,#0x%04X\nmov A,%s\nmovx @DPTR,A\ninc DPTR\nmov A,%s\nmovx @DPTR,A" % (addr, rh, rl))
 
 
 def rect(a, x, w, y, h, colour=None):
     """Load hn_fill's arguments (colour None: R6:R7 already set)."""
-    movr(a, 2, x >> 8); movr(a, 3, x & 0xFF); movr(a, 1, w); movr(a, 5, y); movr(a, 4, h)
+    S(a, "mov R2,%s\nmov R3,%s\nmov R1,#%d\nmov R5,#%d\nmov R4,#%d" % (hi(x), lo(x), w, y, h))
     if colour is not None:
-        movr(a, 6, colour >> 8); movr(a, 7, colour & 0xFF)
+        S(a, "mov R6,%s\nmov R7,%s" % (hi(colour), lo(colour)))
 
 
-def xstore(a, *regs):
-    """movx the named registers to consecutive XDATA from DPTR (DPTR already set)."""
-    ops = {"R2": 0xEA, "R3": 0xEB, "R4": 0xEC, "R5": 0xED, "R6": 0xEE, "R7": 0xEF}
-    for k, r in enumerate(regs):
-        a.i("mov A,%s" % r, ops[r])
-        a.i("movx @DPTR,A", 0xF0)
-        if k < len(regs) - 1:
-            a.i("inc DPTR", 0xA3)
+def fp_setup(a, font, string, space, x, y, ink, bg=0, clip=(0, 319), scale=1):
+    """Fill hn_paint's parameter block. string: an address (int), a code label (str), or None
+    (FP_STR already set);
+    x: int, or None (set later, e.g. by hn_home_x); ink: int, "theme" (RAM 0x48:0x49) or "acc"
+    (hn_acc, R6:R7)."""
+    if ink == "acc":
+        S(a, "lcall hn_acc")
+    S(a, "mov DPTR,#0x%04X\nmov A,#hi(%s)\nmovx @DPTR,A\ninc DPTR\nmov A,#lo(%s)\nmovx @DPTR,A\ninc DPTR"
+      % (FP_FONT, font, font))
+    if isinstance(string, str):
+        S(a, "mov A,#hi(%s)\nmovx @DPTR,A\ninc DPTR\nmov A,#lo(%s)\nmovx @DPTR,A\ninc DPTR" % (string, string))
+    elif string is not None:
+        S(a, "mov A,%s\nmovx @DPTR,A\ninc DPTR\nmov A,%s\nmovx @DPTR,A\ninc DPTR" % (hi(string), lo(string)))
+    else:
+        S(a, "inc DPTR\ninc DPTR")
+    S(a, "mov A,#%d\nmovx @DPTR,A\ninc DPTR" % space)
+    if x is not None:
+        S(a, "mov A,%s\nmovx @DPTR,A\ninc DPTR\nmov A,%s\nmovx @DPTR,A\ninc DPTR" % (hi(x), lo(x)))
+    else:
+        S(a, "inc DPTR\ninc DPTR")
+    S(a, "mov A,#%d\nmovx @DPTR,A\ninc DPTR" % y)
+    if ink == "theme":
+        S(a, "mov A,0x48\nmovx @DPTR,A\ninc DPTR\nmov A,0x49\nmovx @DPTR,A\ninc DPTR")
+    elif ink == "acc":
+        S(a, "mov A,R6\nmovx @DPTR,A\ninc DPTR\nmov A,R7\nmovx @DPTR,A\ninc DPTR")
+    else:
+        S(a, "mov A,%s\nmovx @DPTR,A\ninc DPTR\nmov A,%s\nmovx @DPTR,A\ninc DPTR" % (hi(ink), lo(ink)))
+    for v in (bg, clip[0], clip[1]):
+        S(a, "mov A,%s\nmovx @DPTR,A\ninc DPTR\nmov A,%s\nmovx @DPTR,A\ninc DPTR" % (hi(v), lo(v)))
+    S(a, "mov A,#%d\nmovx @DPTR,A" % scale)
 
 
+# ---------------------------------------------------------------------------------------------
 def build_data(a):
-    a.comment("input-name pointers for inputs 1..6 (stock strings), then the VOL label")
+    a.comment("input-name pointers for inputs 1..6 (volume page), then the VOL label")
     a.L("names")
-    for inp, addr, text in INPUT_NAMES:
+    for inp, addr, text in INPUT_NAMES[:6]:
         a.data("dw 0x%04X          ; input %d %s" % (addr, inp, text), [addr >> 8, addr & 0xFF])
     a.L("str_vol")
     a.data('db "VOL",0', b"VOL\0")
+    a.comment("home_draw_input_name's strings for inputs 1..8 (0: none, the buffer is drawn as it is)")
+    a.L("names8")
+    tab = {inp: addr for inp, addr, _ in INPUT_NAMES}
+    for inp in range(1, 9):
+        v = tab.get(inp, 0)
+        a.data("dw 0x%04X          ; input %d" % (v, inp), [v >> 8, v & 0xFF])
+    a.comment("ease-in-out edge positions for the entry, steps 0..20 (the exit uses 318 - x)")
+    a.L("ease")
+    for k, v in enumerate(EASE):
+        a.data("dw %d              ; step %d" % (v, k), [v >> 8, v & 0xFF])
+    for name, (w, bpc, bpg, data, mapl, nadv, cmap, narrow) in FONTS.items():
+        a.comment("%s: width, bytes per column, bytes per glyph, glyph data, map, narrow advance" % name)
+        a.L(name)
+        a.data("db %d,%d,%d" % (w, bpc, bpg), [w, bpc, bpg])
+        a.data("dw 0x%04X" % data, [data >> 8, data & 0xFF])
+        a.i("dw %s" % mapl, hi8(mapl), lo8(mapl))
+        a.data("db %d" % nadv, [nadv])
+    for name, (w, bpc, bpg, data, mapl, nadv, cmap, narrow) in FONTS.items():
+        a.comment("%s: glyph index per character 0x20..0x7F, bit 7 = narrow" % mapl)
+        a.L(mapl)
+        row = []
+        for c in range(0x20, 0x80):
+            v = cmap.get(chr(c), 0) | (0x80 if chr(c) in narrow else 0)
+            row.append(v)
+        for k in range(0, 96, 16):
+            a.data("db " + ",".join("%d" % v for v in row[k:k + 16]), row[k:k + 16])
 
 
 def build_primitives(a):
-    a.comment("hn_fill: R2:R3 x, R1 w (1..255), R5 y, R4 h (1..170), R6:R7 colour")
-    a.L("hn_fill")
-    mov_dptr(a, HN_C)
-    xstore(a, "R6", "R7")
-    a.i("mov A,R1", 0xE9)
-    a.i("mov B,R4", 0x8C, 0xF0)
-    a.i("mul AB            ; B:A = w*h", 0xA4)
-    mov_dptr(a, HN_N)
-    a.i("xch A,B", 0xC5, 0xF0)
-    a.i("movx @DPTR,A      ; count hi", 0xF0)
-    a.i("inc DPTR", 0xA3)
-    a.i("xch A,B", 0xC5, 0xF0)
-    a.i("movx @DPTR,A      ; count lo", 0xF0)
-    a.i("mov A,R1", 0xE9)
-    a.i("dec A", 0x14)
-    a.i("add A,R3          ; x1 = x + w - 1", 0x2B)
-    a.i("mov R0,#0x30", 0x78, 0x30)
-    a.i("movx @R0,A", 0xF2)
-    a.i("clr A", 0xE4)
-    a.i("addc A,R2", 0x3A)
-    a.i("dec R0", 0x18)
-    a.i("movx @R0,A", 0xF2)
-    a.i("mov A,R5", 0xED)
-    a.i("mov R7,A          ; y0", 0xFF)
-    a.i("mov R6,#0", 0x7E, 0x00)
-    a.i("mov A,R4", 0xEC)
-    a.i("dec A", 0x14)
-    a.i("add A,R5          ; y1 = y + h - 1", 0x2D)
-    a.i("mov R5,A", 0xFD)
-    a.i("mov R4,#0", 0x7C, 0x00)
-    call(a, LCD_SET_WINDOW, "lcd_set_window, ends with RAMWR")
-    mov_dptr(a, HN_N)
-    a.i("movx A,@DPTR", 0xE0); a.i("mov R5,A          ; count hi", 0xFD); a.i("inc DPTR", 0xA3)
-    a.i("movx A,@DPTR", 0xE0); a.i("mov R4,A          ; count lo", 0xFC); a.i("inc DPTR", 0xA3)
-    a.i("movx A,@DPTR", 0xE0); a.i("mov R6,A          ; colour hi", 0xFE); a.i("inc DPTR", 0xA3)
-    a.i("movx A,@DPTR", 0xE0); a.i("mov R7,A          ; colour lo", 0xFF)
-    a.i("mov A,R4", 0xEC)
-    a.i("jz hf_go", 0x60, rel("hf_go"))
-    a.i("inc R5            ; djnz pair runs hi*256 + lo times", 0x0D)
-    a.L("hf_go")
-    a.i("setb P0.3          ; D/C = data", 0xD2, DC)
-    a.i("clr P0.7           ; CS low", 0xC2, CS)
-    a.L("hf_px")
-    a.i("mov P1,R6", 0x8E, P1)
-    a.i("clr P0.5", 0xC2, WR)
-    a.i("setb P0.5", 0xD2, WR)
-    a.i("mov P1,R7", 0x8F, P1)
-    a.i("clr P0.5", 0xC2, WR)
-    a.i("setb P0.5", 0xD2, WR)
-    a.i("djnz R4,hf_px", 0xDC, rel("hf_px"))
-    a.i("djnz R5,hf_px", 0xDD, rel("hf_px"))
-    a.i("setb P0.7          ; CS high", 0xD2, CS)
-    a.i("ret", 0x22)
+    S(a, """
+; hn_fill: R2:R3 x, R1 w (1..255), R5 y, R4 h (1..170), R6:R7 colour
+hn_fill:
+mov DPTR,#0x%04X""" % HN_C + """
+mov A,R6
+movx @DPTR,A
+inc DPTR
+mov A,R7
+movx @DPTR,A
+mov A,R1
+mov B,R4
+mul AB             ; B:A = w*h
+mov DPTR,#0x%04X""" % HN_N + """
+xch A,B
+movx @DPTR,A       ; count hi
+inc DPTR
+xch A,B
+movx @DPTR,A       ; count lo
+mov A,R1
+dec A
+add A,R3           ; x1 = x + w - 1
+mov R0,#0x30
+movx @R0,A
+clr A
+addc A,R2
+dec R0
+movx @R0,A
+mov A,R5
+mov R7,A           ; y0
+mov R6,#0
+mov A,R4
+dec A
+add A,R5           ; y1 = y + h - 1
+mov R5,A
+mov R4,#0
+lcall 0x4437       ; lcd_set_window, ends with RAMWR
+mov DPTR,#0x%04X""" % HN_N + """
+movx A,@DPTR
+mov R5,A           ; count hi
+inc DPTR
+movx A,@DPTR
+mov R4,A           ; count lo
+inc DPTR
+movx A,@DPTR
+mov R6,A           ; colour hi
+inc DPTR
+movx A,@DPTR
+mov R7,A           ; colour lo
+mov A,R4
+jz hf_go
+inc R5             ; djnz pair runs hi*256 + lo times
+hf_go:
+setb P0.3          ; D/C = data
+clr P0.7           ; CS low
+hf_px:
+mov P1,R6
+clr P0.5
+setb P0.5
+mov P1,R7
+clr P0.5
+setb P0.5
+djnz R4,hf_px
+djnz R5,hf_px
+setb P0.7          ; CS high
+ret
 
-    a.comment("hn_begin: save the theme colour, work out the accent")
-    a.L("hn_begin")
-    mov_dptr(a, HN_THEME)
-    a.i("mov A,0x48", 0xE5, 0x48); a.i("movx @DPTR,A", 0xF0); a.i("inc DPTR", 0xA3)
-    a.i("mov A,0x49", 0xE5, 0x49); a.i("movx @DPTR,A", 0xF0)
-    a.i("inc DPTR          ; HN_ACC", 0xA3)
-    a.i("mov A,0x48", 0xE5, 0x48)
-    a.i("anl A,0x49", 0x55, 0x49)
-    a.i("cpl A             ; 0 only on the White theme", 0xF4)
-    a.i("jnz hb_theme", 0x70, rel("hb_theme"))
-    a.i("mov A,#0x%02X" % (ORANGE >> 8), 0x74, ORANGE >> 8); a.i("movx @DPTR,A", 0xF0); a.i("inc DPTR", 0xA3)
-    a.i("mov A,#0x%02X" % (ORANGE & 0xFF), 0x74, ORANGE & 0xFF); a.i("movx @DPTR,A", 0xF0)
-    a.i("ret", 0x22)
-    a.L("hb_theme")
-    a.i("mov A,0x48", 0xE5, 0x48); a.i("movx @DPTR,A", 0xF0); a.i("inc DPTR", 0xA3)
-    a.i("mov A,0x49", 0xE5, 0x49); a.i("movx @DPTR,A", 0xF0)
-    a.i("ret", 0x22)
+; hn_acc: R6:R7 = the accent: the theme colour (RAM 0x48:0x49), SMSL orange on White; keeps R1..R5
+hn_acc:
+mov A,0x48
+anl A,0x49
+cpl A              ; 0 only on the White theme
+jnz ha_theme
+mov R6,%s
+mov R7,%s
+ret
+ha_theme:
+mov R6,0x48
+mov R7,0x49
+ret
 
-    a.comment("hn_end: restore the theme colour")
-    a.L("hn_end")
-    mov_dptr(a, HN_THEME)
-    a.i("movx A,@DPTR", 0xE0); a.i("mov 0x48,A", 0xF5, 0x48); a.i("inc DPTR", 0xA3)
-    a.i("movx A,@DPTR", 0xE0); a.i("mov 0x49,A", 0xF5, 0x49)
-    a.i("ret", 0x22)
+; hn_name_ptr: input 0x47 in 1..6 -> C=0, R2:R3 = name; else C=1
+hn_name_ptr:
+mov A,0x47
+dec A
+cjne A,#6,hnp_cmp  ; C = (input - 1 < 6)
+hnp_cmp:
+jnc hnp_none
+rl A
+mov B,A
+mov DPTR,#names
+movc A,@A+DPTR
+mov R2,A
+mov A,B
+inc A
+movc A,@A+DPTR
+mov R3,A
+clr C
+ret
+hnp_none:
+setb C
+ret
+""" % (hi(ORANGE), lo(ORANGE)))
 
-    a.comment("hn_accent: ink and R6:R7 = accent; keeps R1..R5")
-    a.L("hn_accent")
-    mov_dptr(a, HN_ACC)
-    a.i("movx A,@DPTR", 0xE0); a.i("mov 0x48,A", 0xF5, 0x48); a.i("mov R6,A", 0xFE); a.i("inc DPTR", 0xA3)
-    a.i("movx A,@DPTR", 0xE0); a.i("mov 0x49,A", 0xF5, 0x49); a.i("mov R7,A", 0xFF)
-    a.i("ret", 0x22)
 
-    a.comment("hn_white: ink = white")
-    a.L("hn_white")
-    a.i("mov 0x48,#0xFF", 0x75, 0x48, 0xFF)
-    a.i("mov 0x49,#0xFF", 0x75, 0x49, 0xFF)
-    a.i("ret", 0x22)
+def build_painter(a):
+    S(a, """
+; hn_fp_load: copy the font descriptor FP_FONT points to into FP_W..FP_NADV (8 bytes)
+hn_fp_load:
+mov DPTR,#0x%04X""" % FP_FONT + """
+movx A,@DPTR
+mov R6,A
+inc DPTR
+movx A,@DPTR
+mov R7,A
+mov R5,#0
+fl_next:
+mov DPH,R6
+mov DPL,R7
+mov A,R5
+movc A,@A+DPTR
+mov R4,A
+mov A,R5
+add A,%s""" % lo(FP_W) + """
+mov DPL,A
+mov DPH,%s""" % hi(FP_W) + """
+mov A,R4
+movx @DPTR,A
+inc R5
+cjne R5,#8,fl_next
+ret
 
-    a.comment("hn_name_ptr: input 0x47 in 1..6 -> C=0, R2:R3 = name; else C=1")
-    a.L("hn_name_ptr")
-    a.i("mov A,0x47", 0xE5, 0x47)
-    a.i("dec A", 0x14)
-    a.i("cjne A,#6,hnp_cmp ; C = (input - 1 < 6)", 0xB4, 0x06, rel("hnp_cmp"))
-    a.L("hnp_cmp")
-    a.i("jnc hnp_none", 0x50, rel("hnp_none"))
-    a.i("rl A", 0x23)
-    a.i("mov B,A", 0xF5, 0xF0)
-    a.i("mov DPTR,#names", 0x90, ab("names"))
-    a.i("movc A,@A+DPTR", 0x93); a.i("mov R2,A", 0xFA)
-    a.i("mov A,B", 0xE5, 0xF0); a.i("inc A", 0x04)
-    a.i("movc A,@A+DPTR", 0x93); a.i("mov R3,A", 0xFB)
-    a.i("clr C", 0xC3)
-    a.i("ret", 0x22)
-    a.L("hnp_none")
-    a.i("setb C", 0xD3)
-    a.i("ret", 0x22)
+; hn_fetch: next character of the FP_STR string (FP_SPC: 0 XDATA, 1 code) -> A, R5; FP_STR advanced
+; unless it is the terminating 0
+hn_fetch:
+mov DPTR,#0x%04X""" % FP_STR + """
+movx A,@DPTR
+mov R6,A
+inc DPTR
+movx A,@DPTR
+mov R7,A
+inc DPTR
+movx A,@DPTR       ; FP_SPC
+mov DPH,R6
+mov DPL,R7
+jnz hft_code
+movx A,@DPTR
+sjmp hft_got
+hft_code:
+clr A
+movc A,@A+DPTR
+hft_got:
+mov R5,A
+jz hft_ret
+inc DPTR
+mov R6,DPH
+mov R7,DPL
+mov DPTR,#0x%04X""" % FP_STR + """
+mov A,R6
+movx @DPTR,A
+inc DPTR
+mov A,R7
+movx @DPTR,A
+mov A,R5
+hft_ret:
+ret
 
-    a.comment("hn_text: R2:R3 code string, R4:R5 x, R7 y; ink 0x48:0x49, 14 px per character")
-    a.L("hn_text")
-    mov_dptr(a, HN_SP)
-    xstore(a, "R2", "R3", "R4", "R5", "R7")          # HN_SP, HN_TX, HN_TY
-    a.L("ht_next")
-    mov_dptr(a, HN_SP)
-    a.i("movx A,@DPTR", 0xE0); a.i("mov R6,A", 0xFE); a.i("inc DPTR", 0xA3); a.i("movx A,@DPTR", 0xE0)
-    a.i("mov DPL,A", 0xF5, 0x82)
-    a.i("mov DPH,R6", 0x8E, 0x83)
-    a.i("clr A", 0xE4)
-    a.i("movc A,@A+DPTR", 0x93)
-    a.i("jz ht_done", 0x60, rel("ht_done"))
-    a.i("mov R3,A          ; character", 0xFB)
-    a.i("inc DPTR", 0xA3)
-    a.i("mov R6,DPH", 0xAE, 0x83)
-    a.i("mov R7,DPL", 0xAF, 0x82)
-    mov_dptr(a, HN_SP)
-    a.i("mov A,R6", 0xEE); a.i("movx @DPTR,A", 0xF0); a.i("inc DPTR", 0xA3)
-    a.i("mov A,R7", 0xEF); a.i("movx @DPTR,A", 0xF0); a.i("inc DPTR", 0xA3)
-    a.i("movx A,@DPTR", 0xE0); a.i("mov R4,A          ; x", 0xFC); a.i("inc DPTR", 0xA3)
-    a.i("movx A,@DPTR", 0xE0); a.i("mov R5,A", 0xFD); a.i("inc DPTR", 0xA3)
-    a.i("movx A,@DPTR", 0xE0); a.i("mov R7,A          ; y", 0xFF)
-    a.i("mov R6,#0", 0x7E, 0x00)
-    call(a, SMALL_GLYPH, "small_glyph_paint(R6:R7 y, R4:R5 x, R3 char)")
-    mov_dptr(a, HN_TX + 1)
-    a.i("movx A,@DPTR", 0xE0); a.i("add A,#14", 0x24, 14); a.i("movx @DPTR,A", 0xF0)
-    mov_dptr(a, HN_TX)
-    a.i("movx A,@DPTR", 0xE0); a.i("addc A,#0", 0x34, 0x00); a.i("movx @DPTR,A", 0xF0)
-    a.i("sjmp ht_next", 0x80, rel("ht_next"))
-    a.L("ht_done")
-    a.i("ret", 0x22)
+; hn_map: character R5 -> A = glyph index | 0x80 if narrow (0 outside 0x20..0x7F)
+hn_map:
+mov A,R5
+clr C
+subb A,#0x20
+jc hm_blank
+cjne A,#0x60,hm_cmp
+hm_cmp:
+jnc hm_blank
+mov R4,A
+mov DPTR,#0x%04X""" % FP_MAP + """
+movx A,@DPTR
+mov R6,A
+inc DPTR
+movx A,@DPTR
+mov DPL,A
+mov DPH,R6
+mov A,R4
+movc A,@A+DPTR
+ret
+hm_blank:
+clr A
+ret
 
-    a.comment("hn_digit2x: R3 digit, R5 x, R7 y; stock big glyph at 2x (60x64), ink on black")
-    a.L("hn_digit2x")
-    a.i("mov A,R5", 0xED)
-    a.i("add A,#59         ; x1 = x + 59", 0x24, 59)
-    a.i("mov R0,#0x30", 0x78, 0x30); a.i("movx @R0,A", 0xF2)
-    a.i("clr A", 0xE4); a.i("addc A,#0", 0x34, 0x00)
-    a.i("dec R0", 0x18); a.i("movx @R0,A", 0xF2)
-    a.i("mov A,R3", 0xEB)
-    a.i("push ACC          ; digit", 0xC0, 0xE0)
-    a.i("mov A,R5", 0xED); a.i("mov R3,A          ; x0", 0xFB); a.i("mov R2,#0", 0x7A, 0x00)
-    a.i("mov A,R7", 0xEF); a.i("add A,#63         ; y1", 0x24, 63); a.i("mov R5,A", 0xFD)
-    a.i("mov R4,#0", 0x7C, 0x00); a.i("mov R6,#0", 0x7E, 0x00)
-    call(a, LCD_SET_WINDOW)
-    a.i("pop ACC", 0xD0, 0xE0)
-    a.i("add A,#6          ; font index of the digit", 0x24, 6)
-    a.i("mov B,#120", 0x75, 0xF0, 120)
-    a.i("mul AB", 0xA4)
-    a.i("add A,#0x%02X" % (FONT_BIG & 0xFF), 0x24, FONT_BIG & 0xFF)
-    a.i("mov DPL,A", 0xF5, 0x82)
-    a.i("mov A,B", 0xE5, 0xF0)
-    a.i("addc A,#0x%02X" % (FONT_BIG >> 8), 0x34, FONT_BIG >> 8)
-    a.i("mov DPH,A", 0xF5, 0x83)
-    a.i("mov R2,0x48", 0xAA, 0x48)
-    a.i("mov R3,0x49", 0xAB, 0x49)
-    a.i("setb P0.3", 0xD2, DC)
-    a.i("clr P0.7", 0xC2, CS)
-    a.i("mov R4,#30        ; glyph columns", 0x7C, 30)
-    a.L("d2_col")
-    a.i("mov R0,#2         ; every column twice", 0x78, 2)
-    a.L("d2_rep")
-    a.i("push DPL", 0xC0, 0x82)
-    a.i("push DPH", 0xC0, 0x83)
-    a.i("mov R5,#4         ; 4 bytes = 32 rows", 0x7D, 4)
-    a.L("d2_byte")
-    a.i("clr A", 0xE4); a.i("movc A,@A+DPTR", 0x93); a.i("inc DPTR", 0xA3); a.i("mov R6,A", 0xFE)
-    a.i("mov R1,#8", 0x79, 8)
-    a.L("d2_bit")
-    a.i("mov A,R6", 0xEE)
-    a.i("rlc A             ; top pixel first", 0x33)
-    a.i("mov R6,A", 0xFE)
-    a.i("jc d2_ink", 0x40, rel("d2_ink"))
-    a.i("mov P1,#0         ; 2 black pixels = 4 zero bytes", 0x75, P1, 0x00)
-    for _ in range(4):
-        a.i("clr P0.5", 0xC2, WR)
-        a.i("setb P0.5", 0xD2, WR)
-    a.i("sjmp d2_next", 0x80, rel("d2_next"))
-    a.L("d2_ink")
-    for _ in range(2):
-        a.i("mov P1,R2", 0x8A, P1); a.i("clr P0.5", 0xC2, WR); a.i("setb P0.5", 0xD2, WR)
-        a.i("mov P1,R3", 0x8B, P1); a.i("clr P0.5", 0xC2, WR); a.i("setb P0.5", 0xD2, WR)
-    a.L("d2_next")
-    a.i("djnz R1,d2_bit", 0xD9, rel("d2_bit"))
-    a.i("djnz R5,d2_byte", 0xDD, rel("d2_byte"))
-    a.i("pop DPH", 0xD0, 0x83)
-    a.i("pop DPL", 0xD0, 0x82)
-    a.i("djnz R0,d2_rep", 0xD8, rel("d2_rep"))
-    for _ in range(4):
-        a.i("inc DPTR          ; next glyph column", 0xA3)
-    a.i("djnz R4,d2_col", 0xDC, rel("d2_col"))
-    a.i("setb P0.7", 0xD2, CS)
-    a.i("ret", 0x22)
+; hn_home_x: FP_X = where the stock renderer starts the FP_STR string on page 1: centred as
+; big_text_render / small_text_render compute it ((320 [+ w - narrow if any narrow char] - n*w) / 2),
+; then moved to x 16 as hn_align_big / hn_align_small do unless that is below 16. Keeps FP_STR.
+hn_home_x:
+lcall hn_fp_load
+mov DPTR,#0x%04X""" % FP_STR + """
+movx A,@DPTR
+push ACC
+inc DPTR
+movx A,@DPTR
+push ACC
+mov R2,#0          ; n
+mov R3,#0          ; any narrow character
+hx_scan:
+lcall hn_fetch
+jz hx_count
+inc R2
+lcall hn_map
+jnb ACC.7,hx_scan
+mov R3,#1
+sjmp hx_scan
+hx_count:
+mov DPTR,#0x%04X""" % FP_STR + """
+pop ACC
+mov R7,A
+pop ACC
+movx @DPTR,A
+inc DPTR
+mov A,R7
+movx @DPTR,A
+mov DPTR,#0x%04X""" % FP_W + """
+movx A,@DPTR
+mov R6,A           ; w
+mov B,R2
+mul AB             ; B:A = n*w
+mov R4,B
+mov R5,A
+mov R0,#0          ; extra: w - narrow advance when a narrow character is there
+mov A,R3
+jz hx_base
+mov DPTR,#0x%04X""" % FP_NADV + """
+movx A,@DPTR
+xch A,R6
+clr C
+subb A,R6
+mov R0,A
+hx_base:
+mov A,R0
+add A,#0x40
+mov R7,A
+clr A
+addc A,#0x01       ; R6:R7 = 320 + extra
+mov R6,A
+clr C
+mov A,R7
+subb A,R5
+mov R7,A
+mov A,R6
+subb A,R4
+clr C
+rrc A              ; logical shift right, as the stock code
+mov R6,A
+mov A,R7
+rrc A
+mov R7,A
+mov A,R6
+jnz hx_store       ; far off (never for our strings): keep
+mov A,R7
+clr C
+subb A,#16
+jc hx_store        ; wider than 288 px: stays centred
+mov R7,#16
+hx_store:
+mov DPTR,#0x%04X""" % FP_X + """
+mov A,R6
+movx @DPTR,A
+inc DPTR
+mov A,R7
+movx @DPTR,A
+ret
+""")
+    S(a, """
+; hn_paint: draw the string in the FP block: font FP_FONT, string FP_STR (FP_SPC 0 XDATA, 1 code),
+; at FP_X, FP_Y, ink FP_INK on FP_BG, scale FP_SCALE (1 or 2), only the columns FP_CX0..FP_CX1.
+; Each character is a cell of w*scale columns, drawn in full (background included), and the next
+; one starts w*scale further on (narrow characters: the font's narrow advance * scale), as the stock
+; text renderers do. FP_END is the last column of the last cell (FP_X - 1 for an empty string).
+; An empty clip window (FP_CX0 > FP_CX1) draws nothing: a measurement.
+hn_paint:
+lcall hn_fp_load
+mov DPTR,#0x%04X""" % FP_X + """
+movx A,@DPTR
+mov R6,A
+inc DPTR
+movx A,@DPTR
+mov R7,A
+mov DPTR,#0x%04X""" % FP_CUR + """
+mov A,R6
+movx @DPTR,A
+inc DPTR
+mov A,R7
+movx @DPTR,A
+inc DPTR           ; FP_END = x - 1
+clr C
+mov A,R7
+subb A,#1
+mov R7,A
+mov A,R6
+subb A,#0
+movx @DPTR,A
+inc DPTR
+mov A,R7
+movx @DPTR,A
+mov DPTR,#0x%04X""" % FP_W + """
+movx A,@DPTR
+mov B,A
+mov DPTR,#0x%04X""" % FP_SCALE + """
+movx A,@DPTR
+mul AB
+mov DPTR,#0x%04X""" % FP_CW + """
+movx @DPTR,A
+hp_char:
+lcall hn_fetch
+jnz hp_have
+ret
+hp_have:
+lcall hn_map
+mov R4,A           ; index | narrow
+mov DPTR,#0x%04X""" % FP_W + """
+jnb ACC.7,hp_wide
+mov DPTR,#0x%04X""" % FP_NADV + """
+hp_wide:
+movx A,@DPTR
+mov B,A
+mov DPTR,#0x%04X""" % FP_SCALE + """
+movx A,@DPTR
+mul AB
+mov DPTR,#0x%04X""" % FP_ADV + """
+movx @DPTR,A
+mov A,R4
+anl A,#0x7F
+mov B,A
+mov DPTR,#0x%04X""" % FP_BPG + """
+movx A,@DPTR
+mul AB             ; B:A = glyph offset
+mov R7,A
+mov R6,B
+mov DPTR,#0x%04X""" % (FP_DATA + 1) + """
+movx A,@DPTR
+add A,R7
+mov R7,A
+mov DPTR,#0x%04X""" % FP_DATA + """
+movx A,@DPTR
+addc A,R6
+mov DPTR,#0x%04X""" % FP_GLY + """
+movx @DPTR,A
+inc DPTR
+mov A,R7
+movx @DPTR,A
+; cell: R2:R3 = x0 = FP_CUR, R4:R5 = x1 = x0 + cw - 1
+mov DPTR,#0x%04X""" % FP_CUR + """
+movx A,@DPTR
+mov R2,A
+inc DPTR
+movx A,@DPTR
+mov R3,A
+mov DPTR,#0x%04X""" % FP_CW + """
+movx A,@DPTR
+dec A
+add A,R3
+mov R5,A
+clr A
+addc A,R2
+mov R4,A
+mov DPTR,#0x%04X""" % FP_END + """
+movx @DPTR,A
+inc DPTR
+mov A,R5
+movx @DPTR,A
+; visible columns: vx0 = max(x0, cx0) in R2:R3, vx1 = min(x1, cx1) in R4:R5
+mov DPTR,#0x%04X""" % FP_CX0 + """
+movx A,@DPTR
+mov R6,A
+inc DPTR
+movx A,@DPTR
+mov R7,A
+clr C
+mov A,R3
+subb A,R7
+mov A,R2
+subb A,R6
+jnc hp_c0          ; x0 >= cx0
+mov A,R6
+mov R2,A
+mov A,R7
+mov R3,A
+hp_c0:
+mov DPTR,#0x%04X""" % FP_CX1 + """
+movx A,@DPTR
+mov R6,A
+inc DPTR
+movx A,@DPTR
+mov R7,A
+clr C
+mov A,R7
+subb A,R5
+mov A,R6
+subb A,R4
+jnc hp_c1          ; cx1 >= x1
+mov A,R6
+mov R4,A
+mov A,R7
+mov R5,A
+hp_c1:
+clr C
+mov A,R5
+subb A,R3
+mov A,R4
+subb A,R2
+jc hp_skip         ; vx1 < vx0: nothing of this cell is visible
+mov DPTR,#0x%04X""" % FP_VX0 + """
+mov A,R2
+movx @DPTR,A
+inc DPTR
+mov A,R3
+movx @DPTR,A
+inc DPTR
+mov A,R4
+movx @DPTR,A
+inc DPTR
+mov A,R5
+movx @DPTR,A
+lcall hn_cell
+hp_skip:
+mov DPTR,#0x%04X""" % FP_ADV + """
+movx A,@DPTR
+mov R7,A
+mov DPTR,#0x%04X""" % (FP_CUR + 1) + """
+movx A,@DPTR
+add A,R7
+movx @DPTR,A
+mov DPTR,#0x%04X""" % FP_CUR + """
+movx A,@DPTR
+addc A,#0
+movx @DPTR,A
+ljmp hp_char
+""")
+    # hn_cell: window, then stream the visible columns
+    S(a, """
+; hn_cell: the visible columns FP_VX0..FP_VX1 of the glyph at FP_GLY in the cell at FP_CUR
+hn_cell:
+mov DPTR,#0x%04X""" % (FP_CUR + 1) + """
+movx A,@DPTR
+mov R7,A
+mov DPTR,#0x%04X""" % (FP_VX0 + 1) + """
+movx A,@DPTR
+clr C
+subb A,R7          ; off = vx0 - x0 (0..59)
+mov DPTR,#0x%04X""" % FP_OFF + """
+movx @DPTR,A
+; window: x vx0..vx1, y FP_Y .. FP_Y + 8*bpc*scale - 1
+mov DPTR,#0x%04X""" % (FP_VX1) + """
+movx A,@DPTR
+mov R0,#0x2F
+movx @R0,A
+inc DPTR
+movx A,@DPTR
+inc R0
+movx @R0,A
+mov DPTR,#0x%04X""" % FP_BPC + """
+movx A,@DPTR
+rl A
+rl A
+rl A               ; rows at scale 1
+mov B,A
+mov DPTR,#0x%04X""" % FP_SCALE + """
+movx A,@DPTR
+mul AB
+dec A
+mov R5,A
+mov DPTR,#0x%04X""" % FP_Y + """
+movx A,@DPTR
+mov R7,A
+add A,R5
+mov R5,A
+clr A
+addc A,#0
+mov R4,A           ; R4:R5 = y1
+mov R6,#0          ; R6:R7 = y0
+mov DPTR,#0x%04X""" % FP_VX0 + """
+movx A,@DPTR
+mov R2,A
+inc DPTR
+movx A,@DPTR
+mov R3,A
+lcall 0x4437       ; lcd_set_window, ends with RAMWR
+; start column: glyph + (off >> (scale - 1)) * bpc; F1 = off & 1 at scale 2
+clr F1
+clr F0
+mov DPTR,#0x%04X""" % FP_SCALE + """
+movx A,@DPTR
+mov R0,A
+mov DPTR,#0x%04X""" % FP_OFF + """
+movx A,@DPTR
+cjne R0,#2,hc_s1
+setb F0
+clr C
+rrc A
+mov F1,C
+hc_s1:
+mov R0,A
+mov DPTR,#0x%04X""" % FP_BPC + """
+movx A,@DPTR
+mov B,A
+mov A,R0
+mul AB
+mov R0,A
+mov DPTR,#0x%04X""" % (FP_GLY + 1) + """
+movx A,@DPTR
+add A,R0
+mov R1,A
+mov DPTR,#0x%04X""" % FP_GLY + """
+movx A,@DPTR
+addc A,#0
+push ACC
+push 0x01          ; R1
+; columns to draw: vx1 - vx0 + 1
+mov DPTR,#0x%04X""" % (FP_VX0 + 1) + """
+movx A,@DPTR
+mov R0,A
+mov DPTR,#0x%04X""" % (FP_VX1 + 1) + """
+movx A,@DPTR
+clr C
+subb A,R0
+inc A
+mov R7,A
+; colours: R2:R3 ink, R4:R5 background; B = bytes per column
+mov DPTR,#0x%04X""" % FP_INK + """
+movx A,@DPTR
+mov R2,A
+inc DPTR
+movx A,@DPTR
+mov R3,A
+inc DPTR
+movx A,@DPTR
+mov R4,A
+inc DPTR
+movx A,@DPTR
+mov R5,A
+mov DPTR,#0x%04X""" % FP_BPC + """
+movx A,@DPTR
+mov B,A
+pop DPL
+pop DPH
+setb P0.3          ; D/C = data
+clr P0.7           ; CS low
+jnb F0,hc_col1
+ljmp hc_col2
+""")
+    for scale in (1, 2):
+        pfx = "c%d" % scale
+        S(a, """
+hc_col%d:
+mov R0,B
+%s_byte:
+clr A
+movc A,@A+DPTR
+inc DPTR""" % (scale, pfx))
+        for bit in range(8):
+            S(a, "rlc A\njc %s_i%d" % (pfx, bit))
+            for _ in range(scale):
+                S(a, "mov P1,R4\nclr P0.5\nsetb P0.5\nmov P1,R5\nclr P0.5\nsetb P0.5")
+            S(a, "sjmp %s_n%d\n%s_i%d:" % (pfx, bit, pfx, bit))
+            for _ in range(scale):
+                S(a, "mov P1,R2\nclr P0.5\nsetb P0.5\nmov P1,R3\nclr P0.5\nsetb P0.5")
+            S(a, "%s_n%d:" % (pfx, bit))
+        S(a, "djnz R0,%s_more\nsjmp %s_coldone\n%s_more:\nljmp %s_byte\n%s_coldone:" % ((pfx,) * 5))
+        if scale == 1:
+            S(a, "djnz R7,c1_again\nsetb P0.7\nret\nc1_again:\nljmp hc_col1")
+        else:
+            S(a, """
+; at scale 2 every glyph column is sent twice: F1 = this was the first copy -> rewind
+cpl F1
+jnb F1,c2_adv
+mov A,DPL
+clr C
+subb A,B
+mov DPL,A
+mov A,DPH
+subb A,#0
+mov DPH,A
+c2_adv:
+djnz R7,c2_again
+setb P0.7
+clr F0
+clr F1
+ret
+c2_again:
+ljmp hc_col2
+""")
 
 
 def build_volume_page(a):
-    a.comment("hn_draw_volume: replaces volpage_draw_volume 0x5936 (R7 speaker volume)")
-    a.L("hn_draw_volume")
-    a.i("mov A,0x2B", 0xE5, 0x2B)
-    a.i("xrl A,#1", 0x64, 0x01)
-    a.i("jz hdv_spk", 0x60, rel("hdv_spk"))
-    a.i("mov R7,0x52       ; headphone volume, as stock", 0xAF, 0x52)
-    a.L("hdv_spk")
-    a.i("mov A,R7", 0xEF)
-    a.i("cjne A,#61,hdv_c", 0xB4, 61, rel("hdv_c"))
-    a.L("hdv_c")
-    a.i("jc hdv_ok", 0x40, rel("hdv_ok"))
-    a.i("mov A,#60", 0x74, 60)
-    a.L("hdv_ok")
-    mov_dptr(a, HN_VOL)
-    a.i("movx @DPTR,A", 0xF0)
-    mov_dptr(a, HN_PEND)
-    a.i("movx A,@DPTR      ; page opened by a volume key? wipe first", 0xE0)
-    a.i("jz hdv_draw", 0x60, rel("hdv_draw"))
-    a.i("clr A", 0xE4)
-    a.i("movx @DPTR,A", 0xF0)
-    call(a, "hn_wipe")
-    call(a, "hn_vol_static")
-    a.L("hdv_draw")
-    a.i("mov R0,#5", 0x78, 0x05)
-    a.i("mov A,#2", 0x74, 0x02)
-    a.i("movx @R0,A        ; stock leaves the digit count 2 in XDATA 0x05", 0xF2)
-    call(a, "hn_begin")
-    call(a, "hn_white")
-    mov_dptr(a, HN_VOL)
-    a.i("movx A,@DPTR", 0xE0)
-    a.i("mov B,#10", 0x75, 0xF0, 10)
-    a.i("div AB            ; A tens, B ones", 0x84)
-    a.i("push B", 0xC0, 0xF0)
-    a.i("jnz hdv_tens", 0x70, rel("hdv_tens"))
-    rect(a, 184, 60, 42, 64, 0x0000)
-    call(a, "hn_fill", "blank tens digit")
-    a.i("sjmp hdv_ones", 0x80, rel("hdv_ones"))
-    a.L("hdv_tens")
-    a.i("mov R3,A", 0xFB); movr(a, 5, 184); movr(a, 7, 42)
-    call(a, "hn_digit2x")
-    a.L("hdv_ones")
-    a.i("pop ACC", 0xD0, 0xE0)
-    a.i("mov R3,A", 0xFB); movr(a, 5, 244); movr(a, 7, 42)
-    call(a, "hn_digit2x")
-    mov_dptr(a, HN_VOL)
-    a.i("movx A,@DPTR", 0xE0)
-    a.i("rl A", 0x23)
-    a.i("rl A              ; filled width = 4 px per step (<= 240)", 0x23)
-    a.i("jz hdv_rest", 0x60, rel("hdv_rest"))
-    a.i("push ACC", 0xC0, 0xE0)
-    a.i("mov R1,A", 0xF9)
-    call(a, "hn_accent")
-    movr(a, 2, 0); movr(a, 3, 40); movr(a, 5, 136); movr(a, 4, 3)
-    call(a, "hn_fill", "filled part of the line")
-    a.i("pop ACC", 0xD0, 0xE0)
-    a.L("hdv_rest")
-    a.i("cjne A,#240,hdv_r2", 0xB4, 240, rel("hdv_r2"))
-    a.i("sjmp hdv_done", 0x80, rel("hdv_done"))
-    a.L("hdv_r2")
-    a.i("mov R0,A", 0xF8)
-    a.i("add A,#40", 0x24, 40); a.i("mov R3,A", 0xFB)
-    a.i("clr A", 0xE4); a.i("addc A,#0", 0x34, 0x00); a.i("mov R2,A          ; x = 40 + filled", 0xFA)
-    a.i("clr C", 0xC3); a.i("mov A,#240", 0x74, 240); a.i("subb A,R0", 0x98); a.i("mov R1,A", 0xF9)
-    movr(a, 5, 136); movr(a, 4, 3); movr(a, 6, TRACK >> 8); movr(a, 7, TRACK & 0xFF)
-    call(a, "hn_fill", "rest of the line")
-    a.L("hdv_done")
-    jump(a, "hn_end")
-
-    a.comment("hn_vol_static: the parts of the volume page that don't depend on the volume")
-    a.L("hn_vol_static")
-    call(a, "hn_begin")
-    call(a, "hn_white")
-    call(a, "hn_name_ptr")
-    a.i("jc hvp_noname", 0x40, rel("hvp_noname"))
-    movr(a, 4, 0); movr(a, 5, 16); movr(a, 7, 30)
-    call(a, "hn_text", "input name")
-    a.L("hvp_noname")
+    S(a, """
+; hn_draw_volume: replaces volpage_draw_volume 0x5936 (R7 speaker volume). Records the value
+; (HN_VOL, HN_NUM); draws the number and the line when no wipe runs, or when the wipe has already
+; revealed them; otherwise the wipe draws them when it reveals them.
+hn_draw_volume:
+mov A,0x2B
+xrl A,#1
+jz hdv_spk
+mov R7,0x52        ; headphone volume, as stock
+hdv_spk:
+mov A,R7
+cjne A,#61,hdv_c
+hdv_c:
+jc hdv_ok
+mov A,#60
+hdv_ok:
+mov DPTR,#0x%04X""" % HN_VOL + """
+movx @DPTR,A
+mov B,#10
+div AB             ; A tens, B ones
+inc DPTR           ; HN_NUM
+jnz hdv_tens
+mov A,#0x4F        ; blank tens digit: 0x7F after the add, a blank as wide as a digit (' ' is narrow)
+hdv_tens:
+add A,#0x30
+movx @DPTR,A
+inc DPTR
+mov A,B
+add A,#0x30
+movx @DPTR,A
+inc DPTR
+clr A
+movx @DPTR,A
+mov R0,#5
+mov A,#2
+movx @R0,A         ; stock leaves the digit count 2 in XDATA 0x05
+mov DPTR,#0x%04X""" % HN_MODE + """
+movx A,@DPTR
+jz hdv_all
+inc DPTR           ; HN_VF
+movx A,@DPTR
+push ACC
+jnb ACC.3,hdv_nonum
+lcall hv_num
+hdv_nonum:
+pop ACC
+jnb ACC.4,hdv_ret
+ljmp hv_line
+hdv_ret:
+ret
+hdv_all:
+lcall hv_num
+ljmp hv_line
+""")
+    S(a, "; hv_num: the number, stock big digits at 2x, white, at 184,42 (leading zero blank)\nhv_num:")
+    fp_setup(a, "font_big", HN_NUM, 0, 184, 42, WHITE, scale=2)
+    S(a, "ljmp hn_paint")
+    S(a, "; hv_name: the input name, small font, white, at 16,30 (inputs 1..6)\nhv_name:\nlcall hn_name_ptr\njnc hvn_go\nret\nhvn_go:")
+    S(a, "mov DPTR,#0x%04X\nmov A,R2\nmovx @DPTR,A\ninc DPTR\nmov A,R3\nmovx @DPTR,A" % FP_STR)
+    fp_setup(a, "font_small", None, 1, 16, 30, WHITE)
+    S(a, "ljmp hn_paint")
+    S(a, "; hv_vol: \"VOL\" in the accent, small font, at 158,14\nhv_vol:")
+    fp_setup(a, "font_small", "str_vol", 1, 158, 14, "acc")
+    S(a, "ljmp hn_paint")
+    S(a, "; hv_div: the divider, 1 x 104 at 140,14\nhv_div:")
     rect(a, 140, 1, 14, 104, DIVIDER)
-    call(a, "hn_fill", "divider")
-    call(a, "hn_accent")
-    movr(a, 2, STR_VOL >> 8); movr(a, 3, STR_VOL & 0xFF); movr(a, 4, 0); movr(a, 5, 158); movr(a, 7, 14)
-    call(a, "hn_text", "VOL")
-    jump(a, "hn_end")
+    S(a, "ljmp hn_fill")
+    S(a, "; hv_line: the whole position line\nhv_line:")
+    st_imm16(a, HN_S0, 40)
+    st_imm16(a, HN_S1, 279)
+    S(a, """
+; hn_line_seg: the columns HN_S0..HN_S1 of the 240 x 3 position line at 40,136: accent up to
+; 40 + 4 * volume, 0x18E3 after it
+hn_line_seg:
+mov DPTR,#0x%04X""" % HN_VOL + """
+movx A,@DPTR
+rl A
+rl A
+add A,#40
+mov R7,A
+clr A
+addc A,#0
+mov DPTR,#0x%04X""" % HN_SPL + """
+movx @DPTR,A
+inc DPTR
+mov A,R7
+movx @DPTR,A
+; accent part: max(S0, 40) .. min(S1, split - 1)
+mov DPTR,#0x%04X""" % HN_S0 + """
+movx A,@DPTR
+mov R2,A
+inc DPTR
+movx A,@DPTR
+mov R3,A
+clr C
+subb A,#40
+mov A,R2
+subb A,#0
+jnc hl_a0
+mov R2,#0
+mov R3,#40
+hl_a0:
+mov DPTR,#0x%04X""" % HN_SPL + """
+movx A,@DPTR
+mov R4,A
+inc DPTR
+movx A,@DPTR
+clr C
+subb A,#1
+mov R5,A
+mov A,R4
+subb A,#0
+mov R4,A           ; R4:R5 = split - 1
+lcall hl_minS1
+lcall hn_acc
+lcall hl_fill
+; track part: max(S0, split) .. min(S1, 279)
+mov DPTR,#0x%04X""" % HN_SPL + """
+movx A,@DPTR
+mov R2,A
+inc DPTR
+movx A,@DPTR
+mov R3,A
+mov DPTR,#0x%04X""" % HN_S0 + """
+movx A,@DPTR
+mov R6,A
+inc DPTR
+movx A,@DPTR
+mov R7,A
+clr C
+subb A,R3
+mov A,R6
+subb A,R2
+jc hl_t0
+mov A,R6
+mov R2,A
+mov A,R7
+mov R3,A
+hl_t0:
+mov R4,#0x01
+mov R5,#0x17       ; 279
+lcall hl_minS1
+mov R6,%s""" % hi(TRACK) + """
+mov R7,%s""" % lo(TRACK) + """
+; hl_fill: fill R2:R3 .. R4:R5 (if not empty) at y 136, 3 rows, colour R6:R7
+hl_fill:
+clr C
+mov A,R5
+subb A,R3
+mov R1,A
+mov A,R4
+subb A,R2
+jc hl_none
+inc R1             ; width <= 240
+mov R5,#136
+mov R4,#3
+ljmp hn_fill
+hl_none:
+ret
+; hl_minS1: R4:R5 = min(R4:R5, HN_S1); keeps R2, R3
+hl_minS1:
+mov DPTR,#0x%04X""" % HN_S1 + """
+movx A,@DPTR
+mov R6,A
+inc DPTR
+movx A,@DPTR
+mov R7,A
+clr C
+subb A,R5
+mov A,R6
+subb A,R4
+jnc hl_m
+mov A,R6
+mov R4,A
+mov A,R7
+mov R5,A
+hl_m:
+ret
 
-    a.comment("hn_volpage: page 2 renderer (replaces 0x2167)")
-    a.L("hn_volpage")
-    call(a, "hn_vol_static")
-    a.i("mov R7,0x31", 0xAF, 0x31)
-    call(a, "hn_draw_volume")
-    jump(a, RENDER_DONE, "clears 0x22.3, 0x32, 0x46 like every page")
+; hn_vol_static: the parts of the volume page that don't depend on the volume
+hn_vol_static:
+lcall hv_name
+lcall hv_div
+ljmp hv_vol
 
-    a.comment("hn_enter_vol: where a volume key opens page 2 (4 sites): only flag it; the wipe and the")
-    a.comment("static page are drawn by hn_draw_volume, after the key handler has written the volume")
-    a.L("hn_enter_vol")
-    mov_dptr(a, HN_PEND)
-    a.i("mov A,#1", 0x74, 0x01)
-    a.i("movx @DPTR,A", 0xF0)
-    a.i("ret", 0x22)
+; hn_volpage: page 2 renderer (replaces 0x2167). During a wipe it only records the volume.
+hn_volpage:
+mov DPTR,#0x%04X""" % HN_MODE + """
+movx A,@DPTR
+jnz hvp_wipe
+lcall hn_vol_static
+mov R7,0x31
+lcall hn_draw_volume
+mov DPTR,#0x%04X""" % HN_VF + """
+mov A,#%d""" % VF_ALL + """
+movx @DPTR,A
+ljmp 0x22FA        ; clears 0x22.3, 0x32, 0x46 like every page
+hvp_wipe:
+mov R7,0x31
+lcall hn_draw_volume
+ljmp 0x22FA
+""")
 
-    a.comment("hn_clear: replaces lcall ui_clear_screen at 0x2106; page in 0x59")
-    a.L("hn_clear")
-    a.i("mov A,0x59", 0xE5, 0x59)
-    a.i("cjne A,#2,hc_stock", 0xB4, 0x02, rel("hc_stock"))
-    a.i("sjmp hn_wipe", 0x80, rel("hn_wipe"))
-    a.L("hc_stock")
-    jump(a, UI_CLEAR_SCREEN, "other pages: stock clear")
-    a.comment("hn_wipe: clear the text buffers, then the accent edge from x 318 to 0")
-    a.L("hn_wipe")
-    call(a, CLEAR_SMALL_BUF, "as ui_clear_screen")
-    call(a, CLEAR_BIG_BUF)
-    a.comment("fast clear instead of the wipe (1) while post_power_on is still to run (0x20.3: a key queued")
-    a.comment("during the power-on logo is dispatched first; its audio sequence and the unmute countdown")
-    a.comment("must not wait), (2) with the unmute countdown (RAM 0x43:0x44) at 1..HN_CD_MIN-1: the unmute")
-    a.comment("falls due during the wipe and the page after it")
-    a.i("jb 0x20.3,hw_fast   ; post_power_on pending", 0x20, POWER_ON_BIT, rel("hw_fast"))
-    a.i("mov A,0x43", 0xE5, 0x43)
-    a.i("jnz hw_go         ; 256 or more", 0x70, rel("hw_go"))
-    a.i("mov A,0x44", 0xE5, 0x44)
-    a.i("jz hw_go          ; 0: not running", 0x60, rel("hw_go"))
-    a.i("clr C", 0xC3)
-    a.i("subb A,#%d        ; C = countdown < HN_CD_MIN" % HN_CD_MIN, 0x94, HN_CD_MIN)
-    a.i("jnc hw_go", 0x50, rel("hw_go"))
-    a.L("hw_fast")
-    jump(a, LCD_CLEAR_BLACK, "the fast clear ui_clear_screen ends with; returns to our caller")
-    a.L("hw_go")
-    mov_dptr(a, HN_TICK)
-    a.i("clr A             ; no main-loop tick taken yet", 0xE4)
-    a.i("movx @DPTR,A", 0xF0)
-    a.i("inc DPTR          ; HN_REMUTE: no re-mute answered yet", 0xA3)
-    a.i("movx @DPTR,A", 0xF0)
-    call(a, "hn_begin")
-    mov_dptr(a, HN_WX)
-    a.i("mov A,#0x01", 0x74, 0x01); a.i("movx @DPTR,A", 0xF0); a.i("inc DPTR", 0xA3)
-    a.i("mov A,#0x3E       ; x = 318", 0x74, 0x3E); a.i("movx @DPTR,A", 0xF0)
-    a.L("hc_step")
-    call(a, "hn_tick", "count the unmute countdown down while the main loop waits")
-    call(a, "hn_accent")
-    call(a, "hc_load")
-    movr(a, 1, 2); movr(a, 5, 0); movr(a, 4, 170)
-    call(a, "hn_fill", "2-px edge at x")
-    call(a, "hc_load")
-    a.i("mov A,R2", 0xEA)
-    a.i("jz hc_black       ; x < 256", 0x60, rel("hc_black"))
-    a.i("cjne R3,#0x3E,hc_black", 0xBB, 0x3E, rel("hc_black"))
-    a.i("sjmp hc_dec       ; x = 318: nothing right of the edge yet", 0x80, rel("hc_dec"))
-    a.L("hc_black")
-    a.i("mov A,R3", 0xEB); a.i("add A,#2", 0x24, 2); a.i("mov R3,A", 0xFB)
-    a.i("clr A", 0xE4); a.i("addc A,R2", 0x3A); a.i("mov R2,A", 0xFA)
-    movr(a, 1, 2); movr(a, 5, 0); movr(a, 4, 170); movr(a, 6, 0); movr(a, 7, 0)
-    call(a, "hn_fill", "black where the edge was")
-    a.L("hc_dec")
-    a.comment("delay: R6, R7 are free here (hc_load reloads them); N = WIPE_DELAY_N for a ~200 ms wipe")
-    movr(a, 6, WIPE_DELAY_N)
-    a.L("hc_d1")
-    movr(a, 7, 0)
-    a.L("hc_d2")
-    a.i("djnz R7,hc_d2", 0xDF, rel("hc_d2"))
-    a.i("djnz R6,hc_d1", 0xDE, rel("hc_d1"))
-    call(a, "hc_load")
-    a.i("mov A,R2", 0xEA); a.i("orl A,R3", 0x4B)
-    a.i("jz hc_last", 0x60, rel("hc_last"))
-    a.i("clr C", 0xC3)
-    a.i("mov A,R3", 0xEB); a.i("subb A,#2", 0x94, 2); a.i("mov R3,A", 0xFB)
-    a.i("mov A,R2", 0xEA); a.i("subb A,#0", 0x94, 0); a.i("mov R2,A", 0xFA)
-    mov_dptr(a, HN_WX)
-    xstore(a, "R2", "R3")
-    jump(a, "hc_step")
-    a.L("hc_last")
-    rect(a, 0, 2, 0, 170, 0x0000)
-    call(a, "hn_fill", "the edge leaves at x 0")
-    a.comment("the first tick hn_tick took is handed back: the main loop runs it (all its countdowns) once")
-    mov_dptr(a, HN_TICK)
-    a.i("movx A,@DPTR", 0xE0)
-    a.i("jz hc_end", 0x60, rel("hc_end"))
-    a.i("setb 0x20.7        ; main-loop tick flag", 0xD2, TICK_BIT)
-    a.L("hc_end")
-    jump(a, "hn_end")
 
-    a.comment("hn_tick: once per wipe step (1.25 ms), stands in for the two main-loop duties that touch the")
-    a.comment("audio. First the re-mute request 0x21.4 (main_tick_tasks 0x3325 answers it on every pass): the key")
-    a.comment("handler has just written the new volume to the NJW1194, and on optical/coax without lock Timer0")
-    a.comment("asks for the mute again at the next tick. The first request in the wipe is answered here; after it")
-    a.comment("0x22.4 stays clear until the wipe ends, so repeats would write the same values (5.2 ms each) and")
-    a.comment("wait for the main loop instead.")
-    a.L("hn_tick")
-    a.i("jnb 0x21.4,ht_tick ; no re-mute request", 0x30, REMUTE_BIT, rel("ht_tick"))
-    mov_dptr(a, HN_REMUTE)
-    a.i("movx A,@DPTR", 0xE0)
-    a.i("jnz ht_tick        ; answered once in this wipe", 0x70, rel("ht_tick"))
-    a.i("inc A", 0x04)
-    a.i("movx @DPTR,A", 0xF0)
-    a.i("clr 0x21.4         ; as main_tick_tasks 0x3325..0x332C", 0xC2, REMUTE_BIT)
-    a.i("clr 0x22.4", 0xC2, UNMUTED_BIT)
-    call(a, AUDIO_APPLY_MUTE, "audio_apply_mute: NJW1194 to the mute code, DAC")
-    a.L("ht_tick")
-    a.comment("Then the tick (1.25 ms per step, so no 10 ms tick is missed). While the unmute countdown")
-    a.comment("runs, take the main loop's tick flag 0x20.7 and count 0x43:0x44 down as the main loop would,")
-    a.comment("never below 1: the tick that takes it to 0 (and unmutes) stays with the main loop. The first")
-    a.comment("tick taken is not counted here; hn_wipe sets the flag again at the end and the main loop counts")
-    a.comment("it, so the countdown sees every tick exactly once and the other countdowns one, as before.")
-    a.i("jnb 0x20.7,ht_ret  ; no tick since the last step", 0x30, TICK_BIT, rel("ht_ret"))
-    a.i("mov A,0x43", 0xE5, 0x43)
-    a.i("jnz ht_take", 0x70, rel("ht_take"))
-    a.i("mov A,0x44", 0xE5, 0x44)
-    a.i("clr C", 0xC3)
-    a.i("subb A,#2", 0x94, 2)
-    a.i("jc ht_ret          ; 0 (not running) or 1: leave the tick to the main loop", 0x40, rel("ht_ret"))
-    a.L("ht_take")
-    a.i("clr 0x20.7", 0xC2, TICK_BIT)
-    mov_dptr(a, HN_TICK)
-    a.i("movx A,@DPTR", 0xE0)
-    a.i("jnz ht_dec", 0x70, rel("ht_dec"))
-    a.i("inc A", 0x04)
-    a.i("movx @DPTR,A       ; first tick: counted by the main loop after the wipe", 0xF0)
-    a.i("ret", 0x22)
-    a.L("ht_dec")
-    a.i("mov A,0x44", 0xE5, 0x44)
-    a.i("jnz ht_lo", 0x70, rel("ht_lo"))
-    a.i("dec 0x43", 0x15, 0x43)
-    a.L("ht_lo")
-    a.i("dec 0x44           ; countdown >= 2 here, so it stays >= 1", 0x15, 0x44)
-    a.L("ht_ret")
-    a.i("ret", 0x22)
-    a.L("hc_load")
-    mov_dptr(a, HN_WX)
-    a.i("movx A,@DPTR", 0xE0); a.i("mov R2,A", 0xFA); a.i("inc DPTR", 0xA3)
-    a.i("movx A,@DPTR", 0xE0); a.i("mov R3,A", 0xFB)
-    a.i("ret", 0x22)
+def build_wipe(a):
+    S(a, """
+; hn_enter_vol: page 2 is being opened (the four volume-key sites, and hn_clear with page 2).
+; Draws nothing: starts the wipe from x 318, reverses a running exit at its x, or does nothing when
+; the entry runs already or the page is on screen. Clears the text buffers as ui_clear_screen did.
+hn_enter_vol:
+mov DPTR,#0x%04X""" % HN_MODE + """
+movx A,@DPTR
+cjne A,#1,he_n1
+ret                ; entering already
+he_n1:
+jnz he_rev         ; exiting: turn round
+inc DPTR           ; HN_VF
+movx A,@DPTR
+cjne A,#%d,he_start""" % VF_ALL + """
+ret                ; the page is on screen
+he_start:
+clr A
+movx @DPTR,A       ; nothing of the page drawn yet
+mov DPTR,#0x%04X""" % HN_STEP + """
+movx @DPTR,A
+mov DPTR,#0x%04X""" % HN_X + """
+mov A,#0x01
+movx @DPTR,A
+inc DPTR
+mov A,#0x3E        ; x = 318
+movx @DPTR,A
+sjmp he_go
+he_rev:
+lcall hn_reverse
+jz he_done         ; the exit had not drawn yet: the page is still on screen
+he_go:
+mov DPTR,#0x%04X""" % HN_MODE + """
+mov A,#1
+movx @DPTR,A
+he_done:
+lcall 0x5CBC       ; ui_clear_small_buf, as ui_clear_screen
+ljmp 0x5CCB        ; ui_clear_big_buf
+
+; hn_reverse: step = 20 - step (the ease table is symmetric, so x stays); A = new step, and at 20
+; (the running wipe had drawn nothing) the wipe stops: mode 0
+hn_reverse:
+mov DPTR,#0x%04X""" % HN_STEP + """
+movx A,@DPTR
+mov R7,A
+mov A,#%d""" % STEPS + """
+clr C
+subb A,R7
+movx @DPTR,A
+cjne A,#%d,hr_ret""" % STEPS + """
+mov DPTR,#0x%04X""" % HN_MODE + """
+clr A
+movx @DPTR,A
+ret
+hr_ret:
+mov A,#1
+ret
+
+; hn_clear: replaces lcall ui_clear_screen at 0x2106 (ui_render_page); page in 0x59
+hn_clear:
+mov A,0x59
+cjne A,#2,hc_n2
+ljmp hn_enter_vol
+hc_n2:
+cjne A,#1,hc_stock
+mov DPTR,#0x%04X""" % HN_MODE + """
+movx A,@DPTR
+cjne A,#2,hc_p1
+sjmp hc_stock      ; an exit runs already: cancel it, stock clear
+hc_p1:
+jnz hc_rev         ; entering: turn round
+inc DPTR           ; HN_VF
+movx A,@DPTR
+cjne A,#%d,hc_stock""" % VF_ALL + """
+; the volume page is on screen: wipe back home from x 0
+mov DPTR,#0x%04X""" % HN_STEP + """
+clr A
+movx @DPTR,A
+mov DPTR,#0x%04X""" % HN_X + """
+movx @DPTR,A
+inc DPTR
+movx @DPTR,A
+sjmp hc_go
+hc_rev:
+lcall hn_reverse
+jz hc_bufs
+hc_go:
+mov DPTR,#0x%04X""" % HN_MODE + """
+mov A,#2
+movx @DPTR,A
+inc DPTR
+inc DPTR           ; HN_HF
+clr A
+movx @DPTR,A
+mov DPTR,#0x%04X""" % HN_SBUF + """
+movx @DPTR,A       ; the stock refresh has not loaded the status line yet
+hc_bufs:
+lcall 0x5CBC       ; the text buffers, as ui_clear_screen
+lcall 0x5CCB
+; the input name as home_draw_input_name loads it, and where it ends
+lcall hn_name_load
+lcall hn_fp_name
+mov DPTR,#0x%04X""" % FP_CX0 + """
+mov A,#0x01        ; empty clip window: measure only
+movx @DPTR,A
+inc DPTR
+clr A
+movx @DPTR,A
+inc DPTR
+movx @DPTR,A
+inc DPTR
+movx @DPTR,A
+lcall hn_paint
+mov DPTR,#0x%04X""" % FP_END + """
+movx A,@DPTR
+mov R6,A
+inc DPTR
+movx A,@DPTR
+mov R7,A
+mov DPTR,#0x%04X""" % HN_NAMER + """
+mov A,R6
+movx @DPTR,A
+inc DPTR
+mov A,R7
+movx @DPTR,A
+ret
+hc_stock:
+ljmp 0x5D42        ; ui_clear_screen (hn_cancel first)
+
+; hn_cancel: ui_clear_screen's first instruction; every stock clear stops a wipe first
+hn_cancel:
+mov DPTR,#0x%04X""" % HN_MODE + """
+clr A
+movx @DPTR,A       ; HN_MODE
+inc DPTR
+movx @DPTR,A       ; HN_VF
+inc DPTR
+movx @DPTR,A       ; HN_HF
+lcall 0x5CBC       ; the instruction the hook replaced
+ljmp 0x5D45
+
+; hn_hold: replaces the periodic refresh's lcall home_refresh at 0x4081 (0x3FE3): while a wipe
+; runs, skip home_refresh and the status line (0x4084..0x4088) and note that the status buffer
+; (XDATA 0x50) has just been loaded
+hn_hold:
+mov DPTR,#0x%04X""" % HN_MODE + """
+movx A,@DPTR
+jz hh_stock
+mov DPTR,#0x%04X""" % HN_SBUF + """
+mov A,#1
+movx @DPTR,A
+ret                ; 0x3FE3's own return (0x4088 is a tail jump)
+hh_stock:
+lcall 0x5C8B       ; home_refresh
+ljmp 0x4084
+
+; hn_name_guard: home_draw_input_name's entry. A name drawn on page 1 during an exit (Source,
+; direct-select, input_apply) would draw over the half-revealed screen: cancel, stock clear first.
+hn_name_guard:
+mov DPTR,#0x%04X""" % HN_MODE + """
+movx A,@DPTR
+cjne A,#2,hg_go
+lcall 0x5D42
+hg_go:
+mov A,0x47
+dec A
+ljmp 0x4A88
+
+; hn_name_load: XDATA 0x35 = the input name, as home_draw_input_name loads it (input 7 and out of
+; range: the buffer is left as it is)
+hn_name_load:
+mov A,0x47
+dec A
+cjne A,#8,hnl_c
+hnl_c:
+jnc hnl_ret
+rl A
+mov B,A
+mov DPTR,#names8
+movc A,@A+DPTR
+mov R2,A
+mov A,B
+inc A
+movc A,@A+DPTR
+mov R1,A
+orl A,R2
+jz hnl_ret
+mov R3,#0xFF       ; code space
+clr A
+mov R5,A
+mov R7,A
+ljmp 0x4C8F        ; big_text_load
+hnl_ret:
+ret
+""")
+    S(a, "; hn_fp_name: the FP block for the home input name (big font, buffer 0x35, stock x and y, theme ink)\nhn_fp_name:")
+    fp_setup(a, "font_big", BIG_BUF, 0, None, NAME_Y, "theme")
+    S(a, "ljmp hn_home_x")
+    S(a, "; hn_fp_status: the same for the status line (small font, buffer 0x50, y 135)\nhn_fp_status:")
+    fp_setup(a, "font_small", SMALL_BUF, 0, None, STATUS_Y, "theme")
+    S(a, "ljmp hn_home_x")
+    S(a, """
+; home elements, each as the stock routine for that part draws it
+hh_icon:
+ljmp 0x5744        ; home_draw_output_icon
+hh_vol:
+mov R7,0x31
+ljmp 0x5916        ; home_draw_volume
+hh_fmt:
+ljmp 0x41CA        ; home_draw_format_tag
+hh_eq:
+ljmp 0x49A1        ; home_draw_eq_tag
+hh_bar:
+lcall hn_acc""")
+    rect(a, 18, 28, 114, 3)
+    S(a, """
+ljmp hn_fill
+hh_name:
+lcall hn_fp_name
+ljmp hn_paint
+hh_stat:
+lcall hn_fp_status
+ljmp hn_paint
+""")
+
+    # ---- the step ----
+    S(a, """
+; hn_tasks: replaces main_tasks_on's lcall main_tick_tasks (0x5B2A). When a 10 ms tick is pending,
+; main_tick_tasks handles it (countdowns, renders, the periodic refresh) and then, with the amp on,
+; one wipe step runs.
+hn_tasks:
+jb 0x20.7,ht_tick
+ljmp 0x3325
+ht_tick:
+lcall 0x3325
+mov A,0x4F
+cjne A,#1,hs_ret
+; hn_step: one step of the running wipe
+hn_step:
+mov DPTR,#0x%04X""" % HN_MODE + """
+movx A,@DPTR
+jz hs_ret
+cjne A,#3,hs_mc
+hs_mc:
+jc hs_mok
+clr A              ; not a mode: stop
+movx @DPTR,A
+hs_ret:
+ret
+hs_mok:
+mov R7,A           ; mode
+; the previous x
+mov DPTR,#0x%04X""" % HN_X + """
+movx A,@DPTR
+mov R2,A
+inc DPTR
+movx A,@DPTR
+mov R3,A
+mov DPTR,#0x%04X""" % HN_XP + """
+mov A,R2
+movx @DPTR,A
+inc DPTR
+mov A,R3
+movx @DPTR,A
+; the next step and its x
+mov DPTR,#0x%04X""" % HN_STEP + """
+movx A,@DPTR
+inc A
+cjne A,#%d,hs_sc""" % (STEPS + 1) + """
+hs_sc:
+jc hs_sok
+mov A,#%d""" % STEPS + """
+hs_sok:
+movx @DPTR,A
+rl A
+mov R6,A
+mov DPTR,#ease
+movc A,@A+DPTR
+mov R4,A
+mov A,R6
+inc A
+movc A,@A+DPTR
+mov R5,A           ; R4:R5 = ease[step]
+cjne R7,#2,hs_x
+clr C              ; exit: 318 - ease[step]
+mov A,#0x3E
+subb A,R5
+mov R5,A
+mov A,#0x01
+subb A,R4
+mov R4,A
+hs_x:
+mov DPTR,#0x%04X""" % HN_X + """
+mov A,R4
+movx @DPTR,A
+inc DPTR
+mov A,R5
+movx @DPTR,A
+""")
+    # band, damage, limit per mode
+    S(a, """
+mov DPTR,#0x%04X""" % HN_STEP + """
+movx A,@DPTR
+cjne A,#%d,hs_mid""" % STEPS + """
+; last step: the band runs to the screen edge, no edge is drawn, everything is revealed
+cjne R7,#1,hs_lastx
+; entry: band 0 .. xp + 1, limit 0
+mov R4,#0
+mov R5,#0
+lcall hs_xp1
+mov R2,#0
+mov R3,#0
+sjmp hs_set
+hs_lastx:
+; exit: band xp .. 319, limit 320
+lcall hs_xp
+mov R6,#0x01
+mov R7,#0x3F
+mov R2,#0x01
+mov R3,#0x40
+sjmp hs_set
+hs_mid:
+cjne R7,#1,hs_midx
+; entry: band x + 2 .. xp + 1, damage from x, limit x + 2
+lcall hs_x2
+mov A,R4
+mov R2,A
+mov A,R5
+mov R3,A
+lcall hs_xp1
+sjmp hs_setd
+hs_midx:
+; exit: band xp .. x - 1, damage to x + 1, limit x
+lcall hs_xp
+mov DPTR,#0x%04X""" % HN_X + """
+movx A,@DPTR
+mov R2,A
+inc DPTR
+movx A,@DPTR
+mov R3,A
+clr C
+subb A,#1
+mov R7,A
+mov A,R2
+subb A,#0
+mov R6,A
+sjmp hs_setd
+; R4:R5 band start, R6:R7 band end, R2:R3 limit; damage = band
+hs_set:
+lcall hs_store
+lcall hs_dmg_band
+sjmp hs_draw
+hs_setd:
+lcall hs_store
+lcall hs_dmg_band
+; the edge columns x, x + 1 are damaged too
+mov DPTR,#0x%04X""" % HN_X + """
+movx A,@DPTR
+mov R2,A
+inc DPTR
+movx A,@DPTR
+mov R3,A
+mov DPTR,#0x%04X""" % HN_D0 + """
+movx A,@DPTR
+mov R4,A
+inc DPTR
+movx A,@DPTR
+clr C
+subb A,R3
+mov A,R4
+subb A,R2
+jc hs_d0ok         ; d0 < x
+mov DPTR,#0x%04X""" % HN_D0 + """
+mov A,R2
+movx @DPTR,A
+inc DPTR
+mov A,R3
+movx @DPTR,A
+hs_d0ok:
+mov A,R3
+add A,#1
+mov R3,A
+clr A
+addc A,R2
+mov R2,A           ; x + 1
+mov DPTR,#0x%04X""" % HN_D1 + """
+movx A,@DPTR
+mov R4,A
+inc DPTR
+movx A,@DPTR
+clr C
+subb A,R3
+mov A,R4
+subb A,R2
+jnc hs_draw        ; d1 >= x + 1
+mov DPTR,#0x%04X""" % HN_D1 + """
+mov A,R2
+movx @DPTR,A
+inc DPTR
+mov A,R3
+movx @DPTR,A
+""")
+    S(a, """
+hs_draw:
+; the band, black
+mov DPTR,#0x%04X""" % HN_B0 + """
+movx A,@DPTR
+mov R2,A
+inc DPTR
+movx A,@DPTR
+mov R3,A
+inc DPTR
+inc DPTR
+movx A,@DPTR       ; HN_B1 lo
+clr C
+subb A,R3
+inc A
+mov R1,A           ; width (2..255)
+mov R5,#0
+mov R4,#170
+mov R6,#0
+mov R7,#0
+lcall hn_fill
+""")
+    # invalidate
+    S(a, "; elements the band or the edge touched are no longer on screen")
+    ld16(a, "R4", "R5", HN_D0)
+    ld16(a, "R6", "R7", HN_D1)
+    for flags, elems in ((HN_VF, VOL_ELEMENTS), (HN_HF, HOME_ELEMENTS)):
+        for bit, name, x0, x1 in elems:
+            skip = "inv_%s" % name
+            S(a, """
+clr C
+mov A,R7
+subb A,%s
+mov A,R6
+subb A,%s
+jc %s""" % (lo(x0), hi(x0), skip))
+            if name in ("hh_name", "hh_stat"):      # x1 in XDATA
+                S(a, """
+mov DPTR,#0x%04X
+movx A,@DPTR
+mov R2,A
+inc DPTR
+movx A,@DPTR
+clr C
+subb A,R5
+mov A,R2
+subb A,R4
+jc %s""" % (x1, skip))
+            else:
+                S(a, """
+clr C
+mov A,%s
+subb A,R5
+mov A,%s
+subb A,R4
+jc %s""" % (lo(x1), hi(x1), skip))
+            S(a, """
+mov DPTR,#0x%04X
+movx A,@DPTR
+anl A,#0x%02X
+movx @DPTR,A
+%s:""" % (flags, 0xFF ^ bit, skip))
+    S(a, """
+mov DPTR,#0x%04X""" % HN_MODE + """
+movx A,@DPTR
+cjne A,#1,hs_noline
+; entry: the part of the position line inside the band
+mov DPTR,#0x%04X""" % HN_B0 + """
+movx A,@DPTR
+mov R4,A
+inc DPTR
+movx A,@DPTR
+mov R5,A
+inc DPTR
+movx A,@DPTR
+mov R6,A
+inc DPTR
+movx A,@DPTR
+mov R7,A
+mov DPTR,#0x%04X""" % HN_S0 + """
+mov A,R4
+movx @DPTR,A
+inc DPTR
+mov A,R5
+movx @DPTR,A
+inc DPTR
+mov A,R6
+movx @DPTR,A
+inc DPTR
+mov A,R7
+movx @DPTR,A
+lcall hn_line_seg
+hs_noline:
+; the edge, unless this is the last step
+mov DPTR,#0x%04X""" % HN_STEP + """
+movx A,@DPTR
+cjne A,#%d,hs_edge""" % STEPS + """
+sjmp hs_reveal
+hs_edge:
+mov DPTR,#0x%04X""" % HN_X + """
+movx A,@DPTR
+mov R2,A
+inc DPTR
+movx A,@DPTR
+mov R3,A
+mov R1,#2
+mov R5,#0
+mov R4,#170
+lcall hn_acc
+lcall hn_fill
+hs_reveal:
+mov DPTR,#0x%04X""" % HN_MODE + """
+movx A,@DPTR
+cjne A,#1,hs_to_rvx
+sjmp hs_rve
+hs_to_rvx:
+ljmp hs_rvx
+hs_rve:
+""")
+    # entry reveal
+    for bit, name, x0, x1 in VOL_ELEMENTS:
+        skip = "rv_%s" % name
+        S(a, """
+mov DPTR,#0x%04X
+movx A,@DPTR
+anl A,#0x%02X
+jnz %s
+mov DPTR,#0x%04X
+movx A,@DPTR
+mov R6,A
+inc DPTR
+movx A,@DPTR
+mov R7,A
+clr C
+mov A,%s
+subb A,R7
+mov A,%s
+subb A,R6
+jc %s
+lcall %s
+mov DPTR,#0x%04X
+movx A,@DPTR
+orl A,#0x%02X
+movx @DPTR,A
+%s:""" % (HN_VF, bit, skip, HN_LIM, lo(x0), hi(x0), skip, name, HN_VF, bit, skip))
+    S(a, "ljmp hs_end\nhs_rvx:")
+    # exit reveal
+    for bit, name, x0, x1 in HOME_ELEMENTS:
+        skip = "rv_%s" % name
+        S(a, """
+mov DPTR,#0x%04X
+movx A,@DPTR
+anl A,#0x%02X
+jnz %s""" % (HN_HF, bit, skip))
+        if name == "hh_name":
+            ld16(a, "R2", "R3", HN_NAMER)
+        elif name == "hh_stat":
+            S(a, """
+mov DPTR,#0x%04X""" % HN_SBUF + """
+movx A,@DPTR
+jnz rs_ready
+mov DPTR,#0x%04X""" % HN_STEP + """
+movx A,@DPTR
+cjne A,#%d,%s""" % (STEPS, skip) + """
+rs_ready:
+lcall hn_fp_status
+mov DPTR,#0x%04X""" % FP_CX0 + """
+mov A,#0x01
+movx @DPTR,A
+inc DPTR
+clr A
+movx @DPTR,A
+inc DPTR
+movx @DPTR,A
+inc DPTR
+movx @DPTR,A
+lcall hn_paint""")
+            ld16(a, "R2", "R3", FP_END)
+        else:
+            S(a, "mov R2,%s\nmov R3,%s" % (hi(x1), lo(x1)))
+        S(a, """
+mov DPTR,#0x%04X
+movx A,@DPTR
+mov R6,A
+inc DPTR
+movx A,@DPTR
+mov R7,A
+clr C
+mov A,R3
+subb A,R7
+mov A,R2
+subb A,R6
+jnc %s""" % (HN_LIM, skip))
+        if name == "hh_stat":
+            st16(a, HN_STATR, "R2", "R3")
+            S(a, "lcall hn_fp_status\nlcall hn_paint")
+        else:
+            S(a, "lcall %s" % name)
+        S(a, """
+mov DPTR,#0x%04X
+movx A,@DPTR
+orl A,#0x%02X
+movx @DPTR,A
+%s:""" % (HN_HF, bit, skip))
+    S(a, """
+hs_end:
+; the last step ends the wipe
+mov DPTR,#0x%04X""" % HN_STEP + """
+movx A,@DPTR
+cjne A,#%d,hs_done""" % STEPS + """
+mov DPTR,#0x%04X""" % HN_MODE + """
+movx A,@DPTR
+mov R7,A
+clr A
+movx @DPTR,A
+inc DPTR           ; HN_VF
+cjne R7,#2,hs_done
+movx @DPTR,A       ; home: the volume page is gone
+hs_done:
+ret
+
+; step helpers
+hs_xp:             ; R4:R5 = previous x
+mov DPTR,#0x%04X""" % HN_XP + """
+movx A,@DPTR
+mov R4,A
+inc DPTR
+movx A,@DPTR
+mov R5,A
+ret
+hs_xp1:            ; R6:R7 = previous x + 1
+mov DPTR,#0x%04X""" % HN_XP + """
+movx A,@DPTR
+mov R6,A
+inc DPTR
+movx A,@DPTR
+add A,#1
+mov R7,A
+clr A
+addc A,R6
+mov R6,A
+ret
+hs_x2:             ; R4:R5 = x + 2
+mov DPTR,#0x%04X""" % HN_X + """
+movx A,@DPTR
+mov R4,A
+inc DPTR
+movx A,@DPTR
+add A,#2
+mov R5,A
+clr A
+addc A,R4
+mov R4,A
+ret
+hs_store:          ; HN_B0 = R4:R5, HN_B1 = R6:R7, HN_LIM = R2:R3
+mov DPTR,#0x%04X""" % HN_LIM + """
+mov A,R2
+movx @DPTR,A
+inc DPTR
+mov A,R3
+movx @DPTR,A
+mov DPTR,#0x%04X""" % HN_B0 + """
+mov A,R4
+movx @DPTR,A
+inc DPTR
+mov A,R5
+movx @DPTR,A
+inc DPTR
+mov A,R6
+movx @DPTR,A
+inc DPTR
+mov A,R7
+movx @DPTR,A
+ret
+hs_dmg_band:       ; damage = band (HN_D0 = R4:R5, HN_D1 = R6:R7)
+mov DPTR,#0x%04X""" % HN_D0 + """
+mov A,R4
+movx @DPTR,A
+inc DPTR
+mov A,R5
+movx @DPTR,A
+inc DPTR
+mov A,R6
+movx @DPTR,A
+inc DPTR
+mov A,R7
+movx @DPTR,A
+ret
+""")
 
 
 def build_home(a):
-    a.comment("hn_home_tail: replaces home_refresh's ljmp 0x5916; adds the accent bar")
-    a.L("hn_home_tail")
-    mov_dptr(a, HN_PEND)
-    a.i("clr A             ; no volume page pending on the home screen", 0xE4)
-    a.i("movx @DPTR,A", 0xF0)
-    call(a, HOME_DRAW_VOLUME, "as before, R7 = volume")
-    call(a, "hn_begin")
-    call(a, "hn_accent")
+    S(a, """
+; hn_home_tail: replaces home_refresh's ljmp 0x5916; adds the accent bar
+hn_home_tail:
+lcall 0x5916       ; as before, R7 = volume
+lcall hn_acc""")
     rect(a, 18, 28, 114, 3)
-    call(a, "hn_fill", "accent bar under the input name")
-    jump(a, "hn_end")
-
+    S(a, "ljmp hn_fill")
     for name, back in (("hn_align_big", 0x2A28), ("hn_align_small", 0x3A85)):
-        a.comment("%s: on page 1 move the stored start x (XDATA 0x04:0x05) to 16" % name)
-        a.L(name)
-        a.i("mov A,0x45", 0xE5, 0x45)
-        a.i("cjne A,#1,%s_x" % name, 0xB4, 0x01, rel(name + "_x"))
-        a.i("mov R0,#4", 0x78, 0x04)
-        a.i("movx A,@R0        ; start x hi", 0xE2)
-        a.i("jnz %s_x" % name, 0x70, rel(name + "_x"))
-        a.i("inc R0", 0x08)
-        a.i("movx A,@R0        ; start x lo", 0xE2)
-        a.i("clr C", 0xC3)
-        a.i("subb A,#16", 0x94, 16)
-        a.i("jc %s_x         ; wider than 288 px: keep it centred" % name, 0x40, rel(name + "_x"))
-        a.i("mov A,#16", 0x74, 16)
-        a.i("movx @R0,A        ; start x = 16", 0xF2)
-        a.L(name + "_x")
-        a.i("clr A             ; the two instructions the hook replaced", 0xE4)
-        a.i("mov R0,#2", 0x78, 0x02)
-        jump(a, back)
+        S(a, """
+; %s: on page 1 move the stored start x (XDATA 0x04:0x05) to 16
+%s:
+mov A,0x45
+cjne A,#1,%s_x
+mov R0,#4
+movx A,@R0         ; start x hi
+jnz %s_x
+inc R0
+movx A,@R0         ; start x lo
+clr C
+subb A,#16
+jc %s_x            ; wider than 288 px: keep it centred
+mov A,#16
+movx @R0,A         ; start x = 16
+%s_x:
+clr A              ; the two instructions the hook replaced
+mov R0,#2
+ljmp 0x%04X
+""" % (name, name, name, name, name, name, back))
 
 
 def build(a):
     build_data(a)
     build_primitives(a)
+    build_painter(a)
     build_volume_page(a)
+    build_wipe(a)
     build_home(a)
 
 
@@ -670,7 +1822,6 @@ def assemble():
     a = Asm(CODE_ADDR)
     build(a)
     code = a.resolve()
-    assert a.labels["names"] == NAMES and a.labels["str_vol"] == STR_VOL
     return code, a.labels, a
 
 
@@ -688,6 +1839,15 @@ def main():
         assert img[addr:addr + len(text) + 1] == text.encode() + b"\0", "input name %d moved" % inp
     assert len(img) <= CODE_ADDR
     assert img[0x2A28] == 0xF2 and img[0x3A85] == 0xF2, "movx @R0,A after the align hooks moved"
+    # the instructions the new hooks jump back past
+    assert img[0x4084:0x4089] == bytes.fromhex("7f877e00") + b"\x02", "0x4084 not as expected"
+    assert img[0x5D45:0x5D48] == bytes.fromhex("125ccb"), "ui_clear_screen's second call moved"
+    assert img[0x4A88:0x4A8B] == bytes.fromhex("b40800"), "home_draw_input_name's cjne moved"
+    # home_draw_input_name's table (0x4A9B) loads the strings INPUT_NAMES lists
+    for inp, addr, text in INPUT_NAMES:
+        t = (img[0x4A9B + 3 * (inp - 1) + 1] << 8) | img[0x4A9B + 3 * (inp - 1) + 2]
+        assert img[t:t + 6] == bytes([0x7B, 0xFF, 0x7A, addr >> 8, 0x79, addr & 0xFF]), "name table %d" % inp
+    assert img[0x4A9B + 3 * 6:0x4A9B + 3 * 7] == bytes.fromhex("024aef"), "input 7 draws the buffer as it is"
 
     code, labels, a = assemble()
     img += b"\xFF" * (CODE_ADDR - len(img))
