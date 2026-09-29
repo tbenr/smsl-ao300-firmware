@@ -71,6 +71,13 @@ features/
     layout.json, sizing.html      the home layout the build reads, and the page that edits it
                                    (preview exact to the firmware; served by tools/fonts/rasterize.py)
     house_numerals.asm            annotated listing of the patch code at 0x9800
+  fix-auto-off/                   stock-bug fix, ported from the AO300 PRO V1.2: Dimmer Auto
+                                  OFF also times out after a cold power-up. Standalone on
+                                  direct-select; other builds include it (see its README)
+    fix_auto_off.py               the fix: HOOK and emit(a), for any build pipeline
+    build_patch.py, emu_test.py   build build/flash_fixautooff.bin, hook test, 256-command
+                                   sweep, cold power-up / standby scenarios vs direct-select
+    fix_auto_off.asm              generated listing
 
 ghidraPRG/                    * Ghidra project (import original/extracted/flash.bin as
                                 8051:BE:16:default, block CODE at 0)
@@ -201,6 +208,9 @@ home screen in the mock's typefaces) was tried on 2026-09-29: it looks great and
 anti-aliased text works on the panel, but the tags, status line and volume are too small.
 hn6 (`v1.4 tbenr hn6`) has them larger, sized in `features/house-numerals/sizing.html`; it is
 emulator-verified and not yet tried on the amp.
+
+Built and emulator-tested, not yet tried on the amp: `features/fix-auto-off/build/flash_fixautooff.bin`
+(`v1.4 tbenr aof1`), direct-select plus the PRO's Auto OFF power-on fix.
 
 ## What the custom firmware adds
 
@@ -353,8 +363,8 @@ Two buses share the pins P3.7 (data) and P4.1 (clock):
 | Power amplifier | MA5332MS, analogue in | mute / enable via expander | no control interface |
 | Speaker and headphone relays | two speaker relays, one headphone relay | driven during the power-on sequence | |
 | Display | ST7789-class colour LCD, 320 × 170 as drawn | bit-banged 8-bit bus on P1 (WR P0.5, CS P0.7, D/C P0.3), byte writes 0x567A / 0x5C9C with a delay call per byte; full clear 0x51EE | column offset 0x23. Window 0x4437: firmware y + 0x23 → CASET, firmware x → RASET, so pixels stream one 170-px vertical line at a time; P0 and P1 are push-pull (init 0x45CE). Two 1-bit fonts, stored rotated (glyph rows = screen columns): small 14 × 24 at 0x5DAB (42 bytes/glyph, painter 0x2DF8, status line and menus) and big 32 × 30 at 0x6A23 (120 bytes/glyph, painter 0x3F3C, input name and other centre-line text); glyph index = digits 6..15, A-Z 0x10.., a-z 0x2A.. (small font only). Text colour from the theme table 0x9241 (RGB565: FFFF F800 07E0 33BF CFA0 07FF FC00 F81F). Home (refresh 0x5C8B): output/mute icon at 15,8 (0x5744), volume as two digits at 48,9 (0x5916; speaker volume 0x31 or headphone volume 0x52), format tag at 208,10, EQ tag at 266,10, input name centred at y 75, status line centred at y 135. Page variable 0x45 (1 home, 2 volume, 3+ menus; renderer 0x2101, jump table `ui_page_table` at 0x2143, page 2 entry `volpage_render` at 0x2167). Volume page (page 2): full clear, two digits at 130,75, "volume" at y 135, back home when the Timer0 countdown 0x3F:0x40 (200 ticks, armed by the key tail 0x0F48) runs out (0x3ED9 sets page 1 and 0x22.3); the next render only clears, and the periodic refresh 0x3FE3 draws home 10 main ticks later (0x27:0x28 is that refresh countdown: 10 after a render, 50 after each refresh). The volume keys (`key_volume_up` 0x0D03, `key_volume_up2` 0x0D83, `key_volume_down4` 0x0E2A, `key_volume_down` 0x0ED2) each set page 2 and open it directly, inline right after `mov 0x45,#0x02` (four sites: 0x0D33, 0x0DB3, 0x0E5A, 0x0F02, each `lcall ui_clear_screen` then the "volume" caption); the page-2 renderer at 0x2167 is only a second way in, not the path the keys use |
-| Backlight | LED on GPIO P0.6 | on/off only; "Auto OFF" clears it on a timer | no PWM peripheral on this MCU |
-| Front panel | buttons / encoder (nets RE_A, RE_B) | P4.7, P5.4, P5.5, P2.6, P7.4 | |
+| Backlight | LED on GPIO P0.6 | on/off only; "Auto OFF" (0x29 = 2) clears it when the countdown 0x2F:0x30 runs out (0x33DB, main ticks), armed to 500 by every key (0x0BBD): about 6 s in the emulator, as main-loop passes miss some 10 ms ticks | no PWM peripheral on this MCU. Stock never arms it at power-on, see "AO300 PRO firmware" |
+| Front panel | buttons / encoder (nets RE_A, RE_B) | P4.7, P5.4, P5.5, P2.6, P7.4 | Encoder scanned by Timer3 (0x5040, every 0.5 ms) through 0x396D into RAM 0x2D (0xFF idle); `read_key` returns 0x2D on pages 1–2 when no other key is pending. `tools/emu/ao300.py` does not run Timer3, so 0x2D stays 0 there and the dispatcher sees key 0 on every idle pass |
 | Programming header | 4-pin header next to the HDMI receiver | 5V, TXD, RXD, GND (bottom silkscreen also shows RXD TXD GND) | the serial update port |
 | Settings | MCU EEPROM area above 0xF400 | IAP routines 0x5956 / 0x58AF / 0x59D0 | addresses used go up to about 0x0400 |
 
@@ -432,7 +442,7 @@ Measured from the images; the code/EEPROM split is the chip's own setting (0xF40
 Rules of thumb: new code appends after the existing patch area (0x9400 upward); new
 state goes in XDATA, preferably 0x0100..0x0400 so it is safe even if the XRAM size
 assumption is wrong; new settings can use the two free EEPROM sectors. Rough cost of the
-features discussed so far: screen-off re-arm ~12 bytes; status-line redraw skip ~40 bytes
+features discussed so far: screen-off re-arm 14 bytes (built, fix-auto-off); status-line redraw skip ~40 bytes
 + 26-byte XDATA buffer; backlight PWM a few hundred bytes + menu + 1 EEPROM byte; HDMI
 auto-switch ~60 bytes. Space is not the limit; the hand-assembled hook method and the
 emulator coverage are.
@@ -473,7 +483,11 @@ the next key press. The AO300 v1.4 code has the same omission (the countdown at 
 without arming it). The Pro arms it at the end of its post-power-on routine. The IR
 command table is identical, so no new remote codes exist.
 
-Backport candidate: arm the countdown at the end of 0x5585 when RAM 0x29 == 2.
+Backported in `features/fix-auto-off`: post_power_on's tail (0x55B9) arms the countdown
+to 500 when RAM 0x29 == 2, the same value a key press loads. In the emulator the bug only
+shows after a cold power-up. Entering standby with the remote's Power key goes through the
+key dispatcher, which arms the countdown; it freezes in standby and drains after the next
+power-on, so stock times out there too.
 
 ## Open questions
 

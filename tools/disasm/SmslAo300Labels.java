@@ -40,6 +40,7 @@ public class SmslAo300Labels extends GhidraScript {
         {0x3A53, "small_text_render"}, {0x3DA2, "read_key"},
         {0x3E67, "timer0_isr"},        {0x449F, "main_init"},
         {0x4E2D, "step_with_wrap"},    {0x5040, "timer3_isr"},
+        {0x396D, "encoder_scan"},      // timer3_isr (every 0.5 ms): RE_A P5.5 / RE_B P5.4 -> key code, stored in 0x2D (0xFF idle)
         {0x536F, "key_history_combo"}, {0x549F, "int0_isr"},
         {0x55F2, "uart1_isr"},         {0x5628, "input_step"},
         {0x56E8, "int1_isr"},          {0x588B, "input_menu_select"},
@@ -85,6 +86,7 @@ public class SmslAo300Labels extends GhidraScript {
         // main loop and timers
         {0x3325, "main_tick_tasks"},   // first, on every pass: 0x21.4 set (re-mute request) -> clear it and 0x22.4, audio_apply_mute
         {0x5585, "post_power_on"},     // run by main_tasks_on when 0x20.3 is set (power-on path 0x55E4); blocks ~1 s, then 0x43:0x44 = 200
+                                       // never arms g_screen_off: with Auto OFF the backlight stays on after a cold power-up (fixed in the PRO V1.2; features/fix-auto-off hooks its tail 0x55B9)
         {0x5A62, "mute_state_set"},    // R7=0: clear 0x22.4, P2.2 on; else 0x5B39 by output
         {0x5975, "power_on_display"},  // standby loop's power-on path, after setb 0x20.3: lcd_init, backlight, 0x52B4 (~3 s, probably the logo), expander_init; keys wait
         {0x5B39, "p2_mute_pins_by_output"}, // output 1: P2.5/P2.7/P2.2 low, 2: high
@@ -108,6 +110,7 @@ public class SmslAo300Labels extends GhidraScript {
         // patch code, only in the images that carry it
         {0x9400, "ir_direct_select"},  // features/direct-select
         {0x9450, "blit_test"},         // features/blit-test
+        {0x9680, "fx_auto_off"},       // features/fix-auto-off standalone image; builds that include the fix place it in their own code
         {0x9700, "fast_pixel"},        // features/fast-lcd, replaces lcd_write_pixel
         {0x9716, "fast_clear"},        // features/fast-lcd, replaces lcd_clear_black's loop
         // features/house-numerals (hn6)
@@ -170,6 +173,8 @@ public class SmslAo300Labels extends GhidraScript {
         {0x22FA, "ui_render_done"},         {0x336A, "main_render_page"},
         {0x3DD6, "read_key_volpage_exit"},  // page 2: keys other than Vol+/Vol-/Power -> 0x15 (home)
         {0x3ED9, "t0_return_home"},         // 0x3F:0x40 reaches 0 -> page 1, redraw
+        {0x0BBD, "key_arm_screen_off"},     // dispatch_key, dimmer 2: setb P0.6 (not for key 0x1F), g_screen_off = (dimmer-1)*500
+        {0x33DB, "screen_off_tick"},        // main_tick_10ms, dimmer 2: countdown16_dec(g_screen_off); reaching 0 -> clr P0.6 (backlight off)
         {0x3335, "main_tick_10ms"},         // runs once per 0x20.7 tick flag; missed ticks are lost
         {0x332F, "main_tick_flag_test"},    // jb 0x20.7: the 10 ms tick path of main_tick_tasks
         {0x3351, "osd_timer_expired"},      // page 1, 0x27:0x28 ran out: lcall home_refresh_periodic
@@ -212,6 +217,7 @@ public class SmslAo300Labels extends GhidraScript {
         {0x27, "g_osd_timer_hi"},  {0x28, "g_osd_timer_lo"},  {0x29, "g_dimmer_mode"},
         // 0x27:0x28, page 1: home_refresh_periodic countdown (10 after a render, 50 after a refresh)
         {0x2B, "g_output"},        {0x2C, "g_filter"},        {0x2F, "g_screen_off_hi"},
+        {0x2D, "g_encoder_key"},   // encoder_scan result; read_key returns it on pages < 3 when no IR or panel key is pending
         {0x30, "g_screen_off_lo"}, {0x31, "g_volume"},        {0x32, "g_render_req"},
         {0x39, "g_eq"},            {0x3D, "g_format"},        // g_format: 3 DSD, 4 MQA (by 0x75), 5 DoP, else PCM (home_draw_format_tag)
         {0x75, "g_format_mqa"},    // with g_format 4: 3 -> "MQA ", 4 or 5 -> "MQA.", else "PCM "
