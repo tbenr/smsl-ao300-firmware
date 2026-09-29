@@ -104,16 +104,17 @@ HM_RH = 0x01A2                      # hm_rest: rows
 HM_RX = 0x01A3                      # hm_rest: next column (hi, lo)
 HM_TR = 0x01A5                      # hm_tag: the box ends before this column
 HM_TL = 0x01A6                      # hm_tag: the tag's area starts at this column
+HN_HF0 = 0x01A7                     # exit step: HN_HF when the step began (name and status don't share one)
 
 # uk_fill's work area (HN_N, HN_C) and uk_paint's parameter block and work area (FP..FP_OFF)
 # belong to the kit, placed where hn4.1 had them
 KIT = uikit.Kit(fill_ws=HN_N, fp_base=0x0130, tp_base=TP_BASE)
 # XDATA this image's own code uses: the variables above and the kit's blocks (tools/build.py checks it)
-XDATA = [(0x0100, HM_TL + 1, "house-numerals variables, uikit fill/FP/TP blocks")]
+XDATA = [(0x0100, HN_HF0 + 1, "house-numerals variables, uikit fill/FP/TP blocks")]
 (FP, FP_FONT, FP_STR, FP_SPC, FP_X, FP_Y, FP_INK, FP_BG, FP_CX0, FP_CX1, FP_SCALE, FP_W, FP_BPC, FP_BPG,
  FP_DATA, FP_MAP, FP_NADV, FP_CUR, FP_END, FP_CW, FP_ADV, FP_GLY, FP_VX0, FP_VX1, FP_OFF) = KIT.fp_layout()
 assert FP + uikit.Kit.FP_SIZE - 1 < TP_BASE
-XDATA_END = HM_TL
+XDATA_END = HN_HF0
 assert TP_BASE + uikit.Kit.TP_SIZE <= HM_VS
 
 # the home layout: layout.json, written by sizing.html (served by tools/fonts/rasterize.py), with
@@ -213,7 +214,7 @@ HOOKS = [STOCK_SITES[site] + (op, target) for site, op, target in (
     ("format_tag_clear_changed", 0x12, "hm_fmt_clear"),
 )]
 HOOKS += [f.HOOK for f in features.fixes(INCLUDES)]    # the fixes linked in
-VERSION_TEXT = "v1.4 tbenr hn6.1"
+VERSION_TEXT = "v1.4 tbenr hn7"
 
 
 rect = KIT.rect
@@ -1063,6 +1064,12 @@ orl A,#0x%02X
 movx @DPTR,A
 %s:""" % (HN_VF, bit, skip, HN_LIM, lo(x0), hi(x0), skip, name, HN_VF, bit, skip))
     S(a, "ljmp hs_end\nhs_rvx:")
+    S(a, """
+; what the exit had drawn when this step began
+mov DPTR,#0x%04X
+movx A,@DPTR
+mov DPTR,#0x%04X
+movx @DPTR,A""" % (HN_HF, HN_HF0))
     # exit reveal
     for bit, name, x0, x1 in HOME_ELEMENTS:
         skip = "rv_%s" % name
@@ -1075,6 +1082,21 @@ jnz %s""" % (HN_HF, bit, skip))
             ld16(a, "R2", "R3", HN_NAMER)
         elif name == "hh_stat":
             S(a, """
+; the big name and the status line in one step take over 8 ms: if the name was drawn in this
+; step, the status line waits for the next one (the last step draws whatever is left)
+mov DPTR,#0x%04X""" % HN_STEP + """
+movx A,@DPTR
+xrl A,#%d""" % STEPS + """
+jz rs_split_ok
+mov DPTR,#0x%04X""" % HN_HF + """
+movx A,@DPTR
+mov R2,A
+mov DPTR,#0x%04X""" % HN_HF0 + """
+movx A,@DPTR
+xrl A,R2
+anl A,#0x%02X""" % HF_NAME + """
+jnz %s""" % skip + """
+rs_split_ok:
 mov DPTR,#0x%04X""" % HN_SBUF + """
 movx A,@DPTR
 jnz rs_ready

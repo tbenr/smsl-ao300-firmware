@@ -7,7 +7,9 @@ plus the fix; the RESET page shows `v1.4 tbenr aof1`.
 
 ## Status
 
-Built and emulator-tested. Not yet tried on the amp. Included in house-numerals since hn6.1.
+Verified on the amp on 2026-09-29, as part of house-numerals hn7 (included since hn6.1): with
+Dimmer on Auto OFF the display goes dark after a cold power-up. The standalone image itself has
+not been flashed.
 
 ## The bug
 
