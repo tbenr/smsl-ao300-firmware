@@ -2,18 +2,19 @@
 ; 0x2106: 12 5d 42 -> 12 a1 01  (hn_clear)
 ; 0x2143: 02 21 67 -> 02 a0 99  (hn_volpage)
 ; 0x5936: ab 07 e5 -> 02 9e b2  (hn_draw_volume)
-; 0x2A25: e4 78 02 -> 02 a7 5e  (hn_align_big)
-; 0x3A82: e4 78 02 -> 02 a7 78  (hn_align_small)
-; 0x5C99: 02 59 16 -> 02 a7 4b  (hn_home_tail)
-; 0x5B2A: 12 33 25 -> 12 a2 6f  (hn_tasks)
+; 0x2A25: e4 78 02 -> 02 a7 b0  (hn_align_big)
+; 0x3A82: e4 78 02 -> 02 a7 ca  (hn_align_small)
+; 0x5C99: 02 59 16 -> 02 a7 9d  (hn_home_tail)
+; 0x5B2A: 12 33 25 -> 12 a2 9a  (hn_tasks)
 ; 0x4081: 12 5c 8b -> 02 a1 7b  (hn_hold)
 ; 0x5D42: 12 5c bc -> 02 a1 6c  (hn_cancel)
 ; 0x4A85: e5 47 14 -> 02 a1 8e  (hn_name_guard)
+; 0x3FF8: c2 0b c2 -> 02 a1 b4  (hn_flag_path)
 ; 0x0D33: 12 5d 42 7b ff -> 12 a0 b8 80 11  (lcall hn_enter_vol ; sjmp 0x0D49)
 ; 0x0DB3: 12 5d 42 7b ff -> 12 a0 b8 80 11  (lcall hn_enter_vol ; sjmp 0x0DC9)
 ; 0x0E5A: 12 5d 42 7b ff -> 12 a0 b8 80 11  (lcall hn_enter_vol ; sjmp 0x0E70)
 ; 0x0F02: 12 5d 42 7b ff -> 12 a0 b8 80 11  (lcall hn_enter_vol ; sjmp 0x0F18)
-; version string 'v1.4 tbenr hn4' at 0xA792, pointer 0x22CA repointed
+; version string 'v1.4 tbenr hn4.1' at 0xA7E4, pointer 0x22CA repointed
 
             ; input-name pointers for inputs 1..6 (volume page), then the VOL label
 names:
@@ -1512,8 +1513,8 @@ hc_bufs:
   A13C: 12 5c bc                 lcall 0x5CBC       ; the text buffers, as ui_clear_screen
   A13F: 12 5c cb                 lcall 0x5CCB
             ; the input name as home_draw_input_name loads it, and where it ends
-  A142: 12 a1 9e                 lcall hn_name_load
-  A145: 12 a1 bf                 lcall hn_fp_name
+  A142: 12 a1 c9                 lcall hn_name_load
+  A145: 12 a1 ea                 lcall hn_fp_name
   A148: 90 01 3c                 mov DPTR,#0x013C
   A14B: 74 01                    mov A,#0x01        ; empty clip window: measure only
   A14D: f0                       movx @DPTR,A
@@ -1566,1076 +1567,1140 @@ hh_stock:
   A188: 12 5c 8b                 lcall 0x5C8B       ; home_refresh
   A18B: 02 40 84                 ljmp 0x4084
             ; hn_name_guard: home_draw_input_name's entry. A name drawn on page 1 during an exit (Source,
-            ; direct-select, input_apply) would draw over the half-revealed screen: cancel, stock clear first.
+            ; direct-select, input_apply, key_bt_function's home_refresh) would draw over the half-revealed
+            ; screen, and the stock sequence may already have drawn other home parts. So the exit ends here
+            ; with the whole home screen as the held-back refresh would draw it (hn_home_now), then the stock
+            ; name draw goes on.
 hn_name_guard:
   A18E: 90 01 08                 mov DPTR,#0x0108
   A191: e0                       movx A,@DPTR
   A192: b4 02 03                 cjne A,#2,hg_go
-  A195: 12 5d 42                 lcall 0x5D42
+  A195: 12 a1 9e                 lcall hn_home_now
 hg_go:
   A198: e5 47                    mov A,0x47
   A19A: 14                       dec A
   A19B: 02 4a 88                 ljmp 0x4A88
+            ; hn_home_now: stop the wipe, black screen, then home_refresh and the status line from XDATA 0x50
+            ; as home_refresh_periodic draws them (the text buffers are kept: the status line is the stock one)
+hn_home_now:
+  A19E: 90 01 08                 mov DPTR,#0x0108
+  A1A1: e4                       clr A
+  A1A2: f0                       movx @DPTR,A       ; HN_MODE (so the name draw inside home_refresh passes the guard)
+  A1A3: a3                       inc DPTR
+  A1A4: f0                       movx @DPTR,A       ; HN_VF
+  A1A5: a3                       inc DPTR
+  A1A6: f0                       movx @DPTR,A       ; HN_HF
+  A1A7: 12 51 ee                 lcall 0x51EE       ; lcd_clear_black
+  A1AA: 12 5c 8b                 lcall 0x5C8B       ; home_refresh
+  A1AD: 7f 87                    mov R7,#0x87
+  A1AF: 7e 00                    mov R6,#0
+  A1B1: 02 3a 53                 ljmp 0x3A53        ; small_text_render, y 135
+            ; hn_flag_path: home_refresh_periodic's flag path (0x3FF8, taken when 0x21.3, 0x21.1 or 0x20.6 is set,
+            ; e.g. after Source: they stay set until this refresh, so across a volume page too). Stock clears the
+            ; flags, sets page 1 and blacks out x 0..239, y 43..169 (0x412F, 125 ms) before loading the status
+            ; line and drawing home. During a wipe that fill would erase parts the exit has revealed (and holes
+            ; in the volume page right of the edge); the wipe owns the screen, so skip the fill and go on with
+            ; the status line (0x4016) and the refresh, which hn_hold holds back: the exit draws the home.
+hn_flag_path:
+  A1B4: c2 0b                    clr 0x21.3         ; the two instructions the hook replaced
+  A1B6: c2 06                    clr 0x20.6
+  A1B8: 90 01 08                 mov DPTR,#0x0108
+  A1BB: e0                       movx A,@DPTR
+  A1BC: 70 03                    jnz hfp_wipe
+  A1BE: 02 3f fc                 ljmp 0x3FFC
+hfp_wipe:
+  A1C1: c2 09                    clr 0x21.1         ; 0x3FFC..0x3FFF: clr 0x21.1, page 1; the fill (0x4001..0x4013) is skipped
+  A1C3: 75 45 01                 mov 0x45,#1
+  A1C6: 02 40 16                 ljmp 0x4016
             ; hn_name_load: XDATA 0x35 = the input name, as home_draw_input_name loads it (input 7 and out of
             ; range: the buffer is left as it is)
 hn_name_load:
-  A19E: e5 47                    mov A,0x47
-  A1A0: 14                       dec A
-  A1A1: b4 08 00                 cjne A,#8,hnl_c
+  A1C9: e5 47                    mov A,0x47
+  A1CB: 14                       dec A
+  A1CC: b4 08 00                 cjne A,#8,hnl_c
 hnl_c:
-  A1A4: 50 18                    jnc hnl_ret
-  A1A6: 23                       rl A
-  A1A7: f5 f0                    mov B,A
-  A1A9: 90 98 10                 mov DPTR,#names8
-  A1AC: 93                       movc A,@A+DPTR
-  A1AD: fa                       mov R2,A
-  A1AE: e5 f0                    mov A,B
-  A1B0: 04                       inc A
-  A1B1: 93                       movc A,@A+DPTR
-  A1B2: f9                       mov R1,A
-  A1B3: 4a                       orl A,R2
-  A1B4: 60 08                    jz hnl_ret
-  A1B6: 7b ff                    mov R3,#0xFF       ; code space
-  A1B8: e4                       clr A
-  A1B9: fd                       mov R5,A
-  A1BA: ff                       mov R7,A
-  A1BB: 02 4c 8f                 ljmp 0x4C8F        ; big_text_load
+  A1CF: 50 18                    jnc hnl_ret
+  A1D1: 23                       rl A
+  A1D2: f5 f0                    mov B,A
+  A1D4: 90 98 10                 mov DPTR,#names8
+  A1D7: 93                       movc A,@A+DPTR
+  A1D8: fa                       mov R2,A
+  A1D9: e5 f0                    mov A,B
+  A1DB: 04                       inc A
+  A1DC: 93                       movc A,@A+DPTR
+  A1DD: f9                       mov R1,A
+  A1DE: 4a                       orl A,R2
+  A1DF: 60 08                    jz hnl_ret
+  A1E1: 7b ff                    mov R3,#0xFF       ; code space
+  A1E3: e4                       clr A
+  A1E4: fd                       mov R5,A
+  A1E5: ff                       mov R7,A
+  A1E6: 02 4c 8f                 ljmp 0x4C8F        ; big_text_load
 hnl_ret:
-  A1BE: 22                       ret
+  A1E9: 22                       ret
             ; hn_fp_name: the FP block for the home input name (big font, buffer 0x35, stock x and y, theme ink)
 hn_fp_name:
-  A1BF: 90 01 30                 mov DPTR,#0x0130
-  A1C2: 74 98                    mov A,#hi(font_big)
-  A1C4: f0                       movx @DPTR,A
-  A1C5: a3                       inc DPTR
-  A1C6: 74 52                    mov A,#lo(font_big)
-  A1C8: f0                       movx @DPTR,A
-  A1C9: a3                       inc DPTR
-  A1CA: 74 00                    mov A,#0x00
-  A1CC: f0                       movx @DPTR,A
-  A1CD: a3                       inc DPTR
-  A1CE: 74 35                    mov A,#0x35
-  A1D0: f0                       movx @DPTR,A
-  A1D1: a3                       inc DPTR
-  A1D2: 74 00                    mov A,#0
-  A1D4: f0                       movx @DPTR,A
-  A1D5: a3                       inc DPTR
-  A1D6: a3                       inc DPTR
-  A1D7: a3                       inc DPTR
-  A1D8: 74 4b                    mov A,#75
-  A1DA: f0                       movx @DPTR,A
-  A1DB: a3                       inc DPTR
-  A1DC: e5 48                    mov A,0x48
-  A1DE: f0                       movx @DPTR,A
-  A1DF: a3                       inc DPTR
-  A1E0: e5 49                    mov A,0x49
-  A1E2: f0                       movx @DPTR,A
-  A1E3: a3                       inc DPTR
-  A1E4: 74 00                    mov A,#0x00
-  A1E6: f0                       movx @DPTR,A
-  A1E7: a3                       inc DPTR
-  A1E8: 74 00                    mov A,#0x00
-  A1EA: f0                       movx @DPTR,A
-  A1EB: a3                       inc DPTR
-  A1EC: 74 00                    mov A,#0x00
-  A1EE: f0                       movx @DPTR,A
-  A1EF: a3                       inc DPTR
-  A1F0: 74 00                    mov A,#0x00
-  A1F2: f0                       movx @DPTR,A
-  A1F3: a3                       inc DPTR
-  A1F4: 74 01                    mov A,#0x01
-  A1F6: f0                       movx @DPTR,A
-  A1F7: a3                       inc DPTR
-  A1F8: 74 3f                    mov A,#0x3F
-  A1FA: f0                       movx @DPTR,A
-  A1FB: a3                       inc DPTR
-  A1FC: 74 01                    mov A,#1
-  A1FE: f0                       movx @DPTR,A
-  A1FF: 02 99 fd                 ljmp hn_home_x
-            ; hn_fp_status: the same for the status line (small font, buffer 0x50, y 135)
-hn_fp_status:
-  A202: 90 01 30                 mov DPTR,#0x0130
-  A205: 74 98                    mov A,#hi(font_small)
-  A207: f0                       movx @DPTR,A
-  A208: a3                       inc DPTR
-  A209: 74 4a                    mov A,#lo(font_small)
-  A20B: f0                       movx @DPTR,A
-  A20C: a3                       inc DPTR
-  A20D: 74 00                    mov A,#0x00
-  A20F: f0                       movx @DPTR,A
-  A210: a3                       inc DPTR
-  A211: 74 50                    mov A,#0x50
-  A213: f0                       movx @DPTR,A
-  A214: a3                       inc DPTR
-  A215: 74 00                    mov A,#0
-  A217: f0                       movx @DPTR,A
-  A218: a3                       inc DPTR
-  A219: a3                       inc DPTR
+  A1EA: 90 01 30                 mov DPTR,#0x0130
+  A1ED: 74 98                    mov A,#hi(font_big)
+  A1EF: f0                       movx @DPTR,A
+  A1F0: a3                       inc DPTR
+  A1F1: 74 52                    mov A,#lo(font_big)
+  A1F3: f0                       movx @DPTR,A
+  A1F4: a3                       inc DPTR
+  A1F5: 74 00                    mov A,#0x00
+  A1F7: f0                       movx @DPTR,A
+  A1F8: a3                       inc DPTR
+  A1F9: 74 35                    mov A,#0x35
+  A1FB: f0                       movx @DPTR,A
+  A1FC: a3                       inc DPTR
+  A1FD: 74 00                    mov A,#0
+  A1FF: f0                       movx @DPTR,A
+  A200: a3                       inc DPTR
+  A201: a3                       inc DPTR
+  A202: a3                       inc DPTR
+  A203: 74 4b                    mov A,#75
+  A205: f0                       movx @DPTR,A
+  A206: a3                       inc DPTR
+  A207: e5 48                    mov A,0x48
+  A209: f0                       movx @DPTR,A
+  A20A: a3                       inc DPTR
+  A20B: e5 49                    mov A,0x49
+  A20D: f0                       movx @DPTR,A
+  A20E: a3                       inc DPTR
+  A20F: 74 00                    mov A,#0x00
+  A211: f0                       movx @DPTR,A
+  A212: a3                       inc DPTR
+  A213: 74 00                    mov A,#0x00
+  A215: f0                       movx @DPTR,A
+  A216: a3                       inc DPTR
+  A217: 74 00                    mov A,#0x00
+  A219: f0                       movx @DPTR,A
   A21A: a3                       inc DPTR
-  A21B: 74 87                    mov A,#135
+  A21B: 74 00                    mov A,#0x00
   A21D: f0                       movx @DPTR,A
   A21E: a3                       inc DPTR
-  A21F: e5 48                    mov A,0x48
+  A21F: 74 01                    mov A,#0x01
   A221: f0                       movx @DPTR,A
   A222: a3                       inc DPTR
-  A223: e5 49                    mov A,0x49
+  A223: 74 3f                    mov A,#0x3F
   A225: f0                       movx @DPTR,A
   A226: a3                       inc DPTR
-  A227: 74 00                    mov A,#0x00
+  A227: 74 01                    mov A,#1
   A229: f0                       movx @DPTR,A
-  A22A: a3                       inc DPTR
-  A22B: 74 00                    mov A,#0x00
-  A22D: f0                       movx @DPTR,A
-  A22E: a3                       inc DPTR
-  A22F: 74 00                    mov A,#0x00
-  A231: f0                       movx @DPTR,A
-  A232: a3                       inc DPTR
-  A233: 74 00                    mov A,#0x00
-  A235: f0                       movx @DPTR,A
-  A236: a3                       inc DPTR
-  A237: 74 01                    mov A,#0x01
-  A239: f0                       movx @DPTR,A
-  A23A: a3                       inc DPTR
-  A23B: 74 3f                    mov A,#0x3F
-  A23D: f0                       movx @DPTR,A
-  A23E: a3                       inc DPTR
-  A23F: 74 01                    mov A,#1
-  A241: f0                       movx @DPTR,A
-  A242: 02 99 fd                 ljmp hn_home_x
+  A22A: 02 99 fd                 ljmp hn_home_x
+            ; hn_fp_status: the same for the status line (small font, buffer 0x50, y 135)
+hn_fp_status:
+  A22D: 90 01 30                 mov DPTR,#0x0130
+  A230: 74 98                    mov A,#hi(font_small)
+  A232: f0                       movx @DPTR,A
+  A233: a3                       inc DPTR
+  A234: 74 4a                    mov A,#lo(font_small)
+  A236: f0                       movx @DPTR,A
+  A237: a3                       inc DPTR
+  A238: 74 00                    mov A,#0x00
+  A23A: f0                       movx @DPTR,A
+  A23B: a3                       inc DPTR
+  A23C: 74 50                    mov A,#0x50
+  A23E: f0                       movx @DPTR,A
+  A23F: a3                       inc DPTR
+  A240: 74 00                    mov A,#0
+  A242: f0                       movx @DPTR,A
+  A243: a3                       inc DPTR
+  A244: a3                       inc DPTR
+  A245: a3                       inc DPTR
+  A246: 74 87                    mov A,#135
+  A248: f0                       movx @DPTR,A
+  A249: a3                       inc DPTR
+  A24A: e5 48                    mov A,0x48
+  A24C: f0                       movx @DPTR,A
+  A24D: a3                       inc DPTR
+  A24E: e5 49                    mov A,0x49
+  A250: f0                       movx @DPTR,A
+  A251: a3                       inc DPTR
+  A252: 74 00                    mov A,#0x00
+  A254: f0                       movx @DPTR,A
+  A255: a3                       inc DPTR
+  A256: 74 00                    mov A,#0x00
+  A258: f0                       movx @DPTR,A
+  A259: a3                       inc DPTR
+  A25A: 74 00                    mov A,#0x00
+  A25C: f0                       movx @DPTR,A
+  A25D: a3                       inc DPTR
+  A25E: 74 00                    mov A,#0x00
+  A260: f0                       movx @DPTR,A
+  A261: a3                       inc DPTR
+  A262: 74 01                    mov A,#0x01
+  A264: f0                       movx @DPTR,A
+  A265: a3                       inc DPTR
+  A266: 74 3f                    mov A,#0x3F
+  A268: f0                       movx @DPTR,A
+  A269: a3                       inc DPTR
+  A26A: 74 01                    mov A,#1
+  A26C: f0                       movx @DPTR,A
+  A26D: 02 99 fd                 ljmp hn_home_x
             ; home elements, each as the stock routine for that part draws it
 hh_icon:
-  A245: 02 57 44                 ljmp 0x5744        ; home_draw_output_icon
+  A270: 02 57 44                 ljmp 0x5744        ; home_draw_output_icon
 hh_vol:
-  A248: af 31                    mov R7,0x31
-  A24A: 02 59 16                 ljmp 0x5916        ; home_draw_volume
+  A273: af 31                    mov R7,0x31
+  A275: 02 59 16                 ljmp 0x5916        ; home_draw_volume
 hh_fmt:
-  A24D: 02 41 ca                 ljmp 0x41CA        ; home_draw_format_tag
+  A278: 02 41 ca                 ljmp 0x41CA        ; home_draw_format_tag
 hh_eq:
-  A250: 02 49 a1                 ljmp 0x49A1        ; home_draw_eq_tag
+  A27B: 02 49 a1                 ljmp 0x49A1        ; home_draw_eq_tag
 hh_bar:
-  A253: 12 99 70                 lcall hn_acc
-  A256: 7a 00                    mov R2,#0x00
-  A258: 7b 12                    mov R3,#0x12
-  A25A: 79 1c                    mov R1,#28
-  A25C: 7d 72                    mov R5,#114
-  A25E: 7c 03                    mov R4,#3
-  A260: 02 99 1a                 ljmp hn_fill
+  A27E: 12 99 70                 lcall hn_acc
+  A281: 7a 00                    mov R2,#0x00
+  A283: 7b 12                    mov R3,#0x12
+  A285: 79 1c                    mov R1,#28
+  A287: 7d 72                    mov R5,#114
+  A289: 7c 03                    mov R4,#3
+  A28B: 02 99 1a                 ljmp hn_fill
 hh_name:
-  A263: 12 a1 bf                 lcall hn_fp_name
-  A266: 02 9a 6a                 ljmp hn_paint
+  A28E: 12 a1 ea                 lcall hn_fp_name
+  A291: 02 9a 6a                 ljmp hn_paint
 hh_stat:
-  A269: 12 a2 02                 lcall hn_fp_status
-  A26C: 02 9a 6a                 ljmp hn_paint
+  A294: 12 a2 2d                 lcall hn_fp_status
+  A297: 02 9a 6a                 ljmp hn_paint
             ; hn_tasks: replaces main_tasks_on's lcall main_tick_tasks (0x5B2A). When a 10 ms tick is pending,
             ; main_tick_tasks handles it (countdowns, renders, the periodic refresh) and then, with the amp on,
             ; one wipe step runs.
 hn_tasks:
-  A26F: 20 07 03                 jb 0x20.7,ht_tick
-  A272: 02 33 25                 ljmp 0x3325
+  A29A: 20 07 03                 jb 0x20.7,ht_tick
+  A29D: 02 33 25                 ljmp 0x3325
 ht_tick:
-  A275: 12 33 25                 lcall 0x3325
-  A278: e5 4f                    mov A,0x4F
-  A27A: b4 01 0d                 cjne A,#1,hs_ret
+  A2A0: 12 33 25                 lcall 0x3325
+  A2A3: e5 4f                    mov A,0x4F
+  A2A5: b4 01 0d                 cjne A,#1,hs_ret
             ; hn_step: one step of the running wipe
 hn_step:
-  A27D: 90 01 08                 mov DPTR,#0x0108
-  A280: e0                       movx A,@DPTR
-  A281: 60 07                    jz hs_ret
-  A283: b4 03 00                 cjne A,#3,hs_mc
+  A2A8: 90 01 08                 mov DPTR,#0x0108
+  A2AB: e0                       movx A,@DPTR
+  A2AC: 60 07                    jz hs_ret
+  A2AE: b4 03 00                 cjne A,#3,hs_mc
 hs_mc:
-  A286: 40 03                    jc hs_mok
-  A288: e4                       clr A              ; not a mode: stop
-  A289: f0                       movx @DPTR,A
+  A2B1: 40 03                    jc hs_mok
+  A2B3: e4                       clr A              ; not a mode: stop
+  A2B4: f0                       movx @DPTR,A
 hs_ret:
-  A28A: 22                       ret
+  A2B5: 22                       ret
 hs_mok:
-  A28B: ff                       mov R7,A           ; mode
+  A2B6: ff                       mov R7,A           ; mode
             ; the previous x
-  A28C: 90 01 0d                 mov DPTR,#0x010D
-  A28F: e0                       movx A,@DPTR
-  A290: fa                       mov R2,A
-  A291: a3                       inc DPTR
-  A292: e0                       movx A,@DPTR
-  A293: fb                       mov R3,A
-  A294: 90 01 0f                 mov DPTR,#0x010F
-  A297: ea                       mov A,R2
-  A298: f0                       movx @DPTR,A
-  A299: a3                       inc DPTR
-  A29A: eb                       mov A,R3
-  A29B: f0                       movx @DPTR,A
+  A2B7: 90 01 0d                 mov DPTR,#0x010D
+  A2BA: e0                       movx A,@DPTR
+  A2BB: fa                       mov R2,A
+  A2BC: a3                       inc DPTR
+  A2BD: e0                       movx A,@DPTR
+  A2BE: fb                       mov R3,A
+  A2BF: 90 01 0f                 mov DPTR,#0x010F
+  A2C2: ea                       mov A,R2
+  A2C3: f0                       movx @DPTR,A
+  A2C4: a3                       inc DPTR
+  A2C5: eb                       mov A,R3
+  A2C6: f0                       movx @DPTR,A
             ; the next step and its x
-  A29C: 90 01 0b                 mov DPTR,#0x010B
-  A29F: e0                       movx A,@DPTR
-  A2A0: 04                       inc A
-  A2A1: b4 15 00                 cjne A,#21,hs_sc
+  A2C7: 90 01 0b                 mov DPTR,#0x010B
+  A2CA: e0                       movx A,@DPTR
+  A2CB: 04                       inc A
+  A2CC: b4 15 00                 cjne A,#21,hs_sc
 hs_sc:
-  A2A4: 40 02                    jc hs_sok
-  A2A6: 74 14                    mov A,#20
+  A2CF: 40 02                    jc hs_sok
+  A2D1: 74 14                    mov A,#20
 hs_sok:
-  A2A8: f0                       movx @DPTR,A
-  A2A9: 23                       rl A
-  A2AA: fe                       mov R6,A
-  A2AB: 90 98 20                 mov DPTR,#ease
-  A2AE: 93                       movc A,@A+DPTR
-  A2AF: fc                       mov R4,A
-  A2B0: ee                       mov A,R6
-  A2B1: 04                       inc A
-  A2B2: 93                       movc A,@A+DPTR
-  A2B3: fd                       mov R5,A           ; R4:R5 = ease[step]
-  A2B4: bf 02 09                 cjne R7,#2,hs_x
-  A2B7: c3                       clr C              ; exit: 318 - ease[step]
-  A2B8: 74 3e                    mov A,#0x3E
-  A2BA: 9d                       subb A,R5
-  A2BB: fd                       mov R5,A
-  A2BC: 74 01                    mov A,#0x01
-  A2BE: 9c                       subb A,R4
-  A2BF: fc                       mov R4,A
+  A2D3: f0                       movx @DPTR,A
+  A2D4: 23                       rl A
+  A2D5: fe                       mov R6,A
+  A2D6: 90 98 20                 mov DPTR,#ease
+  A2D9: 93                       movc A,@A+DPTR
+  A2DA: fc                       mov R4,A
+  A2DB: ee                       mov A,R6
+  A2DC: 04                       inc A
+  A2DD: 93                       movc A,@A+DPTR
+  A2DE: fd                       mov R5,A           ; R4:R5 = ease[step]
+  A2DF: bf 02 09                 cjne R7,#2,hs_x
+  A2E2: c3                       clr C              ; exit: 318 - ease[step]
+  A2E3: 74 3e                    mov A,#0x3E
+  A2E5: 9d                       subb A,R5
+  A2E6: fd                       mov R5,A
+  A2E7: 74 01                    mov A,#0x01
+  A2E9: 9c                       subb A,R4
+  A2EA: fc                       mov R4,A
 hs_x:
-  A2C0: 90 01 0d                 mov DPTR,#0x010D
-  A2C3: ec                       mov A,R4
-  A2C4: f0                       movx @DPTR,A
-  A2C5: a3                       inc DPTR
-  A2C6: ed                       mov A,R5
-  A2C7: f0                       movx @DPTR,A
-  A2C8: 90 01 0b                 mov DPTR,#0x010B
-  A2CB: e0                       movx A,@DPTR
-  A2CC: b4 14 1d                 cjne A,#20,hs_mid
+  A2EB: 90 01 0d                 mov DPTR,#0x010D
+  A2EE: ec                       mov A,R4
+  A2EF: f0                       movx @DPTR,A
+  A2F0: a3                       inc DPTR
+  A2F1: ed                       mov A,R5
+  A2F2: f0                       movx @DPTR,A
+  A2F3: 90 01 0b                 mov DPTR,#0x010B
+  A2F6: e0                       movx A,@DPTR
+  A2F7: b4 14 1d                 cjne A,#20,hs_mid
             ; last step: the band runs to the screen edge, no edge is drawn, everything is revealed
-  A2CF: bf 01 0d                 cjne R7,#1,hs_lastx
+  A2FA: bf 01 0d                 cjne R7,#1,hs_lastx
             ; entry: band 0 .. xp + 1, limit 0
-  A2D2: 7c 00                    mov R4,#0
-  A2D4: 7d 00                    mov R5,#0
-  A2D6: 12 a7 09                 lcall hs_xp1
-  A2D9: 7a 00                    mov R2,#0
-  A2DB: 7b 00                    mov R3,#0
-  A2DD: 80 31                    sjmp hs_set
+  A2FD: 7c 00                    mov R4,#0
+  A2FF: 7d 00                    mov R5,#0
+  A301: 12 a7 50                 lcall hs_xp1
+  A304: 7a 00                    mov R2,#0
+  A306: 7b 00                    mov R3,#0
+  A308: 80 31                    sjmp hs_set
 hs_lastx:
             ; exit: band xp .. 319, limit 320
-  A2DF: 12 a7 00                 lcall hs_xp
-  A2E2: 7e 01                    mov R6,#0x01
-  A2E4: 7f 3f                    mov R7,#0x3F
-  A2E6: 7a 01                    mov R2,#0x01
-  A2E8: 7b 40                    mov R3,#0x40
-  A2EA: 80 24                    sjmp hs_set
+  A30A: 12 a7 47                 lcall hs_xp
+  A30D: 7e 01                    mov R6,#0x01
+  A30F: 7f 3f                    mov R7,#0x3F
+  A311: 7a 01                    mov R2,#0x01
+  A313: 7b 40                    mov R3,#0x40
+  A315: 80 24                    sjmp hs_set
 hs_mid:
-  A2EC: bf 01 0c                 cjne R7,#1,hs_midx
+  A317: bf 01 0c                 cjne R7,#1,hs_midx
             ; entry: band x + 2 .. xp + 1, damage from x, limit x + 2
-  A2EF: 12 a7 17                 lcall hs_x2
-  A2F2: ec                       mov A,R4
-  A2F3: fa                       mov R2,A
-  A2F4: ed                       mov A,R5
-  A2F5: fb                       mov R3,A
-  A2F6: 12 a7 09                 lcall hs_xp1
-  A2F9: 80 1d                    sjmp hs_setd
+  A31A: 12 a7 5e                 lcall hs_x2
+  A31D: ec                       mov A,R4
+  A31E: fa                       mov R2,A
+  A31F: ed                       mov A,R5
+  A320: fb                       mov R3,A
+  A321: 12 a7 50                 lcall hs_xp1
+  A324: 80 1d                    sjmp hs_setd
 hs_midx:
             ; exit: band xp .. x - 1, damage to x + 1, limit x
-  A2FB: 12 a7 00                 lcall hs_xp
-  A2FE: 90 01 0d                 mov DPTR,#0x010D
-  A301: e0                       movx A,@DPTR
-  A302: fa                       mov R2,A
-  A303: a3                       inc DPTR
-  A304: e0                       movx A,@DPTR
-  A305: fb                       mov R3,A
-  A306: c3                       clr C
-  A307: 94 01                    subb A,#1
-  A309: ff                       mov R7,A
-  A30A: ea                       mov A,R2
-  A30B: 94 00                    subb A,#0
-  A30D: fe                       mov R6,A
-  A30E: 80 08                    sjmp hs_setd
+  A326: 12 a7 47                 lcall hs_xp
+  A329: 90 01 0d                 mov DPTR,#0x010D
+  A32C: e0                       movx A,@DPTR
+  A32D: fa                       mov R2,A
+  A32E: a3                       inc DPTR
+  A32F: e0                       movx A,@DPTR
+  A330: fb                       mov R3,A
+  A331: c3                       clr C
+  A332: 94 01                    subb A,#1
+  A334: ff                       mov R7,A
+  A335: ea                       mov A,R2
+  A336: 94 00                    subb A,#0
+  A338: fe                       mov R6,A
+  A339: 80 08                    sjmp hs_setd
             ; R4:R5 band start, R6:R7 band end, R2:R3 limit; damage = band
 hs_set:
-  A310: 12 a7 25                 lcall hs_store
-  A313: 12 a7 3c                 lcall hs_dmg_band
-  A316: 80 3f                    sjmp hs_draw
+  A33B: 12 a7 6c                 lcall hs_store
+  A33E: 12 a7 8e                 lcall hs_dmg_band
+  A341: 80 3f                    sjmp hs_draw
 hs_setd:
-  A318: 12 a7 25                 lcall hs_store
-  A31B: 12 a7 3c                 lcall hs_dmg_band
+  A343: 12 a7 6c                 lcall hs_store
+  A346: 12 a7 8e                 lcall hs_dmg_band
             ; the edge columns x, x + 1 are damaged too
-  A31E: 90 01 0d                 mov DPTR,#0x010D
-  A321: e0                       movx A,@DPTR
-  A322: fa                       mov R2,A
-  A323: a3                       inc DPTR
-  A324: e0                       movx A,@DPTR
-  A325: fb                       mov R3,A
-  A326: 90 01 13                 mov DPTR,#0x0113
-  A329: e0                       movx A,@DPTR
-  A32A: fc                       mov R4,A
-  A32B: a3                       inc DPTR
-  A32C: e0                       movx A,@DPTR
-  A32D: c3                       clr C
-  A32E: 9b                       subb A,R3
-  A32F: ec                       mov A,R4
-  A330: 9a                       subb A,R2
-  A331: 40 08                    jc hs_d0ok         ; d0 < x
-  A333: 90 01 13                 mov DPTR,#0x0113
-  A336: ea                       mov A,R2
-  A337: f0                       movx @DPTR,A
-  A338: a3                       inc DPTR
-  A339: eb                       mov A,R3
-  A33A: f0                       movx @DPTR,A
+  A349: 90 01 0d                 mov DPTR,#0x010D
+  A34C: e0                       movx A,@DPTR
+  A34D: fa                       mov R2,A
+  A34E: a3                       inc DPTR
+  A34F: e0                       movx A,@DPTR
+  A350: fb                       mov R3,A
+  A351: 90 01 13                 mov DPTR,#0x0113
+  A354: e0                       movx A,@DPTR
+  A355: fc                       mov R4,A
+  A356: a3                       inc DPTR
+  A357: e0                       movx A,@DPTR
+  A358: c3                       clr C
+  A359: 9b                       subb A,R3
+  A35A: ec                       mov A,R4
+  A35B: 9a                       subb A,R2
+  A35C: 40 08                    jc hs_d0ok         ; d0 < x
+  A35E: 90 01 13                 mov DPTR,#0x0113
+  A361: ea                       mov A,R2
+  A362: f0                       movx @DPTR,A
+  A363: a3                       inc DPTR
+  A364: eb                       mov A,R3
+  A365: f0                       movx @DPTR,A
 hs_d0ok:
-  A33B: eb                       mov A,R3
-  A33C: 24 01                    add A,#1
-  A33E: fb                       mov R3,A
-  A33F: e4                       clr A
-  A340: 3a                       addc A,R2
-  A341: fa                       mov R2,A           ; x + 1
-  A342: 90 01 15                 mov DPTR,#0x0115
-  A345: e0                       movx A,@DPTR
-  A346: fc                       mov R4,A
-  A347: a3                       inc DPTR
-  A348: e0                       movx A,@DPTR
-  A349: c3                       clr C
-  A34A: 9b                       subb A,R3
-  A34B: ec                       mov A,R4
-  A34C: 9a                       subb A,R2
-  A34D: 50 08                    jnc hs_draw        ; d1 >= x + 1
-  A34F: 90 01 15                 mov DPTR,#0x0115
-  A352: ea                       mov A,R2
-  A353: f0                       movx @DPTR,A
-  A354: a3                       inc DPTR
-  A355: eb                       mov A,R3
-  A356: f0                       movx @DPTR,A
+  A366: eb                       mov A,R3
+  A367: 24 01                    add A,#1
+  A369: fb                       mov R3,A
+  A36A: e4                       clr A
+  A36B: 3a                       addc A,R2
+  A36C: fa                       mov R2,A           ; x + 1
+  A36D: 90 01 15                 mov DPTR,#0x0115
+  A370: e0                       movx A,@DPTR
+  A371: fc                       mov R4,A
+  A372: a3                       inc DPTR
+  A373: e0                       movx A,@DPTR
+  A374: c3                       clr C
+  A375: 9b                       subb A,R3
+  A376: ec                       mov A,R4
+  A377: 9a                       subb A,R2
+  A378: 50 08                    jnc hs_draw        ; d1 >= x + 1
+  A37A: 90 01 15                 mov DPTR,#0x0115
+  A37D: ea                       mov A,R2
+  A37E: f0                       movx @DPTR,A
+  A37F: a3                       inc DPTR
+  A380: eb                       mov A,R3
+  A381: f0                       movx @DPTR,A
 hs_draw:
-            ; the band, black
-  A357: 90 01 17                 mov DPTR,#0x0117
-  A35A: e0                       movx A,@DPTR
-  A35B: fa                       mov R2,A
-  A35C: a3                       inc DPTR
-  A35D: e0                       movx A,@DPTR
-  A35E: fb                       mov R3,A
-  A35F: a3                       inc DPTR
-  A360: a3                       inc DPTR
-  A361: e0                       movx A,@DPTR       ; HN_B1 lo
-  A362: c3                       clr C
-  A363: 9b                       subb A,R3
-  A364: 04                       inc A
-  A365: f9                       mov R1,A           ; width (2..255)
-  A366: 7d 00                    mov R5,#0
-  A368: 7c aa                    mov R4,#170
-  A36A: 7e 00                    mov R6,#0
-  A36C: 7f 00                    mov R7,#0
-  A36E: 12 99 1a                 lcall hn_fill
+            ; the new edge first (columns x, x+1, outside the band), unless this is the last step: the old
+            ; edge is only erased by the band after it, so GRAM always holds a whole edge while the panel scans
+  A382: 90 01 0b                 mov DPTR,#0x010B
+  A385: e0                       movx A,@DPTR
+  A386: b4 14 02                 cjne A,#20,hs_edge
+  A389: 80 14                    sjmp hs_band
+hs_edge:
+  A38B: 90 01 0d                 mov DPTR,#0x010D
+  A38E: e0                       movx A,@DPTR
+  A38F: fa                       mov R2,A
+  A390: a3                       inc DPTR
+  A391: e0                       movx A,@DPTR
+  A392: fb                       mov R3,A
+  A393: 79 02                    mov R1,#2
+  A395: 7d 00                    mov R5,#0
+  A397: 7c aa                    mov R4,#170
+  A399: 12 99 70                 lcall hn_acc
+  A39C: 12 99 1a                 lcall hn_fill
+hs_band:
+            ; the band, black, with the old edge's two columns last: on the way in they are the band's top
+            ; end (hn_fill goes up in x); on the way out its bottom end, so the rest goes first
+  A39F: 90 01 17                 mov DPTR,#0x0117
+  A3A2: e0                       movx A,@DPTR
+  A3A3: fa                       mov R2,A
+  A3A4: a3                       inc DPTR
+  A3A5: e0                       movx A,@DPTR
+  A3A6: fb                       mov R3,A
+  A3A7: a3                       inc DPTR
+  A3A8: a3                       inc DPTR
+  A3A9: e0                       movx A,@DPTR       ; HN_B1 lo
+  A3AA: c3                       clr C
+  A3AB: 9b                       subb A,R3
+  A3AC: 04                       inc A
+  A3AD: f9                       mov R1,A           ; width (2..255)
+  A3AE: 90 01 08                 mov DPTR,#0x0108
+  A3B1: e0                       movx A,@DPTR
+  A3B2: b4 02 1d                 cjne A,#2,hs_band1
+  A3B5: e9                       mov A,R1
+  A3B6: b4 03 00                 cjne A,#3,hs_bc
+hs_bc:
+  A3B9: 40 17                    jc hs_band1        ; 2 px: just the old edge
+  A3BB: 24 fe                    add A,#0xFE
+  A3BD: f9                       mov R1,A           ; width - 2
+  A3BE: eb                       mov A,R3
+  A3BF: 24 02                    add A,#2
+  A3C1: fb                       mov R3,A
+  A3C2: e4                       clr A
+  A3C3: 3a                       addc A,R2
+  A3C4: fa                       mov R2,A           ; from B0 + 2
+  A3C5: 12 a7 83                 lcall hs_black
+  A3C8: 90 01 17                 mov DPTR,#0x0117
+  A3CB: e0                       movx A,@DPTR
+  A3CC: fa                       mov R2,A
+  A3CD: a3                       inc DPTR
+  A3CE: e0                       movx A,@DPTR
+  A3CF: fb                       mov R3,A
+  A3D0: 79 02                    mov R1,#2          ; then the old edge, B0 and B0 + 1
+hs_band1:
+  A3D2: 12 a7 83                 lcall hs_black
             ; elements the band or the edge touched are no longer on screen
-  A371: 90 01 13                 mov DPTR,#0x0113
-  A374: e0                       movx A,@DPTR
-  A375: fc                       mov R4,A
-  A376: a3                       inc DPTR
-  A377: e0                       movx A,@DPTR
-  A378: fd                       mov R5,A
-  A379: 90 01 15                 mov DPTR,#0x0115
-  A37C: e0                       movx A,@DPTR
-  A37D: fe                       mov R6,A
-  A37E: a3                       inc DPTR
-  A37F: e0                       movx A,@DPTR
-  A380: ff                       mov R7,A
-  A381: c3                       clr C
-  A382: ef                       mov A,R7
-  A383: 94 10                    subb A,#0x10
-  A385: ee                       mov A,R6
-  A386: 94 00                    subb A,#0x00
-  A388: 40 10                    jc inv_hv_name
-  A38A: c3                       clr C
-  A38B: 74 71                    mov A,#0x71
-  A38D: 9d                       subb A,R5
-  A38E: 74 00                    mov A,#0x00
-  A390: 9c                       subb A,R4
-  A391: 40 07                    jc inv_hv_name
-  A393: 90 01 09                 mov DPTR,#0x0109
-  A396: e0                       movx A,@DPTR
-  A397: 54 fe                    anl A,#0xFE
-  A399: f0                       movx @DPTR,A
-inv_hv_name:
-  A39A: c3                       clr C
-  A39B: ef                       mov A,R7
-  A39C: 94 8c                    subb A,#0x8C
-  A39E: ee                       mov A,R6
-  A39F: 94 00                    subb A,#0x00
-  A3A1: 40 10                    jc inv_hv_div
-  A3A3: c3                       clr C
-  A3A4: 74 8c                    mov A,#0x8C
-  A3A6: 9d                       subb A,R5
-  A3A7: 74 00                    mov A,#0x00
-  A3A9: 9c                       subb A,R4
-  A3AA: 40 07                    jc inv_hv_div
-  A3AC: 90 01 09                 mov DPTR,#0x0109
-  A3AF: e0                       movx A,@DPTR
-  A3B0: 54 fd                    anl A,#0xFD
-  A3B2: f0                       movx @DPTR,A
-inv_hv_div:
-  A3B3: c3                       clr C
-  A3B4: ef                       mov A,R7
-  A3B5: 94 9e                    subb A,#0x9E
-  A3B7: ee                       mov A,R6
-  A3B8: 94 00                    subb A,#0x00
-  A3BA: 40 10                    jc inv_hv_vol
-  A3BC: c3                       clr C
-  A3BD: 74 c7                    mov A,#0xC7
-  A3BF: 9d                       subb A,R5
-  A3C0: 74 00                    mov A,#0x00
-  A3C2: 9c                       subb A,R4
-  A3C3: 40 07                    jc inv_hv_vol
-  A3C5: 90 01 09                 mov DPTR,#0x0109
-  A3C8: e0                       movx A,@DPTR
-  A3C9: 54 fb                    anl A,#0xFB
-  A3CB: f0                       movx @DPTR,A
-inv_hv_vol:
-  A3CC: c3                       clr C
-  A3CD: ef                       mov A,R7
-  A3CE: 94 b8                    subb A,#0xB8
-  A3D0: ee                       mov A,R6
-  A3D1: 94 00                    subb A,#0x00
-  A3D3: 40 10                    jc inv_hv_num
-  A3D5: c3                       clr C
-  A3D6: 74 2f                    mov A,#0x2F
-  A3D8: 9d                       subb A,R5
-  A3D9: 74 01                    mov A,#0x01
-  A3DB: 9c                       subb A,R4
-  A3DC: 40 07                    jc inv_hv_num
-  A3DE: 90 01 09                 mov DPTR,#0x0109
-  A3E1: e0                       movx A,@DPTR
-  A3E2: 54 f7                    anl A,#0xF7
-  A3E4: f0                       movx @DPTR,A
-inv_hv_num:
+  A3D5: 90 01 13                 mov DPTR,#0x0113
+  A3D8: e0                       movx A,@DPTR
+  A3D9: fc                       mov R4,A
+  A3DA: a3                       inc DPTR
+  A3DB: e0                       movx A,@DPTR
+  A3DC: fd                       mov R5,A
+  A3DD: 90 01 15                 mov DPTR,#0x0115
+  A3E0: e0                       movx A,@DPTR
+  A3E1: fe                       mov R6,A
+  A3E2: a3                       inc DPTR
+  A3E3: e0                       movx A,@DPTR
+  A3E4: ff                       mov R7,A
   A3E5: c3                       clr C
   A3E6: ef                       mov A,R7
-  A3E7: 94 28                    subb A,#0x28
+  A3E7: 94 10                    subb A,#0x10
   A3E9: ee                       mov A,R6
   A3EA: 94 00                    subb A,#0x00
-  A3EC: 40 10                    jc inv_hv_line
+  A3EC: 40 10                    jc inv_hv_name
   A3EE: c3                       clr C
-  A3EF: 74 17                    mov A,#0x17
+  A3EF: 74 71                    mov A,#0x71
   A3F1: 9d                       subb A,R5
-  A3F2: 74 01                    mov A,#0x01
+  A3F2: 74 00                    mov A,#0x00
   A3F4: 9c                       subb A,R4
-  A3F5: 40 07                    jc inv_hv_line
+  A3F5: 40 07                    jc inv_hv_name
   A3F7: 90 01 09                 mov DPTR,#0x0109
   A3FA: e0                       movx A,@DPTR
-  A3FB: 54 ef                    anl A,#0xEF
+  A3FB: 54 fe                    anl A,#0xFE
   A3FD: f0                       movx @DPTR,A
-inv_hv_line:
+inv_hv_name:
   A3FE: c3                       clr C
   A3FF: ef                       mov A,R7
-  A400: 94 0f                    subb A,#0x0F
+  A400: 94 8c                    subb A,#0x8C
   A402: ee                       mov A,R6
   A403: 94 00                    subb A,#0x00
-  A405: 40 10                    jc inv_hh_icon
+  A405: 40 10                    jc inv_hv_div
   A407: c3                       clr C
-  A408: 74 2c                    mov A,#0x2C
+  A408: 74 8c                    mov A,#0x8C
   A40A: 9d                       subb A,R5
   A40B: 74 00                    mov A,#0x00
   A40D: 9c                       subb A,R4
-  A40E: 40 07                    jc inv_hh_icon
-  A410: 90 01 0a                 mov DPTR,#0x010A
+  A40E: 40 07                    jc inv_hv_div
+  A410: 90 01 09                 mov DPTR,#0x0109
   A413: e0                       movx A,@DPTR
-  A414: 54 fe                    anl A,#0xFE
+  A414: 54 fd                    anl A,#0xFD
   A416: f0                       movx @DPTR,A
-inv_hh_icon:
+inv_hv_div:
   A417: c3                       clr C
   A418: ef                       mov A,R7
-  A419: 94 30                    subb A,#0x30
+  A419: 94 9e                    subb A,#0x9E
   A41B: ee                       mov A,R6
   A41C: 94 00                    subb A,#0x00
-  A41E: 40 10                    jc inv_hh_vol
+  A41E: 40 10                    jc inv_hv_vol
   A420: c3                       clr C
-  A421: 74 4b                    mov A,#0x4B
+  A421: 74 c7                    mov A,#0xC7
   A423: 9d                       subb A,R5
   A424: 74 00                    mov A,#0x00
   A426: 9c                       subb A,R4
-  A427: 40 07                    jc inv_hh_vol
-  A429: 90 01 0a                 mov DPTR,#0x010A
+  A427: 40 07                    jc inv_hv_vol
+  A429: 90 01 09                 mov DPTR,#0x0109
   A42C: e0                       movx A,@DPTR
-  A42D: 54 fd                    anl A,#0xFD
+  A42D: 54 fb                    anl A,#0xFB
   A42F: f0                       movx @DPTR,A
-inv_hh_vol:
+inv_hv_vol:
   A430: c3                       clr C
   A431: ef                       mov A,R7
-  A432: 94 12                    subb A,#0x12
+  A432: 94 b8                    subb A,#0xB8
   A434: ee                       mov A,R6
   A435: 94 00                    subb A,#0x00
-  A437: 40 10                    jc inv_hh_bar
+  A437: 40 10                    jc inv_hv_num
   A439: c3                       clr C
-  A43A: 74 2d                    mov A,#0x2D
+  A43A: 74 2f                    mov A,#0x2F
   A43C: 9d                       subb A,R5
-  A43D: 74 00                    mov A,#0x00
+  A43D: 74 01                    mov A,#0x01
   A43F: 9c                       subb A,R4
-  A440: 40 07                    jc inv_hh_bar
-  A442: 90 01 0a                 mov DPTR,#0x010A
+  A440: 40 07                    jc inv_hv_num
+  A442: 90 01 09                 mov DPTR,#0x0109
   A445: e0                       movx A,@DPTR
-  A446: 54 fb                    anl A,#0xFB
+  A446: 54 f7                    anl A,#0xF7
   A448: f0                       movx @DPTR,A
-inv_hh_bar:
+inv_hv_num:
   A449: c3                       clr C
   A44A: ef                       mov A,R7
-  A44B: 94 00                    subb A,#0x00
+  A44B: 94 28                    subb A,#0x28
   A44D: ee                       mov A,R6
   A44E: 94 00                    subb A,#0x00
-  A450: 40 14                    jc inv_hh_name
-  A452: 90 01 1b                 mov DPTR,#0x011B
-  A455: e0                       movx A,@DPTR
-  A456: fa                       mov R2,A
-  A457: a3                       inc DPTR
-  A458: e0                       movx A,@DPTR
-  A459: c3                       clr C
-  A45A: 9d                       subb A,R5
-  A45B: ea                       mov A,R2
-  A45C: 9c                       subb A,R4
-  A45D: 40 07                    jc inv_hh_name
-  A45F: 90 01 0a                 mov DPTR,#0x010A
-  A462: e0                       movx A,@DPTR
-  A463: 54 f7                    anl A,#0xF7
-  A465: f0                       movx @DPTR,A
+  A450: 40 10                    jc inv_hv_line
+  A452: c3                       clr C
+  A453: 74 17                    mov A,#0x17
+  A455: 9d                       subb A,R5
+  A456: 74 01                    mov A,#0x01
+  A458: 9c                       subb A,R4
+  A459: 40 07                    jc inv_hv_line
+  A45B: 90 01 09                 mov DPTR,#0x0109
+  A45E: e0                       movx A,@DPTR
+  A45F: 54 ef                    anl A,#0xEF
+  A461: f0                       movx @DPTR,A
+inv_hv_line:
+  A462: c3                       clr C
+  A463: ef                       mov A,R7
+  A464: 94 0f                    subb A,#0x0F
+  A466: ee                       mov A,R6
+  A467: 94 00                    subb A,#0x00
+  A469: 40 10                    jc inv_hh_icon
+  A46B: c3                       clr C
+  A46C: 74 2c                    mov A,#0x2C
+  A46E: 9d                       subb A,R5
+  A46F: 74 00                    mov A,#0x00
+  A471: 9c                       subb A,R4
+  A472: 40 07                    jc inv_hh_icon
+  A474: 90 01 0a                 mov DPTR,#0x010A
+  A477: e0                       movx A,@DPTR
+  A478: 54 fe                    anl A,#0xFE
+  A47A: f0                       movx @DPTR,A
+inv_hh_icon:
+  A47B: c3                       clr C
+  A47C: ef                       mov A,R7
+  A47D: 94 30                    subb A,#0x30
+  A47F: ee                       mov A,R6
+  A480: 94 00                    subb A,#0x00
+  A482: 40 10                    jc inv_hh_vol
+  A484: c3                       clr C
+  A485: 74 4b                    mov A,#0x4B
+  A487: 9d                       subb A,R5
+  A488: 74 00                    mov A,#0x00
+  A48A: 9c                       subb A,R4
+  A48B: 40 07                    jc inv_hh_vol
+  A48D: 90 01 0a                 mov DPTR,#0x010A
+  A490: e0                       movx A,@DPTR
+  A491: 54 fd                    anl A,#0xFD
+  A493: f0                       movx @DPTR,A
+inv_hh_vol:
+  A494: c3                       clr C
+  A495: ef                       mov A,R7
+  A496: 94 12                    subb A,#0x12
+  A498: ee                       mov A,R6
+  A499: 94 00                    subb A,#0x00
+  A49B: 40 10                    jc inv_hh_bar
+  A49D: c3                       clr C
+  A49E: 74 2d                    mov A,#0x2D
+  A4A0: 9d                       subb A,R5
+  A4A1: 74 00                    mov A,#0x00
+  A4A3: 9c                       subb A,R4
+  A4A4: 40 07                    jc inv_hh_bar
+  A4A6: 90 01 0a                 mov DPTR,#0x010A
+  A4A9: e0                       movx A,@DPTR
+  A4AA: 54 fb                    anl A,#0xFB
+  A4AC: f0                       movx @DPTR,A
+inv_hh_bar:
+  A4AD: c3                       clr C
+  A4AE: ef                       mov A,R7
+  A4AF: 94 00                    subb A,#0x00
+  A4B1: ee                       mov A,R6
+  A4B2: 94 00                    subb A,#0x00
+  A4B4: 40 14                    jc inv_hh_name
+  A4B6: 90 01 1b                 mov DPTR,#0x011B
+  A4B9: e0                       movx A,@DPTR
+  A4BA: fa                       mov R2,A
+  A4BB: a3                       inc DPTR
+  A4BC: e0                       movx A,@DPTR
+  A4BD: c3                       clr C
+  A4BE: 9d                       subb A,R5
+  A4BF: ea                       mov A,R2
+  A4C0: 9c                       subb A,R4
+  A4C1: 40 07                    jc inv_hh_name
+  A4C3: 90 01 0a                 mov DPTR,#0x010A
+  A4C6: e0                       movx A,@DPTR
+  A4C7: 54 f7                    anl A,#0xF7
+  A4C9: f0                       movx @DPTR,A
 inv_hh_name:
-  A466: c3                       clr C
-  A467: ef                       mov A,R7
-  A468: 94 d0                    subb A,#0xD0
-  A46A: ee                       mov A,R6
-  A46B: 94 00                    subb A,#0x00
-  A46D: 40 10                    jc inv_hh_fmt
-  A46F: c3                       clr C
-  A470: 74 07                    mov A,#0x07
-  A472: 9d                       subb A,R5
-  A473: 74 01                    mov A,#0x01
-  A475: 9c                       subb A,R4
-  A476: 40 07                    jc inv_hh_fmt
-  A478: 90 01 0a                 mov DPTR,#0x010A
-  A47B: e0                       movx A,@DPTR
-  A47C: 54 ef                    anl A,#0xEF
-  A47E: f0                       movx @DPTR,A
+  A4CA: c3                       clr C
+  A4CB: ef                       mov A,R7
+  A4CC: 94 d0                    subb A,#0xD0
+  A4CE: ee                       mov A,R6
+  A4CF: 94 00                    subb A,#0x00
+  A4D1: 40 10                    jc inv_hh_fmt
+  A4D3: c3                       clr C
+  A4D4: 74 07                    mov A,#0x07
+  A4D6: 9d                       subb A,R5
+  A4D7: 74 01                    mov A,#0x01
+  A4D9: 9c                       subb A,R4
+  A4DA: 40 07                    jc inv_hh_fmt
+  A4DC: 90 01 0a                 mov DPTR,#0x010A
+  A4DF: e0                       movx A,@DPTR
+  A4E0: 54 ef                    anl A,#0xEF
+  A4E2: f0                       movx @DPTR,A
 inv_hh_fmt:
-  A47F: c3                       clr C
-  A480: ef                       mov A,R7
-  A481: 94 0a                    subb A,#0x0A
-  A483: ee                       mov A,R6
-  A484: 94 01                    subb A,#0x01
-  A486: 40 10                    jc inv_hh_eq
-  A488: c3                       clr C
-  A489: 74 33                    mov A,#0x33
-  A48B: 9d                       subb A,R5
-  A48C: 74 01                    mov A,#0x01
-  A48E: 9c                       subb A,R4
-  A48F: 40 07                    jc inv_hh_eq
-  A491: 90 01 0a                 mov DPTR,#0x010A
-  A494: e0                       movx A,@DPTR
-  A495: 54 df                    anl A,#0xDF
-  A497: f0                       movx @DPTR,A
+  A4E3: c3                       clr C
+  A4E4: ef                       mov A,R7
+  A4E5: 94 0a                    subb A,#0x0A
+  A4E7: ee                       mov A,R6
+  A4E8: 94 01                    subb A,#0x01
+  A4EA: 40 10                    jc inv_hh_eq
+  A4EC: c3                       clr C
+  A4ED: 74 33                    mov A,#0x33
+  A4EF: 9d                       subb A,R5
+  A4F0: 74 01                    mov A,#0x01
+  A4F2: 9c                       subb A,R4
+  A4F3: 40 07                    jc inv_hh_eq
+  A4F5: 90 01 0a                 mov DPTR,#0x010A
+  A4F8: e0                       movx A,@DPTR
+  A4F9: 54 df                    anl A,#0xDF
+  A4FB: f0                       movx @DPTR,A
 inv_hh_eq:
-  A498: c3                       clr C
-  A499: ef                       mov A,R7
-  A49A: 94 00                    subb A,#0x00
-  A49C: ee                       mov A,R6
-  A49D: 94 00                    subb A,#0x00
-  A49F: 40 14                    jc inv_hh_stat
-  A4A1: 90 01 23                 mov DPTR,#0x0123
-  A4A4: e0                       movx A,@DPTR
-  A4A5: fa                       mov R2,A
-  A4A6: a3                       inc DPTR
-  A4A7: e0                       movx A,@DPTR
-  A4A8: c3                       clr C
-  A4A9: 9d                       subb A,R5
-  A4AA: ea                       mov A,R2
-  A4AB: 9c                       subb A,R4
-  A4AC: 40 07                    jc inv_hh_stat
-  A4AE: 90 01 0a                 mov DPTR,#0x010A
-  A4B1: e0                       movx A,@DPTR
-  A4B2: 54 bf                    anl A,#0xBF
-  A4B4: f0                       movx @DPTR,A
+  A4FC: c3                       clr C
+  A4FD: ef                       mov A,R7
+  A4FE: 94 00                    subb A,#0x00
+  A500: ee                       mov A,R6
+  A501: 94 00                    subb A,#0x00
+  A503: 40 14                    jc inv_hh_stat
+  A505: 90 01 23                 mov DPTR,#0x0123
+  A508: e0                       movx A,@DPTR
+  A509: fa                       mov R2,A
+  A50A: a3                       inc DPTR
+  A50B: e0                       movx A,@DPTR
+  A50C: c3                       clr C
+  A50D: 9d                       subb A,R5
+  A50E: ea                       mov A,R2
+  A50F: 9c                       subb A,R4
+  A510: 40 07                    jc inv_hh_stat
+  A512: 90 01 0a                 mov DPTR,#0x010A
+  A515: e0                       movx A,@DPTR
+  A516: 54 bf                    anl A,#0xBF
+  A518: f0                       movx @DPTR,A
 inv_hh_stat:
-  A4B5: 90 01 08                 mov DPTR,#0x0108
-  A4B8: e0                       movx A,@DPTR
-  A4B9: b4 01 1f                 cjne A,#1,hs_noline
+  A519: 90 01 08                 mov DPTR,#0x0108
+  A51C: e0                       movx A,@DPTR
+  A51D: b4 01 1f                 cjne A,#1,hs_noline
             ; entry: the part of the position line inside the band
-  A4BC: 90 01 17                 mov DPTR,#0x0117
-  A4BF: e0                       movx A,@DPTR
-  A4C0: fc                       mov R4,A
-  A4C1: a3                       inc DPTR
-  A4C2: e0                       movx A,@DPTR
-  A4C3: fd                       mov R5,A
-  A4C4: a3                       inc DPTR
-  A4C5: e0                       movx A,@DPTR
-  A4C6: fe                       mov R6,A
-  A4C7: a3                       inc DPTR
-  A4C8: e0                       movx A,@DPTR
-  A4C9: ff                       mov R7,A
-  A4CA: 90 01 1d                 mov DPTR,#0x011D
-  A4CD: ec                       mov A,R4
-  A4CE: f0                       movx @DPTR,A
-  A4CF: a3                       inc DPTR
-  A4D0: ed                       mov A,R5
-  A4D1: f0                       movx @DPTR,A
-  A4D2: a3                       inc DPTR
-  A4D3: ee                       mov A,R6
-  A4D4: f0                       movx @DPTR,A
-  A4D5: a3                       inc DPTR
-  A4D6: ef                       mov A,R7
-  A4D7: f0                       movx @DPTR,A
-  A4D8: 12 a0 08                 lcall hn_line_seg
-hs_noline:
-            ; the edge, unless this is the last step
-  A4DB: 90 01 0b                 mov DPTR,#0x010B
-  A4DE: e0                       movx A,@DPTR
-  A4DF: b4 14 02                 cjne A,#20,hs_edge
-  A4E2: 80 14                    sjmp hs_reveal
-hs_edge:
-  A4E4: 90 01 0d                 mov DPTR,#0x010D
-  A4E7: e0                       movx A,@DPTR
-  A4E8: fa                       mov R2,A
-  A4E9: a3                       inc DPTR
-  A4EA: e0                       movx A,@DPTR
-  A4EB: fb                       mov R3,A
-  A4EC: 79 02                    mov R1,#2
-  A4EE: 7d 00                    mov R5,#0
-  A4F0: 7c aa                    mov R4,#170
-  A4F2: 12 99 70                 lcall hn_acc
-  A4F5: 12 99 1a                 lcall hn_fill
-hs_reveal:
-  A4F8: 90 01 08                 mov DPTR,#0x0108
-  A4FB: e0                       movx A,@DPTR
-  A4FC: b4 01 02                 cjne A,#1,hs_to_rvx
-  A4FF: 80 03                    sjmp hs_rve
-hs_to_rvx:
-  A501: 02 a5 b6                 ljmp hs_rvx
-hs_rve:
-  A504: 90 01 09                 mov DPTR,#0x0109
-  A507: e0                       movx A,@DPTR
-  A508: 54 01                    anl A,#0x01
-  A50A: 70 1b                    jnz rv_hv_name
-  A50C: 90 01 11                 mov DPTR,#0x0111
-  A50F: e0                       movx A,@DPTR
-  A510: fe                       mov R6,A
-  A511: a3                       inc DPTR
-  A512: e0                       movx A,@DPTR
-  A513: ff                       mov R7,A
-  A514: c3                       clr C
-  A515: 74 10                    mov A,#0x10
-  A517: 9f                       subb A,R7
-  A518: 74 00                    mov A,#0x00
-  A51A: 9e                       subb A,R6
-  A51B: 40 0a                    jc rv_hv_name
-  A51D: 12 9f 48                 lcall hv_name
-  A520: 90 01 09                 mov DPTR,#0x0109
+  A520: 90 01 17                 mov DPTR,#0x0117
   A523: e0                       movx A,@DPTR
-  A524: 44 01                    orl A,#0x01
-  A526: f0                       movx @DPTR,A
+  A524: fc                       mov R4,A
+  A525: a3                       inc DPTR
+  A526: e0                       movx A,@DPTR
+  A527: fd                       mov R5,A
+  A528: a3                       inc DPTR
+  A529: e0                       movx A,@DPTR
+  A52A: fe                       mov R6,A
+  A52B: a3                       inc DPTR
+  A52C: e0                       movx A,@DPTR
+  A52D: ff                       mov R7,A
+  A52E: 90 01 1d                 mov DPTR,#0x011D
+  A531: ec                       mov A,R4
+  A532: f0                       movx @DPTR,A
+  A533: a3                       inc DPTR
+  A534: ed                       mov A,R5
+  A535: f0                       movx @DPTR,A
+  A536: a3                       inc DPTR
+  A537: ee                       mov A,R6
+  A538: f0                       movx @DPTR,A
+  A539: a3                       inc DPTR
+  A53A: ef                       mov A,R7
+  A53B: f0                       movx @DPTR,A
+  A53C: 12 a0 08                 lcall hn_line_seg
+hs_noline:
+hs_reveal:
+  A53F: 90 01 08                 mov DPTR,#0x0108
+  A542: e0                       movx A,@DPTR
+  A543: b4 01 02                 cjne A,#1,hs_to_rvx
+  A546: 80 03                    sjmp hs_rve
+hs_to_rvx:
+  A548: 02 a5 fd                 ljmp hs_rvx
+hs_rve:
+  A54B: 90 01 09                 mov DPTR,#0x0109
+  A54E: e0                       movx A,@DPTR
+  A54F: 54 01                    anl A,#0x01
+  A551: 70 1b                    jnz rv_hv_name
+  A553: 90 01 11                 mov DPTR,#0x0111
+  A556: e0                       movx A,@DPTR
+  A557: fe                       mov R6,A
+  A558: a3                       inc DPTR
+  A559: e0                       movx A,@DPTR
+  A55A: ff                       mov R7,A
+  A55B: c3                       clr C
+  A55C: 74 10                    mov A,#0x10
+  A55E: 9f                       subb A,R7
+  A55F: 74 00                    mov A,#0x00
+  A561: 9e                       subb A,R6
+  A562: 40 0a                    jc rv_hv_name
+  A564: 12 9f 48                 lcall hv_name
+  A567: 90 01 09                 mov DPTR,#0x0109
+  A56A: e0                       movx A,@DPTR
+  A56B: 44 01                    orl A,#0x01
+  A56D: f0                       movx @DPTR,A
 rv_hv_name:
-  A527: 90 01 09                 mov DPTR,#0x0109
-  A52A: e0                       movx A,@DPTR
-  A52B: 54 02                    anl A,#0x02
-  A52D: 70 1b                    jnz rv_hv_div
-  A52F: 90 01 11                 mov DPTR,#0x0111
-  A532: e0                       movx A,@DPTR
-  A533: fe                       mov R6,A
-  A534: a3                       inc DPTR
-  A535: e0                       movx A,@DPTR
-  A536: ff                       mov R7,A
-  A537: c3                       clr C
-  A538: 74 8c                    mov A,#0x8C
-  A53A: 9f                       subb A,R7
-  A53B: 74 00                    mov A,#0x00
-  A53D: 9e                       subb A,R6
-  A53E: 40 0a                    jc rv_hv_div
-  A540: 12 9f e3                 lcall hv_div
-  A543: 90 01 09                 mov DPTR,#0x0109
-  A546: e0                       movx A,@DPTR
-  A547: 44 02                    orl A,#0x02
-  A549: f0                       movx @DPTR,A
+  A56E: 90 01 09                 mov DPTR,#0x0109
+  A571: e0                       movx A,@DPTR
+  A572: 54 02                    anl A,#0x02
+  A574: 70 1b                    jnz rv_hv_div
+  A576: 90 01 11                 mov DPTR,#0x0111
+  A579: e0                       movx A,@DPTR
+  A57A: fe                       mov R6,A
+  A57B: a3                       inc DPTR
+  A57C: e0                       movx A,@DPTR
+  A57D: ff                       mov R7,A
+  A57E: c3                       clr C
+  A57F: 74 8c                    mov A,#0x8C
+  A581: 9f                       subb A,R7
+  A582: 74 00                    mov A,#0x00
+  A584: 9e                       subb A,R6
+  A585: 40 0a                    jc rv_hv_div
+  A587: 12 9f e3                 lcall hv_div
+  A58A: 90 01 09                 mov DPTR,#0x0109
+  A58D: e0                       movx A,@DPTR
+  A58E: 44 02                    orl A,#0x02
+  A590: f0                       movx @DPTR,A
 rv_hv_div:
-  A54A: 90 01 09                 mov DPTR,#0x0109
-  A54D: e0                       movx A,@DPTR
-  A54E: 54 04                    anl A,#0x04
-  A550: 70 1b                    jnz rv_hv_vol
-  A552: 90 01 11                 mov DPTR,#0x0111
-  A555: e0                       movx A,@DPTR
-  A556: fe                       mov R6,A
-  A557: a3                       inc DPTR
-  A558: e0                       movx A,@DPTR
-  A559: ff                       mov R7,A
-  A55A: c3                       clr C
-  A55B: 74 9e                    mov A,#0x9E
-  A55D: 9f                       subb A,R7
-  A55E: 74 00                    mov A,#0x00
-  A560: 9e                       subb A,R6
-  A561: 40 0a                    jc rv_hv_vol
-  A563: 12 9f 99                 lcall hv_vol
-  A566: 90 01 09                 mov DPTR,#0x0109
-  A569: e0                       movx A,@DPTR
-  A56A: 44 04                    orl A,#0x04
-  A56C: f0                       movx @DPTR,A
+  A591: 90 01 09                 mov DPTR,#0x0109
+  A594: e0                       movx A,@DPTR
+  A595: 54 04                    anl A,#0x04
+  A597: 70 1b                    jnz rv_hv_vol
+  A599: 90 01 11                 mov DPTR,#0x0111
+  A59C: e0                       movx A,@DPTR
+  A59D: fe                       mov R6,A
+  A59E: a3                       inc DPTR
+  A59F: e0                       movx A,@DPTR
+  A5A0: ff                       mov R7,A
+  A5A1: c3                       clr C
+  A5A2: 74 9e                    mov A,#0x9E
+  A5A4: 9f                       subb A,R7
+  A5A5: 74 00                    mov A,#0x00
+  A5A7: 9e                       subb A,R6
+  A5A8: 40 0a                    jc rv_hv_vol
+  A5AA: 12 9f 99                 lcall hv_vol
+  A5AD: 90 01 09                 mov DPTR,#0x0109
+  A5B0: e0                       movx A,@DPTR
+  A5B1: 44 04                    orl A,#0x04
+  A5B3: f0                       movx @DPTR,A
 rv_hv_vol:
-  A56D: 90 01 09                 mov DPTR,#0x0109
-  A570: e0                       movx A,@DPTR
-  A571: 54 08                    anl A,#0x08
-  A573: 70 1b                    jnz rv_hv_num
-  A575: 90 01 11                 mov DPTR,#0x0111
-  A578: e0                       movx A,@DPTR
-  A579: fe                       mov R6,A
-  A57A: a3                       inc DPTR
-  A57B: e0                       movx A,@DPTR
-  A57C: ff                       mov R7,A
-  A57D: c3                       clr C
-  A57E: 74 b8                    mov A,#0xB8
-  A580: 9f                       subb A,R7
-  A581: 74 00                    mov A,#0x00
-  A583: 9e                       subb A,R6
-  A584: 40 0a                    jc rv_hv_num
-  A586: 12 9e ff                 lcall hv_num
-  A589: 90 01 09                 mov DPTR,#0x0109
-  A58C: e0                       movx A,@DPTR
-  A58D: 44 08                    orl A,#0x08
-  A58F: f0                       movx @DPTR,A
+  A5B4: 90 01 09                 mov DPTR,#0x0109
+  A5B7: e0                       movx A,@DPTR
+  A5B8: 54 08                    anl A,#0x08
+  A5BA: 70 1b                    jnz rv_hv_num
+  A5BC: 90 01 11                 mov DPTR,#0x0111
+  A5BF: e0                       movx A,@DPTR
+  A5C0: fe                       mov R6,A
+  A5C1: a3                       inc DPTR
+  A5C2: e0                       movx A,@DPTR
+  A5C3: ff                       mov R7,A
+  A5C4: c3                       clr C
+  A5C5: 74 b8                    mov A,#0xB8
+  A5C7: 9f                       subb A,R7
+  A5C8: 74 00                    mov A,#0x00
+  A5CA: 9e                       subb A,R6
+  A5CB: 40 0a                    jc rv_hv_num
+  A5CD: 12 9e ff                 lcall hv_num
+  A5D0: 90 01 09                 mov DPTR,#0x0109
+  A5D3: e0                       movx A,@DPTR
+  A5D4: 44 08                    orl A,#0x08
+  A5D6: f0                       movx @DPTR,A
 rv_hv_num:
-  A590: 90 01 09                 mov DPTR,#0x0109
-  A593: e0                       movx A,@DPTR
-  A594: 54 10                    anl A,#0x10
-  A596: 70 1b                    jnz rv_hv_line
-  A598: 90 01 11                 mov DPTR,#0x0111
-  A59B: e0                       movx A,@DPTR
-  A59C: fe                       mov R6,A
-  A59D: a3                       inc DPTR
-  A59E: e0                       movx A,@DPTR
-  A59F: ff                       mov R7,A
-  A5A0: c3                       clr C
-  A5A1: 74 28                    mov A,#0x28
-  A5A3: 9f                       subb A,R7
-  A5A4: 74 00                    mov A,#0x00
-  A5A6: 9e                       subb A,R6
-  A5A7: 40 0a                    jc rv_hv_line
-  A5A9: 12 9f f4                 lcall hv_line
-  A5AC: 90 01 09                 mov DPTR,#0x0109
-  A5AF: e0                       movx A,@DPTR
-  A5B0: 44 10                    orl A,#0x10
-  A5B2: f0                       movx @DPTR,A
+  A5D7: 90 01 09                 mov DPTR,#0x0109
+  A5DA: e0                       movx A,@DPTR
+  A5DB: 54 10                    anl A,#0x10
+  A5DD: 70 1b                    jnz rv_hv_line
+  A5DF: 90 01 11                 mov DPTR,#0x0111
+  A5E2: e0                       movx A,@DPTR
+  A5E3: fe                       mov R6,A
+  A5E4: a3                       inc DPTR
+  A5E5: e0                       movx A,@DPTR
+  A5E6: ff                       mov R7,A
+  A5E7: c3                       clr C
+  A5E8: 74 28                    mov A,#0x28
+  A5EA: 9f                       subb A,R7
+  A5EB: 74 00                    mov A,#0x00
+  A5ED: 9e                       subb A,R6
+  A5EE: 40 0a                    jc rv_hv_line
+  A5F0: 12 9f f4                 lcall hv_line
+  A5F3: 90 01 09                 mov DPTR,#0x0109
+  A5F6: e0                       movx A,@DPTR
+  A5F7: 44 10                    orl A,#0x10
+  A5F9: f0                       movx @DPTR,A
 rv_hv_line:
-  A5B3: 02 a6 ec                 ljmp hs_end
+  A5FA: 02 a7 33                 ljmp hs_end
 hs_rvx:
-  A5B6: 90 01 0a                 mov DPTR,#0x010A
-  A5B9: e0                       movx A,@DPTR
-  A5BA: 54 01                    anl A,#0x01
-  A5BC: 70 1d                    jnz rv_hh_icon
-  A5BE: 7a 00                    mov R2,#0x00
-  A5C0: 7b 2c                    mov R3,#0x2C
-  A5C2: 90 01 11                 mov DPTR,#0x0111
-  A5C5: e0                       movx A,@DPTR
-  A5C6: fe                       mov R6,A
-  A5C7: a3                       inc DPTR
-  A5C8: e0                       movx A,@DPTR
-  A5C9: ff                       mov R7,A
-  A5CA: c3                       clr C
-  A5CB: eb                       mov A,R3
-  A5CC: 9f                       subb A,R7
-  A5CD: ea                       mov A,R2
-  A5CE: 9e                       subb A,R6
-  A5CF: 50 0a                    jnc rv_hh_icon
-  A5D1: 12 a2 45                 lcall hh_icon
-  A5D4: 90 01 0a                 mov DPTR,#0x010A
-  A5D7: e0                       movx A,@DPTR
-  A5D8: 44 01                    orl A,#0x01
-  A5DA: f0                       movx @DPTR,A
-rv_hh_icon:
-  A5DB: 90 01 0a                 mov DPTR,#0x010A
-  A5DE: e0                       movx A,@DPTR
-  A5DF: 54 02                    anl A,#0x02
-  A5E1: 70 1d                    jnz rv_hh_vol
-  A5E3: 7a 00                    mov R2,#0x00
-  A5E5: 7b 4b                    mov R3,#0x4B
-  A5E7: 90 01 11                 mov DPTR,#0x0111
-  A5EA: e0                       movx A,@DPTR
-  A5EB: fe                       mov R6,A
-  A5EC: a3                       inc DPTR
-  A5ED: e0                       movx A,@DPTR
-  A5EE: ff                       mov R7,A
-  A5EF: c3                       clr C
-  A5F0: eb                       mov A,R3
-  A5F1: 9f                       subb A,R7
-  A5F2: ea                       mov A,R2
-  A5F3: 9e                       subb A,R6
-  A5F4: 50 0a                    jnc rv_hh_vol
-  A5F6: 12 a2 48                 lcall hh_vol
-  A5F9: 90 01 0a                 mov DPTR,#0x010A
-  A5FC: e0                       movx A,@DPTR
-  A5FD: 44 02                    orl A,#0x02
-  A5FF: f0                       movx @DPTR,A
-rv_hh_vol:
-  A600: 90 01 0a                 mov DPTR,#0x010A
-  A603: e0                       movx A,@DPTR
-  A604: 54 04                    anl A,#0x04
-  A606: 70 1d                    jnz rv_hh_bar
-  A608: 7a 00                    mov R2,#0x00
-  A60A: 7b 2d                    mov R3,#0x2D
-  A60C: 90 01 11                 mov DPTR,#0x0111
+  A5FD: 90 01 0a                 mov DPTR,#0x010A
+  A600: e0                       movx A,@DPTR
+  A601: 54 01                    anl A,#0x01
+  A603: 70 1d                    jnz rv_hh_icon
+  A605: 7a 00                    mov R2,#0x00
+  A607: 7b 2c                    mov R3,#0x2C
+  A609: 90 01 11                 mov DPTR,#0x0111
+  A60C: e0                       movx A,@DPTR
+  A60D: fe                       mov R6,A
+  A60E: a3                       inc DPTR
   A60F: e0                       movx A,@DPTR
-  A610: fe                       mov R6,A
-  A611: a3                       inc DPTR
-  A612: e0                       movx A,@DPTR
-  A613: ff                       mov R7,A
-  A614: c3                       clr C
-  A615: eb                       mov A,R3
-  A616: 9f                       subb A,R7
-  A617: ea                       mov A,R2
-  A618: 9e                       subb A,R6
-  A619: 50 0a                    jnc rv_hh_bar
-  A61B: 12 a2 53                 lcall hh_bar
-  A61E: 90 01 0a                 mov DPTR,#0x010A
-  A621: e0                       movx A,@DPTR
-  A622: 44 04                    orl A,#0x04
-  A624: f0                       movx @DPTR,A
-rv_hh_bar:
-  A625: 90 01 0a                 mov DPTR,#0x010A
-  A628: e0                       movx A,@DPTR
-  A629: 54 08                    anl A,#0x08
-  A62B: 70 21                    jnz rv_hh_name
-  A62D: 90 01 1b                 mov DPTR,#0x011B
-  A630: e0                       movx A,@DPTR
-  A631: fa                       mov R2,A
-  A632: a3                       inc DPTR
-  A633: e0                       movx A,@DPTR
-  A634: fb                       mov R3,A
-  A635: 90 01 11                 mov DPTR,#0x0111
-  A638: e0                       movx A,@DPTR
-  A639: fe                       mov R6,A
-  A63A: a3                       inc DPTR
-  A63B: e0                       movx A,@DPTR
-  A63C: ff                       mov R7,A
-  A63D: c3                       clr C
-  A63E: eb                       mov A,R3
-  A63F: 9f                       subb A,R7
-  A640: ea                       mov A,R2
-  A641: 9e                       subb A,R6
-  A642: 50 0a                    jnc rv_hh_name
-  A644: 12 a2 63                 lcall hh_name
+  A610: ff                       mov R7,A
+  A611: c3                       clr C
+  A612: eb                       mov A,R3
+  A613: 9f                       subb A,R7
+  A614: ea                       mov A,R2
+  A615: 9e                       subb A,R6
+  A616: 50 0a                    jnc rv_hh_icon
+  A618: 12 a2 70                 lcall hh_icon
+  A61B: 90 01 0a                 mov DPTR,#0x010A
+  A61E: e0                       movx A,@DPTR
+  A61F: 44 01                    orl A,#0x01
+  A621: f0                       movx @DPTR,A
+rv_hh_icon:
+  A622: 90 01 0a                 mov DPTR,#0x010A
+  A625: e0                       movx A,@DPTR
+  A626: 54 02                    anl A,#0x02
+  A628: 70 1d                    jnz rv_hh_vol
+  A62A: 7a 00                    mov R2,#0x00
+  A62C: 7b 4b                    mov R3,#0x4B
+  A62E: 90 01 11                 mov DPTR,#0x0111
+  A631: e0                       movx A,@DPTR
+  A632: fe                       mov R6,A
+  A633: a3                       inc DPTR
+  A634: e0                       movx A,@DPTR
+  A635: ff                       mov R7,A
+  A636: c3                       clr C
+  A637: eb                       mov A,R3
+  A638: 9f                       subb A,R7
+  A639: ea                       mov A,R2
+  A63A: 9e                       subb A,R6
+  A63B: 50 0a                    jnc rv_hh_vol
+  A63D: 12 a2 73                 lcall hh_vol
+  A640: 90 01 0a                 mov DPTR,#0x010A
+  A643: e0                       movx A,@DPTR
+  A644: 44 02                    orl A,#0x02
+  A646: f0                       movx @DPTR,A
+rv_hh_vol:
   A647: 90 01 0a                 mov DPTR,#0x010A
   A64A: e0                       movx A,@DPTR
-  A64B: 44 08                    orl A,#0x08
-  A64D: f0                       movx @DPTR,A
-rv_hh_name:
-  A64E: 90 01 0a                 mov DPTR,#0x010A
-  A651: e0                       movx A,@DPTR
-  A652: 54 10                    anl A,#0x10
-  A654: 70 1d                    jnz rv_hh_fmt
-  A656: 7a 01                    mov R2,#0x01
-  A658: 7b 07                    mov R3,#0x07
-  A65A: 90 01 11                 mov DPTR,#0x0111
-  A65D: e0                       movx A,@DPTR
-  A65E: fe                       mov R6,A
-  A65F: a3                       inc DPTR
-  A660: e0                       movx A,@DPTR
-  A661: ff                       mov R7,A
-  A662: c3                       clr C
-  A663: eb                       mov A,R3
-  A664: 9f                       subb A,R7
-  A665: ea                       mov A,R2
-  A666: 9e                       subb A,R6
-  A667: 50 0a                    jnc rv_hh_fmt
-  A669: 12 a2 4d                 lcall hh_fmt
+  A64B: 54 04                    anl A,#0x04
+  A64D: 70 1d                    jnz rv_hh_bar
+  A64F: 7a 00                    mov R2,#0x00
+  A651: 7b 2d                    mov R3,#0x2D
+  A653: 90 01 11                 mov DPTR,#0x0111
+  A656: e0                       movx A,@DPTR
+  A657: fe                       mov R6,A
+  A658: a3                       inc DPTR
+  A659: e0                       movx A,@DPTR
+  A65A: ff                       mov R7,A
+  A65B: c3                       clr C
+  A65C: eb                       mov A,R3
+  A65D: 9f                       subb A,R7
+  A65E: ea                       mov A,R2
+  A65F: 9e                       subb A,R6
+  A660: 50 0a                    jnc rv_hh_bar
+  A662: 12 a2 7e                 lcall hh_bar
+  A665: 90 01 0a                 mov DPTR,#0x010A
+  A668: e0                       movx A,@DPTR
+  A669: 44 04                    orl A,#0x04
+  A66B: f0                       movx @DPTR,A
+rv_hh_bar:
   A66C: 90 01 0a                 mov DPTR,#0x010A
   A66F: e0                       movx A,@DPTR
-  A670: 44 10                    orl A,#0x10
-  A672: f0                       movx @DPTR,A
-rv_hh_fmt:
-  A673: 90 01 0a                 mov DPTR,#0x010A
-  A676: e0                       movx A,@DPTR
-  A677: 54 20                    anl A,#0x20
-  A679: 70 1d                    jnz rv_hh_eq
-  A67B: 7a 01                    mov R2,#0x01
-  A67D: 7b 33                    mov R3,#0x33
-  A67F: 90 01 11                 mov DPTR,#0x0111
+  A670: 54 08                    anl A,#0x08
+  A672: 70 21                    jnz rv_hh_name
+  A674: 90 01 1b                 mov DPTR,#0x011B
+  A677: e0                       movx A,@DPTR
+  A678: fa                       mov R2,A
+  A679: a3                       inc DPTR
+  A67A: e0                       movx A,@DPTR
+  A67B: fb                       mov R3,A
+  A67C: 90 01 11                 mov DPTR,#0x0111
+  A67F: e0                       movx A,@DPTR
+  A680: fe                       mov R6,A
+  A681: a3                       inc DPTR
   A682: e0                       movx A,@DPTR
-  A683: fe                       mov R6,A
-  A684: a3                       inc DPTR
-  A685: e0                       movx A,@DPTR
-  A686: ff                       mov R7,A
-  A687: c3                       clr C
-  A688: eb                       mov A,R3
-  A689: 9f                       subb A,R7
-  A68A: ea                       mov A,R2
-  A68B: 9e                       subb A,R6
-  A68C: 50 0a                    jnc rv_hh_eq
-  A68E: 12 a2 50                 lcall hh_eq
-  A691: 90 01 0a                 mov DPTR,#0x010A
-  A694: e0                       movx A,@DPTR
-  A695: 44 20                    orl A,#0x20
-  A697: f0                       movx @DPTR,A
-rv_hh_eq:
-  A698: 90 01 0a                 mov DPTR,#0x010A
-  A69B: e0                       movx A,@DPTR
-  A69C: 54 40                    anl A,#0x40
-  A69E: 70 4c                    jnz rv_hh_stat
-  A6A0: 90 01 0c                 mov DPTR,#0x010C
-  A6A3: e0                       movx A,@DPTR
-  A6A4: 70 07                    jnz rs_ready
-  A6A6: 90 01 0b                 mov DPTR,#0x010B
-  A6A9: e0                       movx A,@DPTR
-  A6AA: b4 14 3f                 cjne A,#20,rv_hh_stat
-rs_ready:
-  A6AD: 12 a2 02                 lcall hn_fp_status
-  A6B0: 90 01 3c                 mov DPTR,#0x013C
-  A6B3: 74 01                    mov A,#0x01
-  A6B5: f0                       movx @DPTR,A
-  A6B6: a3                       inc DPTR
-  A6B7: e4                       clr A
-  A6B8: f0                       movx @DPTR,A
-  A6B9: a3                       inc DPTR
-  A6BA: f0                       movx @DPTR,A
-  A6BB: a3                       inc DPTR
-  A6BC: f0                       movx @DPTR,A
-  A6BD: 12 9a 6a                 lcall hn_paint
-  A6C0: 90 01 4b                 mov DPTR,#0x014B
-  A6C3: e0                       movx A,@DPTR
-  A6C4: fa                       mov R2,A
-  A6C5: a3                       inc DPTR
-  A6C6: e0                       movx A,@DPTR
-  A6C7: fb                       mov R3,A
-  A6C8: 90 01 11                 mov DPTR,#0x0111
-  A6CB: e0                       movx A,@DPTR
-  A6CC: fe                       mov R6,A
-  A6CD: a3                       inc DPTR
-  A6CE: e0                       movx A,@DPTR
-  A6CF: ff                       mov R7,A
-  A6D0: c3                       clr C
-  A6D1: eb                       mov A,R3
-  A6D2: 9f                       subb A,R7
-  A6D3: ea                       mov A,R2
-  A6D4: 9e                       subb A,R6
-  A6D5: 50 15                    jnc rv_hh_stat
-  A6D7: 90 01 23                 mov DPTR,#0x0123
-  A6DA: ea                       mov A,R2
-  A6DB: f0                       movx @DPTR,A
-  A6DC: a3                       inc DPTR
-  A6DD: eb                       mov A,R3
+  A683: ff                       mov R7,A
+  A684: c3                       clr C
+  A685: eb                       mov A,R3
+  A686: 9f                       subb A,R7
+  A687: ea                       mov A,R2
+  A688: 9e                       subb A,R6
+  A689: 50 0a                    jnc rv_hh_name
+  A68B: 12 a2 8e                 lcall hh_name
+  A68E: 90 01 0a                 mov DPTR,#0x010A
+  A691: e0                       movx A,@DPTR
+  A692: 44 08                    orl A,#0x08
+  A694: f0                       movx @DPTR,A
+rv_hh_name:
+  A695: 90 01 0a                 mov DPTR,#0x010A
+  A698: e0                       movx A,@DPTR
+  A699: 54 10                    anl A,#0x10
+  A69B: 70 1d                    jnz rv_hh_fmt
+  A69D: 7a 01                    mov R2,#0x01
+  A69F: 7b 07                    mov R3,#0x07
+  A6A1: 90 01 11                 mov DPTR,#0x0111
+  A6A4: e0                       movx A,@DPTR
+  A6A5: fe                       mov R6,A
+  A6A6: a3                       inc DPTR
+  A6A7: e0                       movx A,@DPTR
+  A6A8: ff                       mov R7,A
+  A6A9: c3                       clr C
+  A6AA: eb                       mov A,R3
+  A6AB: 9f                       subb A,R7
+  A6AC: ea                       mov A,R2
+  A6AD: 9e                       subb A,R6
+  A6AE: 50 0a                    jnc rv_hh_fmt
+  A6B0: 12 a2 78                 lcall hh_fmt
+  A6B3: 90 01 0a                 mov DPTR,#0x010A
+  A6B6: e0                       movx A,@DPTR
+  A6B7: 44 10                    orl A,#0x10
+  A6B9: f0                       movx @DPTR,A
+rv_hh_fmt:
+  A6BA: 90 01 0a                 mov DPTR,#0x010A
+  A6BD: e0                       movx A,@DPTR
+  A6BE: 54 20                    anl A,#0x20
+  A6C0: 70 1d                    jnz rv_hh_eq
+  A6C2: 7a 01                    mov R2,#0x01
+  A6C4: 7b 33                    mov R3,#0x33
+  A6C6: 90 01 11                 mov DPTR,#0x0111
+  A6C9: e0                       movx A,@DPTR
+  A6CA: fe                       mov R6,A
+  A6CB: a3                       inc DPTR
+  A6CC: e0                       movx A,@DPTR
+  A6CD: ff                       mov R7,A
+  A6CE: c3                       clr C
+  A6CF: eb                       mov A,R3
+  A6D0: 9f                       subb A,R7
+  A6D1: ea                       mov A,R2
+  A6D2: 9e                       subb A,R6
+  A6D3: 50 0a                    jnc rv_hh_eq
+  A6D5: 12 a2 7b                 lcall hh_eq
+  A6D8: 90 01 0a                 mov DPTR,#0x010A
+  A6DB: e0                       movx A,@DPTR
+  A6DC: 44 20                    orl A,#0x20
   A6DE: f0                       movx @DPTR,A
-  A6DF: 12 a2 02                 lcall hn_fp_status
-  A6E2: 12 9a 6a                 lcall hn_paint
-  A6E5: 90 01 0a                 mov DPTR,#0x010A
-  A6E8: e0                       movx A,@DPTR
-  A6E9: 44 40                    orl A,#0x40
-  A6EB: f0                       movx @DPTR,A
+rv_hh_eq:
+  A6DF: 90 01 0a                 mov DPTR,#0x010A
+  A6E2: e0                       movx A,@DPTR
+  A6E3: 54 40                    anl A,#0x40
+  A6E5: 70 4c                    jnz rv_hh_stat
+  A6E7: 90 01 0c                 mov DPTR,#0x010C
+  A6EA: e0                       movx A,@DPTR
+  A6EB: 70 07                    jnz rs_ready
+  A6ED: 90 01 0b                 mov DPTR,#0x010B
+  A6F0: e0                       movx A,@DPTR
+  A6F1: b4 14 3f                 cjne A,#20,rv_hh_stat
+rs_ready:
+  A6F4: 12 a2 2d                 lcall hn_fp_status
+  A6F7: 90 01 3c                 mov DPTR,#0x013C
+  A6FA: 74 01                    mov A,#0x01
+  A6FC: f0                       movx @DPTR,A
+  A6FD: a3                       inc DPTR
+  A6FE: e4                       clr A
+  A6FF: f0                       movx @DPTR,A
+  A700: a3                       inc DPTR
+  A701: f0                       movx @DPTR,A
+  A702: a3                       inc DPTR
+  A703: f0                       movx @DPTR,A
+  A704: 12 9a 6a                 lcall hn_paint
+  A707: 90 01 4b                 mov DPTR,#0x014B
+  A70A: e0                       movx A,@DPTR
+  A70B: fa                       mov R2,A
+  A70C: a3                       inc DPTR
+  A70D: e0                       movx A,@DPTR
+  A70E: fb                       mov R3,A
+  A70F: 90 01 11                 mov DPTR,#0x0111
+  A712: e0                       movx A,@DPTR
+  A713: fe                       mov R6,A
+  A714: a3                       inc DPTR
+  A715: e0                       movx A,@DPTR
+  A716: ff                       mov R7,A
+  A717: c3                       clr C
+  A718: eb                       mov A,R3
+  A719: 9f                       subb A,R7
+  A71A: ea                       mov A,R2
+  A71B: 9e                       subb A,R6
+  A71C: 50 15                    jnc rv_hh_stat
+  A71E: 90 01 23                 mov DPTR,#0x0123
+  A721: ea                       mov A,R2
+  A722: f0                       movx @DPTR,A
+  A723: a3                       inc DPTR
+  A724: eb                       mov A,R3
+  A725: f0                       movx @DPTR,A
+  A726: 12 a2 2d                 lcall hn_fp_status
+  A729: 12 9a 6a                 lcall hn_paint
+  A72C: 90 01 0a                 mov DPTR,#0x010A
+  A72F: e0                       movx A,@DPTR
+  A730: 44 40                    orl A,#0x40
+  A732: f0                       movx @DPTR,A
 rv_hh_stat:
 hs_end:
             ; the last step ends the wipe
-  A6EC: 90 01 0b                 mov DPTR,#0x010B
-  A6EF: e0                       movx A,@DPTR
-  A6F0: b4 14 0c                 cjne A,#20,hs_done
-  A6F3: 90 01 08                 mov DPTR,#0x0108
-  A6F6: e0                       movx A,@DPTR
-  A6F7: ff                       mov R7,A
-  A6F8: e4                       clr A
-  A6F9: f0                       movx @DPTR,A
-  A6FA: a3                       inc DPTR           ; HN_VF
-  A6FB: bf 02 01                 cjne R7,#2,hs_done
-  A6FE: f0                       movx @DPTR,A       ; home: the volume page is gone
+  A733: 90 01 0b                 mov DPTR,#0x010B
+  A736: e0                       movx A,@DPTR
+  A737: b4 14 0c                 cjne A,#20,hs_done
+  A73A: 90 01 08                 mov DPTR,#0x0108
+  A73D: e0                       movx A,@DPTR
+  A73E: ff                       mov R7,A
+  A73F: e4                       clr A
+  A740: f0                       movx @DPTR,A
+  A741: a3                       inc DPTR           ; HN_VF
+  A742: bf 02 01                 cjne R7,#2,hs_done
+  A745: f0                       movx @DPTR,A       ; home: the volume page is gone
 hs_done:
-  A6FF: 22                       ret
+  A746: 22                       ret
             ; step helpers
 hs_xp:
-  A700: 90 01 0f                 mov DPTR,#0x010F
-  A703: e0                       movx A,@DPTR
-  A704: fc                       mov R4,A
-  A705: a3                       inc DPTR
-  A706: e0                       movx A,@DPTR
-  A707: fd                       mov R5,A
-  A708: 22                       ret
+  A747: 90 01 0f                 mov DPTR,#0x010F
+  A74A: e0                       movx A,@DPTR
+  A74B: fc                       mov R4,A
+  A74C: a3                       inc DPTR
+  A74D: e0                       movx A,@DPTR
+  A74E: fd                       mov R5,A
+  A74F: 22                       ret
 hs_xp1:
-  A709: 90 01 0f                 mov DPTR,#0x010F
-  A70C: e0                       movx A,@DPTR
-  A70D: fe                       mov R6,A
-  A70E: a3                       inc DPTR
-  A70F: e0                       movx A,@DPTR
-  A710: 24 01                    add A,#1
-  A712: ff                       mov R7,A
-  A713: e4                       clr A
-  A714: 3e                       addc A,R6
-  A715: fe                       mov R6,A
-  A716: 22                       ret
+  A750: 90 01 0f                 mov DPTR,#0x010F
+  A753: e0                       movx A,@DPTR
+  A754: fe                       mov R6,A
+  A755: a3                       inc DPTR
+  A756: e0                       movx A,@DPTR
+  A757: 24 01                    add A,#1
+  A759: ff                       mov R7,A
+  A75A: e4                       clr A
+  A75B: 3e                       addc A,R6
+  A75C: fe                       mov R6,A
+  A75D: 22                       ret
 hs_x2:
-  A717: 90 01 0d                 mov DPTR,#0x010D
-  A71A: e0                       movx A,@DPTR
-  A71B: fc                       mov R4,A
-  A71C: a3                       inc DPTR
-  A71D: e0                       movx A,@DPTR
-  A71E: 24 02                    add A,#2
-  A720: fd                       mov R5,A
-  A721: e4                       clr A
-  A722: 3c                       addc A,R4
-  A723: fc                       mov R4,A
-  A724: 22                       ret
+  A75E: 90 01 0d                 mov DPTR,#0x010D
+  A761: e0                       movx A,@DPTR
+  A762: fc                       mov R4,A
+  A763: a3                       inc DPTR
+  A764: e0                       movx A,@DPTR
+  A765: 24 02                    add A,#2
+  A767: fd                       mov R5,A
+  A768: e4                       clr A
+  A769: 3c                       addc A,R4
+  A76A: fc                       mov R4,A
+  A76B: 22                       ret
 hs_store:
-  A725: 90 01 11                 mov DPTR,#0x0111
-  A728: ea                       mov A,R2
-  A729: f0                       movx @DPTR,A
-  A72A: a3                       inc DPTR
-  A72B: eb                       mov A,R3
-  A72C: f0                       movx @DPTR,A
-  A72D: 90 01 17                 mov DPTR,#0x0117
-  A730: ec                       mov A,R4
-  A731: f0                       movx @DPTR,A
-  A732: a3                       inc DPTR
-  A733: ed                       mov A,R5
-  A734: f0                       movx @DPTR,A
-  A735: a3                       inc DPTR
-  A736: ee                       mov A,R6
-  A737: f0                       movx @DPTR,A
-  A738: a3                       inc DPTR
-  A739: ef                       mov A,R7
-  A73A: f0                       movx @DPTR,A
-  A73B: 22                       ret
+  A76C: 90 01 11                 mov DPTR,#0x0111
+  A76F: ea                       mov A,R2
+  A770: f0                       movx @DPTR,A
+  A771: a3                       inc DPTR
+  A772: eb                       mov A,R3
+  A773: f0                       movx @DPTR,A
+  A774: 90 01 17                 mov DPTR,#0x0117
+  A777: ec                       mov A,R4
+  A778: f0                       movx @DPTR,A
+  A779: a3                       inc DPTR
+  A77A: ed                       mov A,R5
+  A77B: f0                       movx @DPTR,A
+  A77C: a3                       inc DPTR
+  A77D: ee                       mov A,R6
+  A77E: f0                       movx @DPTR,A
+  A77F: a3                       inc DPTR
+  A780: ef                       mov A,R7
+  A781: f0                       movx @DPTR,A
+  A782: 22                       ret
+hs_black:
+  A783: 7d 00                    mov R5,#0
+  A785: 7c aa                    mov R4,#170
+  A787: 7e 00                    mov R6,#0
+  A789: 7f 00                    mov R7,#0
+  A78B: 02 99 1a                 ljmp hn_fill
 hs_dmg_band:
-  A73C: 90 01 13                 mov DPTR,#0x0113
-  A73F: ec                       mov A,R4
-  A740: f0                       movx @DPTR,A
-  A741: a3                       inc DPTR
-  A742: ed                       mov A,R5
-  A743: f0                       movx @DPTR,A
-  A744: a3                       inc DPTR
-  A745: ee                       mov A,R6
-  A746: f0                       movx @DPTR,A
-  A747: a3                       inc DPTR
-  A748: ef                       mov A,R7
-  A749: f0                       movx @DPTR,A
-  A74A: 22                       ret
+  A78E: 90 01 13                 mov DPTR,#0x0113
+  A791: ec                       mov A,R4
+  A792: f0                       movx @DPTR,A
+  A793: a3                       inc DPTR
+  A794: ed                       mov A,R5
+  A795: f0                       movx @DPTR,A
+  A796: a3                       inc DPTR
+  A797: ee                       mov A,R6
+  A798: f0                       movx @DPTR,A
+  A799: a3                       inc DPTR
+  A79A: ef                       mov A,R7
+  A79B: f0                       movx @DPTR,A
+  A79C: 22                       ret
             ; hn_home_tail: replaces home_refresh's ljmp 0x5916; adds the accent bar
 hn_home_tail:
-  A74B: 12 59 16                 lcall 0x5916       ; as before, R7 = volume
-  A74E: 12 99 70                 lcall hn_acc
-  A751: 7a 00                    mov R2,#0x00
-  A753: 7b 12                    mov R3,#0x12
-  A755: 79 1c                    mov R1,#28
-  A757: 7d 72                    mov R5,#114
-  A759: 7c 03                    mov R4,#3
-  A75B: 02 99 1a                 ljmp hn_fill
+  A79D: 12 59 16                 lcall 0x5916       ; as before, R7 = volume
+  A7A0: 12 99 70                 lcall hn_acc
+  A7A3: 7a 00                    mov R2,#0x00
+  A7A5: 7b 12                    mov R3,#0x12
+  A7A7: 79 1c                    mov R1,#28
+  A7A9: 7d 72                    mov R5,#114
+  A7AB: 7c 03                    mov R4,#3
+  A7AD: 02 99 1a                 ljmp hn_fill
             ; hn_align_big: on page 1 move the stored start x (XDATA 0x04:0x05) to 16
 hn_align_big:
-  A75E: e5 45                    mov A,0x45
-  A760: b4 01 0f                 cjne A,#1,hn_align_big_x
-  A763: 78 04                    mov R0,#4
-  A765: e2                       movx A,@R0         ; start x hi
-  A766: 70 0a                    jnz hn_align_big_x
-  A768: 08                       inc R0
-  A769: e2                       movx A,@R0         ; start x lo
-  A76A: c3                       clr C
-  A76B: 94 10                    subb A,#16
-  A76D: 40 03                    jc hn_align_big_x            ; wider than 288 px: keep it centred
-  A76F: 74 10                    mov A,#16
-  A771: f2                       movx @R0,A         ; start x = 16
+  A7B0: e5 45                    mov A,0x45
+  A7B2: b4 01 0f                 cjne A,#1,hn_align_big_x
+  A7B5: 78 04                    mov R0,#4
+  A7B7: e2                       movx A,@R0         ; start x hi
+  A7B8: 70 0a                    jnz hn_align_big_x
+  A7BA: 08                       inc R0
+  A7BB: e2                       movx A,@R0         ; start x lo
+  A7BC: c3                       clr C
+  A7BD: 94 10                    subb A,#16
+  A7BF: 40 03                    jc hn_align_big_x            ; wider than 288 px: keep it centred
+  A7C1: 74 10                    mov A,#16
+  A7C3: f2                       movx @R0,A         ; start x = 16
 hn_align_big_x:
-  A772: e4                       clr A              ; the two instructions the hook replaced
-  A773: 78 02                    mov R0,#2
-  A775: 02 2a 28                 ljmp 0x2A28
+  A7C4: e4                       clr A              ; the two instructions the hook replaced
+  A7C5: 78 02                    mov R0,#2
+  A7C7: 02 2a 28                 ljmp 0x2A28
             ; hn_align_small: on page 1 move the stored start x (XDATA 0x04:0x05) to 16
 hn_align_small:
-  A778: e5 45                    mov A,0x45
-  A77A: b4 01 0f                 cjne A,#1,hn_align_small_x
-  A77D: 78 04                    mov R0,#4
-  A77F: e2                       movx A,@R0         ; start x hi
-  A780: 70 0a                    jnz hn_align_small_x
-  A782: 08                       inc R0
-  A783: e2                       movx A,@R0         ; start x lo
-  A784: c3                       clr C
-  A785: 94 10                    subb A,#16
-  A787: 40 03                    jc hn_align_small_x            ; wider than 288 px: keep it centred
-  A789: 74 10                    mov A,#16
-  A78B: f2                       movx @R0,A         ; start x = 16
+  A7CA: e5 45                    mov A,0x45
+  A7CC: b4 01 0f                 cjne A,#1,hn_align_small_x
+  A7CF: 78 04                    mov R0,#4
+  A7D1: e2                       movx A,@R0         ; start x hi
+  A7D2: 70 0a                    jnz hn_align_small_x
+  A7D4: 08                       inc R0
+  A7D5: e2                       movx A,@R0         ; start x lo
+  A7D6: c3                       clr C
+  A7D7: 94 10                    subb A,#16
+  A7D9: 40 03                    jc hn_align_small_x            ; wider than 288 px: keep it centred
+  A7DB: 74 10                    mov A,#16
+  A7DD: f2                       movx @R0,A         ; start x = 16
 hn_align_small_x:
-  A78C: e4                       clr A              ; the two instructions the hook replaced
-  A78D: 78 02                    mov R0,#2
-  A78F: 02 3a 85                 ljmp 0x3A85
+  A7DE: e4                       clr A              ; the two instructions the hook replaced
+  A7DF: 78 02                    mov R0,#2
+  A7E1: 02 3a 85                 ljmp 0x3A85

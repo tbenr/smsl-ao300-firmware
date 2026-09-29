@@ -707,17 +707,35 @@ def test_enter_vol():
             ok = seen == [] and e.xram[bp.HN_SBUF] == 1
         check("0x4081, mode %d: %s" % (mode, "home_refresh and the status line as stock" if mode == 0 else
                                        "held back, returns, HN_SBUF set"), ok, str(seen))
-    # hn_name_guard: home_draw_input_name during an exit
+    # hn_name_guard: home_draw_input_name during an exit: the whole home first (black, home_refresh, which
+    # draws the name too, the status line), then the stock name draw
     for mode in (0, 1, 2):
         e = st(mode)
         e.iram[0x45] = 1
         seen = []
         e.hooks[0x51EE] = lambda em: seen.append("clear")
         e.hooks[0x298B] = lambda em: seen.append("name")
+        e.hooks[bp.HOME_REFRESH] = lambda em: seen.append("home_refresh")
+        e.hooks[0x3A53] = lambda em: seen.append("status")
         e.call(0x4A85)
-        check("home_draw_input_name, mode %d: %s" % (mode, "cancel + stock clear, then the name" if mode == 2 else
-                                                     "the name as stock"),
-              seen == (["clear", "name"] if mode == 2 else ["name"]) and e.xram[bp.HN_MODE] == (0 if mode == 2 else mode))
+        want = ["clear", "home_refresh", "name", "status", "name"] if mode == 2 else ["name"]
+        check("home_draw_input_name, mode %d: %s" % (mode, "wipe stopped, the whole home, then the name"
+                                                     if mode == 2 else "the name as stock"),
+              seen == want and e.xram[bp.HN_MODE] == (0 if mode == 2 else mode) and
+              e.xram[bp.SMALL_BUF] == 0x41, str(seen))
+    # hn_flag_path: home_refresh_periodic's flag path during a wipe skips the 0x412F fill
+    for mode in (0, 2):
+        e = st(mode)
+        e.iram[0x45], e.iram[0x21], e.iram[0x20] = 1, 0x0A, 0x40
+        seen = []
+        e.hooks[0x412F] = lambda em: (seen.append("fill"), em.ret())
+        e.hooks[0x4016] = lambda em: (seen.append("status"), em.ret())
+        e.pc = 0x3FF8
+        e.push(0xF0); e.push(0xFF)
+        e.run(0xFFF0, 2_000_000)
+        check("flag path 0x3FF8, mode %d: flags cleared, page 1, %s" % (mode, "fill skipped" if mode else "fill as stock"),
+              seen == (["status"] if mode else ["fill", "status"]) and not e.iram[0x21] & 0x0A and
+              not e.iram[0x20] & 0x40 and e.iram[0x45] == 1, str(seen))
     # hn_tasks: a step only after a tick, and only with the amp on
     for tick, power, mode, want in ((0, 1, 1, False), (1, 1, 1, True), (1, 0, 1, False), (1, 2, 1, False), (1, 1, 0, False)):
         e = st(mode, 0, 3, EASE[3])
@@ -1207,25 +1225,54 @@ def input_scenarios():
         print("    %s: %.1f s, worst step %.2f ms" % (name, time.time() - w0, w.worst()), flush=True)
 
 
-# keys during a wipe: (name, when: "entry" / "exit", seconds into that wipe, key, then wait, expectation)
+def stock_home_now(amp):
+    """The home screen the stock refresh would draw for amp's state right now (lcd_clear_black,
+    home_refresh, the status line from XDATA 0x50), drawn in a copy of its RAM and XDATA."""
+    e = Emu8051(NEW)
+    e.iram[:] = amp.e.iram
+    e.sfr[:] = amp.e.sfr
+    e.xram[:] = amp.e.xram
+    for k, v in amp.e.pins.items():
+        e.pins[k] = v
+    e.xram[bp.HN_MODE] = 0
+    e.iram[0x45] = 1
+    e.call(0x51EE)
+    e.call(bp.HOME_REFRESH)
+    e.setR(6, 0); e.setR(7, bp.STATUS_Y)
+    e.call(0x3A53)
+    return screen(e)
+
+
+def set_flag_213(amp):
+    amp.e.iram[0x21] |= 0x08             # 0x21.3, as key_59 (0x0F8D) leaves it
+
+
+# keys during a wipe: (name, keys before the Vol+ [(NEC, seconds)], when: "entry" / "exit", seconds into
+# that wipe, key, then wait, expectation, callable run on both amps just before the key)
 KEY_SCENARIOS = [
-    ("vol_in_entry", "entry", 0.08, NEC_VOL_UP, 1.0, "vol"),
-    ("vol_in_exit", "exit", 0.10, NEC_VOL_UP, 1.0, "vol"),
-    ("voldown_in_exit", "exit", 0.03, NEC_VOL_DOWN, 1.0, "vol"),
-    ("menu_in_entry", "entry", 0.10, NEC_MENU_OPEN, 1.5, "home"),     # page 2: read_key makes it "home"
-    ("menu_in_exit", "exit", 0.10, NEC_MENU_OPEN, 1.5, "same"),
-    ("source_in_entry", "entry", 0.10, NEC_SOURCE, 1.0, "home"),
-    ("source_in_exit", "exit", 0.10, NEC_SOURCE, 1.0, "source"),
-    ("power_in_entry", "entry", 0.10, NEC_POWER, 3.0, "same"),
-    ("power_in_exit", "exit", 0.12, NEC_POWER, 3.0, "same"),
-    ("select_in_entry", "entry", 0.10, NEC_HDMI, 1.0, "home"),        # the same
-    ("select_in_exit", "exit", 0.10, NEC_HDMI, 1.0, "source"),
+    ("vol_in_entry", [], "entry", 0.08, NEC_VOL_UP, 1.0, "vol", None),
+    ("vol_in_exit", [], "exit", 0.10, NEC_VOL_UP, 1.0, "vol", None),
+    ("voldown_in_exit", [], "exit", 0.03, NEC_VOL_DOWN, 1.0, "vol", None),
+    ("menu_in_entry", [], "entry", 0.10, NEC_MENU_OPEN, 1.5, "home", None),   # page 2: read_key makes it "home"
+    ("menu_in_exit", [], "exit", 0.10, NEC_MENU_OPEN, 1.5, "same", None),
+    ("source_in_entry", [], "entry", 0.10, NEC_SOURCE, 1.0, "home", None),
+    ("source_in_exit", [], "exit", 0.10, NEC_SOURCE, 1.0, "source", None),
+    ("source_late_exit", [], "exit", 0.17, NEC_SOURCE, 1.0, "source", None),
+    ("power_in_entry", [], "entry", 0.10, NEC_POWER, 3.0, "same", None),
+    ("power_in_exit", [], "exit", 0.12, NEC_POWER, 3.0, "same", None),
+    ("select_in_entry", [], "entry", 0.10, NEC_HDMI, 1.0, "home", None),      # the same
+    ("select_in_exit", [], "exit", 0.10, NEC_HDMI, 1.0, "source", None),
+    # review repros: key_bt_function (IR 0x0E) calls home_refresh itself (0x108E), EQ and format tags
+    # first, then the name; Source with 0x21.3 set takes 0x0FA7 (EQ tag, icon, volume, then the name)
+    ("bt_key_in_exit", [(NEC_BT, 4.0)], "exit", 0.08, 0x0E, 1.5, "home", None),
+    ("source_flag_in_exit", [], "exit", 0.05, NEC_SOURCE, 1.0, "source", set_flag_213),
 ]
+EARLY = 0.15                              # seconds after a key on page 1 during an exit: home complete
 
 
 def key_scenarios():
     print("\nKeys during a wipe, whole firmware, against fast-lcd")
-    for name, when, into, cmd, settle, expect in KEY_SCENARIOS:
+    for name, pre, when, into, cmd, settle, expect, inject in KEY_SCENARIOS:
         w0 = time.time()
         amps = [Amp(BASE), Amp(NEW)]
         ref, new = amps
@@ -1235,11 +1282,12 @@ def key_scenarios():
             amp.boot()
             amp.press(NEC_POWER)
             amp.wait(9.5)
+            for c, secs in pre:
+                amp.press(c)
+                amp.wait(secs)
             amp.press(NEC_VOL_UP)
-        label = "%-16s " % name
-        if when == "entry":
-            t0 = 0.0
-        else:
+        label = "%-19s " % name
+        if when == "exit":
             # wait for the exit to start (the page timer is 2 s after the key)
             for amp in amps:
                 amp.wait(1.9)
@@ -1248,19 +1296,30 @@ def key_scenarios():
                     break
                 for amp in amps:
                     amp.wait(0.005)
-            t0 = 0.0
             check("%sexit running before the key" % label, new.e.xram[bp.HN_MODE] == 2)
         for amp in amps:
-            amp.wait(t0 + into)
+            amp.wait(into)
         x_at = new.e.xram[bp.HN_X] << 8 | new.e.xram[bp.HN_X + 1]
         mode_at, step_at = new.e.xram[bp.HN_MODE], new.e.xram[bp.HN_STEP]
         mark = w.mark()
         for amp in amps:
+            if inject:
+                inject(amp)
             amp.press(cmd)
-            amp.wait(settle)
+        early = None
+        if when == "exit" and expect in ("home", "source"):
+            for amp in amps:
+                amp.wait(EARLY)
+            early = screen(new.e) == stock_home_now(new) and new.page == 1
+            new.lcd.save_png(os.path.join(HERE, "build", "keys_%s_early.png" % name))
+        for amp in amps:
+            amp.wait(settle - (EARLY if early is not None else 0))
         st = w.since(mark)
         print("  %s key at %s step %d (x %d); %d steps after it" % (name, when, step_at, x_at, len(st)))
         check("%sa wipe was running at the key" % label, mode_at == (1 if when == "entry" else 2))
+        if early is not None:
+            check("%s%.2f s after the key: a whole home screen (= the stock refresh for that state)" %
+                  (label, EARLY), early)
         check("%ssame page, power, volumes, input, output" % label, state(ref) == state(new),
               "%s vs %s" % (state(ref), state(new)))
         if expect == "vol":
@@ -1273,13 +1332,20 @@ def key_scenarios():
         elif expect == "home":
             check("%shome, fast-lcd outside our bands" % label, new.page == 1 and screen_ok(ref, new))
         elif expect == "source":
-            # a Source press on home shows the name and status only (no icons, no bar), in both images
-            check("%sinput switched on page 1: fast-lcd outside our two text bands" % label,
-                  new.page == 1 and home_pixels_ok(new, ref))
+            # input switched during the exit: hn_name_guard ends the exit with the whole home screen.
+            # fast-lcd, back home a moment ago, may not have drawn its home yet, and Source postpones its
+            # refresh by 2 s: it shows the name and status only until then. Both end on the same screen.
+            check("%sinput switched on page 1: a whole home screen (= the stock refresh for that state)" % label,
+                  new.page == 1 and screen(new.e) == stock_home_now(new))
         else:
             check("%sscreen identical to fast-lcd" % label, new.lcd.gram == ref.lcd.gram)
         check("%sno wipe left running" % label, new.e.xram[bp.HN_MODE] == 0)
         new.lcd.save_png(os.path.join(HERE, "build", "keys_%s.png" % name))
+        if expect == "source":
+            for amp in amps:
+                amp.wait(2.5)
+            check("%s2.5 s later: the same screen as fast-lcd outside our bands" % label,
+                  new.page == 1 and home_pixels_ok(new, ref))
         if expect == "vol":
             for amp in amps:
                 amp.wait(2.6)
@@ -1287,6 +1353,86 @@ def key_scenarios():
         audio_checks(label, ref, new, quiet=True)
         STEP_MS["key_" + name] = w.worst()
         print("    %s: %.1f s" % (name, time.time() - w0), flush=True)
+
+
+def flag_exit_scenarios():
+    """Review repro: Source leaves home_refresh_periodic's flags set (0x20.6) for about 3 s; a Vol+ in
+    that time, and the exit's render makes the flag path run 10 ticks into the exit."""
+    print("\nSource, then Vol+ while the refresh flags are still set, then the exit")
+    for gap in (0.2, 1.0, 2.0):
+        name = "source_vol_%.1f" % gap
+        label = "%-19s " % name
+        amps = [Amp(BASE), Amp(NEW)]
+        ref, new = amps
+        w = Watch(new)
+        ends = []
+        w.on_step = lambda rec: rec[1] == 2 and rec[2] == 20 and ends.append(new.e.cycles)
+        for amp in amps:
+            amp.set_pin(0xC0, 5, 0)
+            amp.boot()
+            amp.press(NEC_POWER)
+            amp.wait(9.5)
+            amp.press(NEC_SOURCE)
+            amp.wait(gap)
+            flags = (amp.e.iram[0x20] >> 6 & 1, amp.e.iram[0x21] >> 1 & 1, amp.e.iram[0x21] >> 3 & 1)
+            amp.press(NEC_VOL_UP)
+        mark = w.mark()
+        # run to the end of the exit, then two ticks
+        for _ in range(400):
+            if ends:
+                break
+            for amp in amps:
+                amp.wait(0.01)
+        for amp in amps:
+            amp.wait(0.02)
+        st = w.since(mark)
+        print("  %s: flags 0x20.6/0x21.1/0x21.3 at the Vol+ %s; %d steps" % (name, flags, len(st)))
+        check("%sentry and exit ran (40 steps)" % label, [s[1] for s in st] == [1] * 20 + [2] * 20)
+        check("%stwo ticks after the exit: a whole home screen (= the stock refresh for that state)" % label,
+              new.page == 1 and screen(new.e) == stock_home_now(new))
+        new.lcd.save_png(os.path.join(HERE, "build", "keys_%s_end.png" % name))
+        for amp in amps:
+            amp.wait(2.0)
+        check("%slater: home, fast-lcd outside our bands" % label, new.page == 1 and screen_ok(ref, new))
+        check("%ssame page, power, volumes, input, output" % label, state(ref) == state(new))
+        audio_checks(label, ref, new, quiet=True)
+
+
+def edge_scan():
+    """The panel-scan model (tools/emu/panel_video.py: 60 Hz, 12 + 320 + 12 lines, one memory row
+    per line time) over an entry and an exit, scanning x upwards and downwards: every frame whose
+    scan lies between the end of the first step and the start of the last shows a whole 2-px edge."""
+    import panel_video as pv
+    print("\nPanel scan during the wipes: a whole edge in every frame")
+    for scan, phase in [(sc, ph) for sc in ("up", "down") for ph in (0.0, 0.0042, 0.0083, 0.0125)]:
+        amp = Amp(NEW, log_audio=False)
+        w = Watch(amp)
+        amp.set_pin(0xC0, 5, 0)
+        amp.boot()
+        amp.press(NEC_POWER)
+        amp.wait(9.0 + phase)                  # the frame phase against the ticks
+        frames = []
+        for press, lead, n in ((NEC_VOL_UP, 0.0, 30), (None, 1.3, 60)):   # the exit starts ~2.0 s after the key
+            amp.wait(lead)
+            start = amp.e.cycles
+            for f, cols in pv.panel_frames(amp, n, scan, [(0.0, press)] if press else []):
+                f0 = start + f * CLOCK_HZ / pv.FPS
+                line = CLOCK_HZ / pv.FPS / pv.LINES
+                frames.append((f0 + pv.PORCH_BACK * line, f0 + (pv.PORCH_BACK + pv.ROWS) * line, cols))
+        acc = bp.ORANGE
+        for mode in (1, 2):
+            st = [s for s in w.steps if s[1] == mode]
+            t_in = next(s for s in st if s[2] == 1)
+            t_out = next(s for s in st if s[2] == 20)
+            end1 = t_in[0] + t_in[4] * CLOCK_HZ / 1000
+            inside = [fr for fr in frames if fr[0] >= end1 and fr[1] <= t_out[0]]
+            bad = []
+            for k, (a, b, cols) in enumerate(inside):
+                full = [x for x in range(319) if all(v == acc for v in cols[x]) and all(v == acc for v in cols[x + 1])]
+                if not full:
+                    bad.append(k)
+            check("scan %-4s phase %4.1f ms %s: %d frames inside the wipe, each with a whole 2-px edge" %
+                  (scan, phase * 1000, "entry" if mode == 1 else "exit", len(inside)), inside and not bad, str(bad[:5]))
 
 
 # ---- INT1 at a volume press ----------------------------------------------------------------------
@@ -1440,7 +1586,7 @@ def report_steps():
 GROUPS = {
     "unit": [image_diff, test_fill, test_painter, test_name_ptr, test_draw_volume, test_volpage,
              test_step, test_enter_vol, test_home_tail, test_align],
-    "tour": [tour, input_scenarios, key_scenarios],
+    "tour": [tour, input_scenarios, key_scenarios, flag_exit_scenarios, edge_scan],
     "int1": [int1],
     "sweep": [sweep],
 }

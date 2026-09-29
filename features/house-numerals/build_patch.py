@@ -160,6 +160,7 @@ HOOKS = [
     (0x4081, bytes([0x12, 0x5C, 0x8B]), 0x02, "hn_hold"),         # periodic refresh: lcall home_refresh
     (0x5D42, bytes([0x12, 0x5C, 0xBC]), 0x02, "hn_cancel"),       # ui_clear_screen: lcall ui_clear_small_buf
     (0x4A85, bytes([0xE5, 0x47, 0x14]), 0x02, "hn_name_guard"),   # home_draw_input_name: mov A,0x47; dec A
+    (0x3FF8, bytes([0xC2, 0x0B, 0xC2]), 0x02, "hn_flag_path"),    # home_refresh_periodic: clr 0x21.3; clr..
 ]
 
 # where the volume keys open page 2 themselves (after `mov 0x45,#0x02`); 22 stock bytes each:
@@ -173,7 +174,7 @@ def vol_entry_bytes(target):
     return bytes([0x12, target >> 8, target & 0xFF, 0x80, len(VOL_ENTRY_ORIG) - 5])
 
 
-VERSION_TEXT = "v1.4 tbenr hn4"
+VERSION_TEXT = "v1.4 tbenr hn4.1"
 VERSION_PTR_ADDR = 0x22CA
 VERSION_MAX_LEN = 20
 
@@ -1242,16 +1243,53 @@ lcall 0x5C8B       ; home_refresh
 ljmp 0x4084
 
 ; hn_name_guard: home_draw_input_name's entry. A name drawn on page 1 during an exit (Source,
-; direct-select, input_apply) would draw over the half-revealed screen: cancel, stock clear first.
+; direct-select, input_apply, key_bt_function's home_refresh) would draw over the half-revealed
+; screen, and the stock sequence may already have drawn other home parts. So the exit ends here
+; with the whole home screen as the held-back refresh would draw it (hn_home_now), then the stock
+; name draw goes on.
 hn_name_guard:
 mov DPTR,#0x%04X""" % HN_MODE + """
 movx A,@DPTR
 cjne A,#2,hg_go
-lcall 0x5D42
+lcall hn_home_now
 hg_go:
 mov A,0x47
 dec A
 ljmp 0x4A88
+
+; hn_home_now: stop the wipe, black screen, then home_refresh and the status line from XDATA 0x50
+; as home_refresh_periodic draws them (the text buffers are kept: the status line is the stock one)
+hn_home_now:
+mov DPTR,#0x%04X""" % HN_MODE + """
+clr A
+movx @DPTR,A       ; HN_MODE (so the name draw inside home_refresh passes the guard)
+inc DPTR
+movx @DPTR,A       ; HN_VF
+inc DPTR
+movx @DPTR,A       ; HN_HF
+lcall 0x51EE       ; lcd_clear_black
+lcall 0x5C8B       ; home_refresh
+mov R7,#0x87
+mov R6,#0
+ljmp 0x3A53        ; small_text_render, y 135
+
+; hn_flag_path: home_refresh_periodic's flag path (0x3FF8, taken when 0x21.3, 0x21.1 or 0x20.6 is set,
+; e.g. after Source: they stay set until this refresh, so across a volume page too). Stock clears the
+; flags, sets page 1 and blacks out x 0..239, y 43..169 (0x412F, 125 ms) before loading the status
+; line and drawing home. During a wipe that fill would erase parts the exit has revealed (and holes
+; in the volume page right of the edge); the wipe owns the screen, so skip the fill and go on with
+; the status line (0x4016) and the refresh, which hn_hold holds back: the exit draws the home.
+hn_flag_path:
+clr 0x21.3         ; the two instructions the hook replaced
+clr 0x20.6
+mov DPTR,#0x%04X""" % HN_MODE + """
+movx A,@DPTR
+jnz hfp_wipe
+ljmp 0x3FFC
+hfp_wipe:
+clr 0x21.1         ; 0x3FFC..0x3FFF: clr 0x21.1, page 1; the fill (0x4001..0x4013) is skipped
+mov 0x45,#1
+ljmp 0x4016
 
 ; hn_name_load: XDATA 0x35 = the input name, as home_draw_input_name loads it (input 7 and out of
 ; range: the buffer is left as it is)
@@ -1489,7 +1527,27 @@ movx @DPTR,A
 """)
     S(a, """
 hs_draw:
-; the band, black
+; the new edge first (columns x, x+1, outside the band), unless this is the last step: the old
+; edge is only erased by the band after it, so GRAM always holds a whole edge while the panel scans
+mov DPTR,#0x%04X""" % HN_STEP + """
+movx A,@DPTR
+cjne A,#%d,hs_edge""" % STEPS + """
+sjmp hs_band
+hs_edge:
+mov DPTR,#0x%04X""" % HN_X + """
+movx A,@DPTR
+mov R2,A
+inc DPTR
+movx A,@DPTR
+mov R3,A
+mov R1,#2
+mov R5,#0
+mov R4,#170
+lcall hn_acc
+lcall hn_fill
+hs_band:
+; the band, black, with the old edge's two columns last: on the way in they are the band's top
+; end (hn_fill goes up in x); on the way out its bottom end, so the rest goes first
 mov DPTR,#0x%04X""" % HN_B0 + """
 movx A,@DPTR
 mov R2,A
@@ -1503,11 +1561,31 @@ clr C
 subb A,R3
 inc A
 mov R1,A           ; width (2..255)
-mov R5,#0
-mov R4,#170
-mov R6,#0
-mov R7,#0
-lcall hn_fill
+mov DPTR,#0x%04X""" % HN_MODE + """
+movx A,@DPTR
+cjne A,#2,hs_band1
+mov A,R1
+cjne A,#3,hs_bc
+hs_bc:
+jc hs_band1        ; 2 px: just the old edge
+add A,#0xFE
+mov R1,A           ; width - 2
+mov A,R3
+add A,#2
+mov R3,A
+clr A
+addc A,R2
+mov R2,A           ; from B0 + 2
+lcall hs_black
+mov DPTR,#0x%04X""" % HN_B0 + """
+movx A,@DPTR
+mov R2,A
+inc DPTR
+movx A,@DPTR
+mov R3,A
+mov R1,#2          ; then the old edge, B0 and B0 + 1
+hs_band1:
+lcall hs_black
 """)
     # invalidate
     S(a, "; elements the band or the edge touched are no longer on screen")
@@ -1580,23 +1658,6 @@ mov A,R7
 movx @DPTR,A
 lcall hn_line_seg
 hs_noline:
-; the edge, unless this is the last step
-mov DPTR,#0x%04X""" % HN_STEP + """
-movx A,@DPTR
-cjne A,#%d,hs_edge""" % STEPS + """
-sjmp hs_reveal
-hs_edge:
-mov DPTR,#0x%04X""" % HN_X + """
-movx A,@DPTR
-mov R2,A
-inc DPTR
-movx A,@DPTR
-mov R3,A
-mov R1,#2
-mov R5,#0
-mov R4,#170
-lcall hn_acc
-lcall hn_fill
 hs_reveal:
 mov DPTR,#0x%04X""" % HN_MODE + """
 movx A,@DPTR
@@ -1761,6 +1822,12 @@ inc DPTR
 mov A,R7
 movx @DPTR,A
 ret
+hs_black:          ; R2:R3 x, R1 width: full-height black
+mov R5,#0
+mov R4,#170
+mov R6,#0
+mov R7,#0
+ljmp hn_fill
 hs_dmg_band:       ; damage = band (HN_D0 = R4:R5, HN_D1 = R6:R7)
 mov DPTR,#0x%04X""" % HN_D0 + """
 mov A,R4
@@ -1843,6 +1910,7 @@ def main():
     assert img[0x4084:0x4089] == bytes.fromhex("7f877e00") + b"\x02", "0x4084 not as expected"
     assert img[0x5D45:0x5D48] == bytes.fromhex("125ccb"), "ui_clear_screen's second call moved"
     assert img[0x4A88:0x4A8B] == bytes.fromhex("b40800"), "home_draw_input_name's cjne moved"
+    assert img[0x3FF8:0x3FFE] == bytes.fromhex("c20bc206c209"), "home_refresh_periodic's flag path moved"
     # home_draw_input_name's table (0x4A9B) loads the strings INPUT_NAMES lists
     for inp, addr, text in INPUT_NAMES:
         t = (img[0x4A9B + 3 * (inp - 1) + 1] << 8) | img[0x4A9B + 3 * (inp - 1) + 2]

@@ -2,11 +2,22 @@
 
 A reduced build of study 3 ("House Numerals", after SMSL's SU and DO series screens) from
 `features/ui-theme/ui_themes.html`. Built on top of fast-lcd. The RESET page shows
-`v1.4 tbenr hn4`.
+`v1.4 tbenr hn4.1`.
 
-This is the fourth image ("hn4"). The wipe into the volume page no longer blocks anything:
-it runs one step per 10 ms main-loop tick, eased, and there is now a wipe back home too.
-All our text goes through a new streaming text painter.
+This is image hn4.1. The wipe into the volume page no longer blocks anything: it runs one
+step per 10 ms main-loop tick, eased, and there is a wipe back home too. All our text goes
+through a streaming text painter.
+
+hn4.1 fixes three things found in hn4 (`v1.4 tbenr hn4`, sha256 `86aacb8b…`):
+- **The edge could vanish for a whole panel frame.** hn4 erased the old edge (with the band)
+  before it drew the new one. The new edge now comes first, and the old edge's columns are
+  erased last.
+- **The stock refresh's flag path could damage the exit.** After a Source press, the flag path
+  (0x3FF8) could run mid-exit and black out revealed parts at 0x412F. It now skips that fill
+  during a wipe.
+- **A name drawn during an exit left the screen incomplete.** Such a draw (Source,
+  direct-select, the BT key's home_refresh) cleared the screen in the middle of stock sequences
+  that had already drawn other parts. It now ends the exit with the whole home screen.
 
 Earlier images:
 - hn3 (`v1.4 tbenr hn3`, sha256 `2c4809ab…`) and hn2 (`2819e0b0…`) drew a 200 ms wipe inside the
@@ -15,7 +26,7 @@ Earlier images:
 
 ## Status
 
-Emulator-verified (all tests pass). Not yet tried on hardware (hn4, `v1.4 tbenr hn4`).
+Emulator-verified (all tests pass). Not yet tried on hardware (hn4.1, `v1.4 tbenr hn4.1`).
 
 ## What the build shows
 
@@ -70,12 +81,15 @@ symmetric, so turning a wipe round maps step k to 20 - k at the same x.
 
 Each step:
 1. Takes the next x.
-2. Fills the band the edge swept since the last step with black (the new page's background).
-3. Marks as "not on screen" every element of either page that the band or the edge
+2. Draws the 2-px accent edge at [x, x+1] (outside the band), except on step 20, where the
+   band runs to the screen edge.
+3. Fills the band the edge swept since the last step with black (the new page's background).
+   The old edge's two columns go last: on the way in they are the band's top end, and
+   `hn_fill` goes up in x; on the way out they are its bottom end, so the rest of the band is
+   filled first.
+4. Marks as "not on screen" every element of either page that the band or the edge
    columns touched.
-4. On the way in, redraws the part of the position line inside the band.
-5. Draws the 2-px accent edge at [x, x+1], except on step 20, where the band runs to the
-   screen edge.
+5. On the way in, redraws the part of the position line inside the band.
 6. Draws every element of the new page that is not on screen and that the edge has fully
    passed:
    - on the way in, when its left edge is right of the edge (x0 >= x + 2);
@@ -83,6 +97,15 @@ Each step:
    - on step 20, everything.
 
 The wipe ends after step 20.
+
+GRAM therefore always holds a whole edge between the first and the last step: the new one is
+there before the old one goes. The panel reads one row (firmware x) per line time, 48 µs,
+and a band column takes 64 µs to fill. So whichever way the scan runs, a frame that misses
+the new edge still reads the old one before its columns are erased.
+
+The `tour` group runs `panel_video.py`'s scan model over an entry and an exit, both scan
+directions, at four frame phases. Every frame between the first and last step has a whole
+2-px edge (hn4 failed this in 11 of the 16 cases).
 
 | Way in: element | Columns | Appears at step (edge x) |
 |---|---|---|
@@ -170,8 +193,33 @@ is the hn3 home screen.
   exit had not touched are still on screen and stay. The rest are redrawn as the edge passes
   them. The number on screen is redrawn at once with the new value.
 - **Source, direct-select, or any other name draw on page 1 during the exit:** the hook on
-  `home_draw_input_name`'s first instruction (0x4A85, `hn_name_guard`) cancels the exit and
-  runs the stock clear first, then the stock name draw.
+  `home_draw_input_name`'s first instruction (0x4A85, `hn_name_guard`) ends the exit with the
+  whole home screen (`hn_home_now`), then lets the stock name draw go on:
+  - stop the wipe;
+  - `lcd_clear_black`;
+  - `home_refresh`, whose own name draw passes the guard;
+  - the status line from XDATA 0x50, as `home_refresh_periodic` draws it.
+
+  The stock sequences that get there have often drawn other home parts already, and a bare
+  clear would lose them:
+  - `key_bt_function` (IR 0x0E) calls `home_refresh` itself at 0x108E, so the EQ and format
+    tags are drawn before the name;
+  - Source with 0x21.3 or 0x21.1 set (0x0FA7, 0x0FE3) draws the EQ tag, icon and volume first.
+
+  The text buffers are kept, so the BT key's own "BT Reconnect" status line still follows.
+  The screen is a whole home 0.15 s after the key (tested for Source, direct-select, the BT
+  key and the 0x21.3 Source path).
+- **The refresh's flag path during a wipe:** Source (and `key_59`, `key_output_toggle`) set
+  0x20.6, 0x21.3 or 0x21.1. They stay set until `home_refresh_periodic` runs on page 1,
+  about 3 s after Source, so also across a volume page opened in that time. The exit's render
+  then makes the refresh run 10 ticks into the exit, and its flag path (0x3FF8) would clear
+  the flags, set page 1 and black out x 0..239, y 43..169 through the slow `0x412F` (125 ms),
+  erasing revealed parts.
+  - During a wipe, the hook at 0x3FF8 (`hn_flag_path`) does the flag and page part and skips
+    the fill. The status line is loaded and the held refresh proceeds as usual, and the exit
+    draws the home.
+  - Tested: Source, then Vol+ 0.2, 1.0 and 2.0 s later. All 20 exit steps run, and two ticks
+    after the exit the screen is a whole home.
 - **Menu (NEC 0x04):** during the exit it opens the menu through the stock clear, which
   cancels. During the entry the page is 2, so `read_key` turns it into "go home"
   (0x3DD6), whose clear cancels.
@@ -237,17 +285,17 @@ Outside the wipes, the home screen is still drawn by the stock `big_text_render`
 
 ## Timing
 
-Worst step measured: **5.36 ms**, on the exit with the OPTICAL/COAXIAL name (3.7 ms name plus
+Worst step measured: **5.38 ms**, on the exit with the OPTICAL/COAXIAL name (3.7 ms name plus
 a 23-px band). Per-step times, unit test, 20 steps each:
 
 | Wipe | Steps (ms) | Worst |
 |---|---|---|
 | Entry | 0.3 0.6 0.8 1.0 1.3 1.4 1.6 1.7 1.8 **4.9** 2.5 1.8 1.7 1.6 1.4 1.6 1.0 2.2 0.6 0.3 | 4.88 ms (number box) |
-| Exit, OPTICAL | 0.3 0.6 0.8 1.0 2.3 1.4 3.0 1.7 1.7 1.8 3.8 1.7 **5.4** 1.5 4.3 1.3 1.0 3.0 0.6 0.3 | 5.36 ms (name) |
+| Exit, OPTICAL | 0.3 0.6 0.8 1.0 2.3 1.4 3.0 1.7 1.7 1.8 3.8 1.7 **5.4** 1.5 4.3 1.3 1.0 3.0 0.6 0.3 | 5.38 ms (name) |
 | Exit, USB | … 3.2 (name) … 3.8 (status) … **4.3** (format tag, stock 2.9 ms) … | 4.32 ms |
 | Exit, BT | … 4.1 (volume + name) … **4.4** (status) … | 4.45 ms |
 
-In the whole firmware the worst step seen is 4.91 ms (tour, entries) and 5.36 ms (optical
+In the whole firmware the worst step seen is 4.91 ms (tour, entries) and 5.38 ms (optical
 exit). For comparison, the stock periodic home refresh blocks the main loop for about 45 ms
 every 0.5 s.
 
@@ -271,7 +319,7 @@ Earlier, because fast-lcd's own 40 ms volume draw loses ticks and the wipe does 
 
 ## Hooks
 
-Fourteen hook sites: ten 3-byte hooks, plus the four places the volume keys open the
+Fifteen hook sites: eleven 3-byte hooks, plus the four places the volume keys open the
 volume page. Every stock byte is asserted by `build_patch.py`.
 
 | Address | Stock bytes | Now | What |
@@ -285,13 +333,14 @@ volume page. Every stock byte is asserted by `build_patch.py`.
 | 0x5B2A | `12 33 25` lcall `main_tick_tasks` | lcall `hn_tasks` | the driver: one wipe step after each tick |
 | 0x4081 | `12 5C 8B` lcall `home_refresh` | ljmp `hn_hold` | periodic refresh held back during a wipe |
 | 0x5D42 | `12 5C BC` (`ui_clear_screen`'s first call) | ljmp `hn_cancel` | every stock clear cancels a wipe |
-| 0x4A85 | `E5 47 14` (`home_draw_input_name`) | ljmp `hn_name_guard` | a name drawn during an exit cancels it first |
+| 0x4A85 | `E5 47 14` (`home_draw_input_name`) | ljmp `hn_name_guard` | a name drawn during an exit: the whole home first, then the name |
+| 0x3FF8 | `C2 0B C2` (`clr 0x21.3; clr 0x20.6`) | ljmp `hn_flag_path` | the refresh's flag path during a wipe: flags and page as stock, the 0x412F fill skipped |
 | 0x0D33, 0x0DB3, 0x0E5A, 0x0F02 | `12 5D 42 7B FF …` | `12 A0 B8 80 11` (lcall `hn_enter_vol` ; sjmp site+0x16) | volume-key entry sites A-D |
 
 ## Memory
 
-- **Code:** 3986 bytes of patch code at 0x9800..0xA791, plus the version string at 0xA792.
-  Image length 42913 bytes, under the 0xF400 split. `house_numerals.asm` is the generated
+- **Code:** 4068 bytes of patch code at 0x9800..0xA7E3, plus the version string at 0xA7E4.
+  Image length 42997 bytes, under the 0xF400 split. `house_numerals.asm` is the generated
   listing.
 - **XDATA** 0x0100..0x0155. The EEPROM sectors and everything fast-lcd/direct-select use
   stay untouched.
@@ -320,11 +369,11 @@ volume page. Every stock byte is asserted by `build_patch.py`.
 
 ## Emulator results
 
-`python3 tools/run_tests.py` gives **ALL PASS** for every feature, 105 s wall (house-numerals
-105 s, most of it the 65 s sweep). `emu_test.py` has four groups: `unit`, `tour`, `int1`, `sweep`;
-`unit tour` alone runs in about 35 s.
+`python3 tools/run_tests.py` gives **ALL PASS** for every feature, 116 s wall (house-numerals
+116 s, most of it the sweep). `emu_test.py` has four groups: `unit`, `tour`, `int1`, `sweep`;
+`unit tour` alone runs in about 50 s.
 
-- **Image diff:** only the fourteen hook sites (plus the version pointer) differ from
+- **Image diff:** only the fifteen hook sites (plus the version pointer) differ from
   fast-lcd inside the base image. The labels in `SmslAo300Labels.java` match this build.
 - **Painter:** see above. `hn_fill` runs at 9.0 clocks per pixel.
 - **`hn_draw_volume`:** every value 0..60 in three themes. It records and skips drawing
@@ -355,11 +404,21 @@ volume page. Every stock byte is asserted by `build_patch.py`.
     every audio writer.
 - **Per input:** the eight scenarios above, each checking entry, exit, screens, the unmute
   and the audio.
-- **Keys during a wipe:** 11 scenarios, each with the final screens and audio checked
+- **Keys during a wipe:** 14 scenarios, each with the final screens and audio checked
   against fast-lcd:
   - Vol+ during the entry;
   - Vol+ and Vol- during the exit (turned round);
-  - Menu, Source, Power and direct-select (HDMI), each during the entry and during the exit.
+  - Menu, Source, Power and direct-select (HDMI), each during the entry and during the exit;
+  - Source late in the exit (step 18);
+  - the BT key (IR 0x0E) during the exit on Bluetooth;
+  - Source with 0x21.3 set during the exit.
+
+  For keys on page 1 during the exit, the screen 0.15 s after the key must equal the stock
+  refresh for that state, and so must the screen at the end.
+- **Source, then Vol+ 0.2, 1.0 or 2.0 s later** (the refresh's flags still set, so its flag
+  path runs mid-exit): 20 + 20 steps. Two ticks after the exit the screen is a whole home,
+  and later it matches fast-lcd.
+- **Panel scan:** see "A step" above.
 - **INT1** (`int1`, 100 whole-firmware runs per image, 7 s):
   - Setup: USB, settled, Vol+ from home with INT1's RAM effects injected at the press
     (0x21.4, 0x43:0x44 = 30, 0x4E = 0xFF), the press moved in 1 ms steps across one
@@ -371,7 +430,7 @@ volume page. Every stock byte is asserted by `build_patch.py`.
     fast-lcd the key first, hn4 the poll first. Both orders are stock behaviour: from 65 to
     72 ms both images take the poll first. The main loops are just not in the same phase, so
     that edge is one millisecond apart. The test lists such offsets and allows at most two.
-- **IR sweep:** 256 commands x 5 states, against fast-lcd, all screens as expected, 65 s.
+- **IR sweep:** 256 commands x 5 states, against fast-lcd, all screens as expected, 62 s.
 - **Audio comparison at the end of a run:** both images stop at the same clock. A state
   fast-lcd reaches in the last 0.10 s may therefore still be to come in hn4, which is up to
   0.10 s later by design of the check. The comparison requires the states up to 0.10 s
@@ -387,12 +446,21 @@ volume page. Every stock byte is asserted by `build_patch.py`.
   only. 0x0DB3 and 0x0E5A (key codes 0x5A/0x5B, probably a held key) are covered by the
   per-site unit test.
 - `key_59` (0x0F62) and `key_output_toggle` (0x1006) draw home parts on page 1 without the
-  name path or a clear. If they come during an exit, they draw over the half-revealed screen
-  until the exit reaches them; the exit's own reveal then redraws the same parts. No test
-  presses them during an exit.
-- `home_refresh_periodic`'s flag path (0x21.3, 0x21.1 or 0x20.6 set, after a Source-type
-  key) draws at 0x412F before 0x4081, so `hn_hold` does not hold that part back. Those keys
-  cancel the exit through the name guard first.
+  name path or a clear, and no NEC command reaches them in the emulator. If they come during
+  an exit, they draw over the half-revealed screen until the exit reaches them. The exit's
+  reveal then redraws the same parts, and the flag they set only reaches `hn_flag_path`. No
+  test presses them.
+- **Source or direct-select during an exit differ from fast-lcd in their transient content,
+  for up to about 2.9 s.**
+  - hn4.1 shows the whole home with the new name at once.
+  - fast-lcd, back home a moment earlier, may not have drawn its home yet, and the Source
+    key pushes its next refresh back 2 s. Until then it shows only the name and the status
+    line.
+  - Pressed after fast-lcd's first refresh, fast-lcd shows the whole home too. Both images
+    end on the same screen (tested 2.5 s later).
+- **Input 7** (no name in `home_draw_input_name`'s table; apparently unused) draws a blank
+  name after any volume page. The exit's start clears XDATA 0x35 as stock `ui_clear_screen`
+  does at the return home, and stock then also renders the empty buffer.
 
 ## Risks
 

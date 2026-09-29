@@ -94,6 +94,7 @@ public class SmslAo300Labels extends GhidraScript {
         {0x3CDC, "status_rate_text"},       // R7 = sample-rate code -> XDATA 0x50 ("44.1kHz", "2.8224MHz", ...; else "Connected")
         {0x4F63, "status_bt_text"},         // Bluetooth status line (codec names, "Searching...", "No Connected")
         {0x5B8F, "strlen_generic"},         // R3:R2:R1 generic pointer -> R6:R7 length
+        {0x412F, "lcd_fill_rect_slow"},     // rectangle fill through the per-pixel path; the flag path's black x 0..239, y 43..169 takes 125 ms
         {0x5161, "lcd_clear_column32"},     // big_text_render's margins: one 1 x 32 black column at XDATA 0x04:0x05
         // Keil runtime
         {0x1EF5, "keil_cldptr"},       {0x1F91, "keil_ildptr"},
@@ -127,16 +128,18 @@ public class SmslAo300Labels extends GhidraScript {
         {0xA16C, "hn_cancel"},         // ui_clear_screen's first instruction: stops a wipe
         {0xA17B, "hn_hold"},           // 0x4081: holds the periodic home refresh back during a wipe
         {0xA18E, "hn_name_guard"},     // home_draw_input_name's entry: cancels an exit wipe first
-        {0xA19E, "hn_name_load"},      // XDATA 0x35 = input name, as 0x4A85 loads it
-        {0xA1BF, "hn_fp_name"},
-        {0xA202, "hn_fp_status"},
-        {0xA245, "hh_icon"},  {0xA248, "hh_vol"},  {0xA24D, "hh_fmt"},  {0xA250, "hh_eq"},
-        {0xA253, "hh_bar"},   {0xA263, "hh_name"}, {0xA269, "hh_stat"}, // exit wipe: home elements
-        {0xA26F, "hn_tasks"},          // replaces main_tasks_on's lcall main_tick_tasks (0x5B2A): one wipe step per tick
-        {0xA27D, "hn_step"},           // one wipe step
-        {0xA74B, "hn_home_tail"},      // home_refresh's tail: volume, accent bar
-        {0xA75E, "hn_align_big"},      // big_text_render on page 1: start x 16
-        {0xA778, "hn_align_small"},    // small_text_render on page 1: start x 16
+        {0xA1C9, "hn_name_load"},      // XDATA 0x35 = input name, as 0x4A85 loads it
+        {0xA1EA, "hn_fp_name"},
+        {0xA22D, "hn_fp_status"},
+        {0xA270, "hh_icon"},  {0xA273, "hh_vol"},  {0xA278, "hh_fmt"},  {0xA27B, "hh_eq"},
+        {0xA27E, "hh_bar"},   {0xA28E, "hh_name"}, {0xA294, "hh_stat"}, // exit wipe: home elements
+        {0xA29A, "hn_tasks"},          // replaces main_tasks_on's lcall main_tick_tasks (0x5B2A): one wipe step per tick
+        {0xA19E, "hn_home_now"},       // stop a wipe, black, home_refresh + status line (hn_name_guard)
+        {0xA1B4, "hn_flag_path"},      // 0x3FF8: during a wipe the flag path skips its 0x412F fill
+        {0xA2A8, "hn_step"},           // one wipe step
+        {0xA79D, "hn_home_tail"},      // home_refresh's tail: volume, accent bar
+        {0xA7B0, "hn_align_big"},      // big_text_render on page 1: start x 16
+        {0xA7CA, "hn_align_small"},    // small_text_render on page 1: start x 16
     };
 
     Object[][] codeLabels = {
@@ -154,6 +157,7 @@ public class SmslAo300Labels extends GhidraScript {
         {0x5B2A, "main_tasks_tick_call"},   // main_tasks_on: lcall main_tick_tasks (hooked, features/house-numerals: hn_tasks)
         {0x5422, "main_loop_tasks_call"},   // main loop, amp on: lcall main_tasks_on
         {0x4081, "home_refresh_periodic_draw"}, // lcall home_refresh; status line (hooked, features/house-numerals: hn_hold)
+        {0x3FF8, "home_refresh_periodic_flags"}, // 0x21.3 / 0x21.1 / 0x20.6 set: clear them, page 1, 0x412F fill (hooked, features/house-numerals: hn_flag_path)
         {0x4A9B, "input_name_table"},       // home_draw_input_name's jump table, inputs 1..8 (7: no load)
         {0x9820, "hn_ease"},                // features/house-numerals: wipe edge x per step (21 words)
         {0x984A, "hn_font_small"},          // features/house-numerals: font descriptors and character maps
@@ -181,7 +185,8 @@ public class SmslAo300Labels extends GhidraScript {
 
     Object[][] ramLabels = {
         {0x10, "g_menu_a"},        {0x17, "g_menu_cursor"},   {0x19, "g_menu_b"},
-        {0x27, "g_osd_timer_hi"},  {0x28, "g_osd_timer_lo"},  // page 1: home_refresh_periodic countdown (10 after a render, 50 after a refresh)  {0x29, "g_dimmer_mode"},
+        {0x27, "g_osd_timer_hi"},  {0x28, "g_osd_timer_lo"},  {0x29, "g_dimmer_mode"},
+        // 0x27:0x28, page 1: home_refresh_periodic countdown (10 after a render, 50 after a refresh)
         {0x2B, "g_output"},        {0x2C, "g_filter"},        {0x2F, "g_screen_off_hi"},
         {0x30, "g_screen_off_lo"}, {0x31, "g_volume"},        {0x32, "g_render_req"},
         {0x39, "g_eq"},

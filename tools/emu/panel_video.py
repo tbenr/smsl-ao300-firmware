@@ -45,6 +45,32 @@ def press_arg(s):
     return float(t), int(cmd, 0)
 
 
+def panel_frames(amp, nframes, scan="up", presses=()):
+    """Run amp for nframes panel frames from now and yield (frame index, cols) per frame, sampled
+    as the glass shows it: one memory row (firmware x) per line time, in scan order ("up": x 0 to
+    319, "down": 319 to 0), after the back porch. cols[x] is the 170 RGB565 pixels of column x
+    as the scan read them. presses: sorted (seconds from now, NEC command), pressed at the start
+    of the first frame at or after that time. The emulator ends each frame at its last line."""
+    clocks_per_line = CLOCK_HZ / FPS / LINES
+    order = range(ROWS) if scan == "up" else range(ROWS - 1, -1, -1)
+    gram = amp.lcd.gram
+    cols = [[0] * H for _ in range(W)]
+    start = amp.e.cycles
+    presses = list(presses)
+    pi = 0
+    for f in range(nframes):
+        while pi < len(presses) and presses[pi][0] <= f / FPS:
+            amp.press(presses[pi][1])
+            pi += 1
+        frame0 = start + f * CLOCK_HZ / FPS
+        for k, r in enumerate(order):
+            amp.e.run(None, 1 << 40, stop_cycles=int(frame0 + (PORCH_BACK + k) * clocks_per_line))
+            base = r * PANEL_COLS + COL0
+            cols[r] = gram[base:base + H]
+        amp.e.run(None, 1 << 40, stop_cycles=int(frame0 + LINES * clocks_per_line))
+        yield f, list(cols)
+
+
 def frame_bytes(cols, lut):
     """cols[x] = 170 RGB565 pixels of firmware column x -> 320x170 RGB24, row-major."""
     out = bytearray(W * H * 3)
@@ -87,24 +113,9 @@ def main():
                                 outp + [path], stdin=subprocess.PIPE)
     writers = [ffmpeg(FPS, args.out + "_60fps.mp4"), ffmpeg(FPS // 4, args.out + "_slow4x.mp4")]
 
-    clocks_per_line = CLOCK_HZ / FPS / LINES
-    order = range(ROWS) if args.scan == "up" else range(ROWS - 1, -1, -1)
-    gram = amp.lcd.gram
-    cols = [[0] * H for _ in range(W)]
     lut = {}
-    start = amp.e.cycles
     nframes = int(args.seconds * FPS)
-    pi = 0
-    for f in range(nframes):
-        while pi < len(presses) and presses[pi][0] <= f / FPS:
-            amp.press(presses[pi][1])
-            pi += 1
-        frame0 = start + f * CLOCK_HZ / FPS
-        for k, r in enumerate(order):
-            amp.e.run(None, 1 << 40, stop_cycles=int(frame0 + (PORCH_BACK + k) * clocks_per_line))
-            base = r * PANEL_COLS + COL0
-            cols[r] = gram[base:base + H]
-        amp.e.run(None, 1 << 40, stop_cycles=int(frame0 + LINES * clocks_per_line))
+    for f, cols in panel_frames(amp, nframes, args.scan, presses):
         fb = frame_bytes(cols, lut)
         for w in writers:
             w.stdin.write(fb)
