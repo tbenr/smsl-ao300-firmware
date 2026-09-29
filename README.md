@@ -31,6 +31,8 @@ tools/
   run_tests.py                    runs every features/*/emu_test.py in parallel
   emu/ao300.py                    harness: boot the whole firmware, press remote keys, log
                                   audio-chip writes and pins per 10 ms tick
+  emu/panel_video.py              60 fps video of what the glass shows: samples panel memory
+                                  line by line at the 60 Hz refresh (needs ffmpeg)
   patch/asm51.py                  label-resolving 8051 assembler used by the build scripts
 
 features/
