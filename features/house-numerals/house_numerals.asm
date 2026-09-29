@@ -5,7 +5,7 @@
 ; 0x2A25: e4 78 02 -> 02 a7 b0  (hn_align_big)
 ; 0x3A82: e4 78 02 -> 02 a7 ca  (hn_align_small)
 ; 0x5C99: 02 59 16 -> 02 a7 9d  (hn_home_tail)
-; 0x5B2A: 12 33 25 -> 12 a2 9a  (hn_tasks)
+; 0x5B2A: 12 33 25 -> 12 a2 9a  (uk_tasks)
 ; 0x4081: 12 5c 8b -> 02 a1 7b  (hn_hold)
 ; 0x5D42: 12 5c bc -> 02 a1 6c  (hn_cancel)
 ; 0x4A85: e5 47 14 -> 02 a1 8e  (hn_name_guard)
@@ -99,8 +99,8 @@ map_big:
   9902: 00 00 00 00 00 00 00 00  
   990A: 00 00 00 00 00 00 00 00  db 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
   9912: 00 00 00 00 00 00 00 00  
-            ; hn_fill: R2:R3 x, R1 w (1..255), R5 y, R4 h (1..170), R6:R7 colour
-hn_fill:
+            ; uk_fill: R2:R3 x, R1 w (1..255), R5 y, R4 h (1..170), R6:R7 colour
+uk_fill:
   991A: 90 01 02                 mov DPTR,#0x0102
   991D: ee                       mov A,R6
   991E: f0                       movx @DPTR,A
@@ -163,8 +163,8 @@ hf_px:
   996B: dd f0                    djnz R5,hf_px
   996D: d2 87                    setb P0.7          ; CS high
   996F: 22                       ret
-            ; hn_acc: R6:R7 = the accent: the theme colour (RAM 0x48:0x49), SMSL orange on White; keeps R1..R5
-hn_acc:
+            ; uk_acc: R6:R7 = the accent: the COLOR tint (RAM 0x48:0x49), the theme's own colour on White; keeps R1..R5
+uk_acc:
   9970: e5 48                    mov A,0x48
   9972: 55 49                    anl A,0x49
   9974: f4                       cpl A              ; 0 only on the White theme
@@ -197,8 +197,8 @@ hnp_cmp:
 hnp_none:
   9998: d3                       setb C
   9999: 22                       ret
-            ; hn_fp_load: copy the font descriptor FP_FONT points to into FP_W..FP_NADV (8 bytes)
-hn_fp_load:
+            ; uk_fp_load: copy the font descriptor FP_FONT points to into FP_W..FP_NADV (8 bytes)
+uk_fp_load:
   999A: 90 01 30                 mov DPTR,#0x0130
   999D: e0                       movx A,@DPTR
   999E: fe                       mov R6,A
@@ -221,9 +221,9 @@ fl_next:
   99B5: 0d                       inc R5
   99B6: bd 08 eb                 cjne R5,#8,fl_next
   99B9: 22                       ret
-            ; hn_fetch: next character of the FP_STR string (FP_SPC: 0 XDATA, 1 code) -> A, R5; FP_STR advanced
+            ; uk_fetch: next character of the FP_STR string (FP_SPC: 0 XDATA, 1 code) -> A, R5; FP_STR advanced
             ; unless it is the terminating 0
-hn_fetch:
+uk_fetch:
   99BA: 90 01 32                 mov DPTR,#0x0132
   99BD: e0                       movx A,@DPTR
   99BE: fe                       mov R6,A
@@ -255,8 +255,8 @@ hft_got:
   99DF: ed                       mov A,R5
 hft_ret:
   99E0: 22                       ret
-            ; hn_map: character R5 -> A = glyph index | 0x80 if narrow (0 outside 0x20..0x7F)
-hn_map:
+            ; uk_map: character R5 -> A = glyph index | 0x80 if narrow (0 outside 0x20..0x7F)
+uk_map:
   99E1: ed                       mov A,R5
   99E2: c3                       clr C
   99E3: 94 20                    subb A,#0x20
@@ -278,11 +278,11 @@ hm_cmp:
 hm_blank:
   99FB: e4                       clr A
   99FC: 22                       ret
-            ; hn_home_x: FP_X = where the stock renderer starts the FP_STR string on page 1: centred as
+            ; uk_home_x: FP_X = where the stock renderer starts the FP_STR string on page 1: centred as
             ; big_text_render / small_text_render compute it ((320 [+ w - narrow if any narrow char] - n*w) / 2),
-            ; then moved to x 16 as hn_align_big / hn_align_small do unless that is below 16. Keeps FP_STR.
-hn_home_x:
-  99FD: 12 99 9a                 lcall hn_fp_load
+            ; then moved to x 16 (as left-align hooks on 0x2A25 / 0x3A82 do) unless that is below 16. Keeps FP_STR.
+uk_home_x:
+  99FD: 12 99 9a                 lcall uk_fp_load
   9A00: 90 01 32                 mov DPTR,#0x0132
   9A03: e0                       movx A,@DPTR
   9A04: c0 e0                    push ACC
@@ -292,10 +292,10 @@ hn_home_x:
   9A0A: 7a 00                    mov R2,#0          ; n
   9A0C: 7b 00                    mov R3,#0          ; any narrow character
 hx_scan:
-  9A0E: 12 99 ba                 lcall hn_fetch
+  9A0E: 12 99 ba                 lcall uk_fetch
   9A11: 60 0b                    jz hx_count
   9A13: 0a                       inc R2
-  9A14: 12 99 e1                 lcall hn_map
+  9A14: 12 99 e1                 lcall uk_map
   9A17: 30 e7 f4                 jnb ACC.7,hx_scan
   9A1A: 7b 01                    mov R3,#1
   9A1C: 80 f0                    sjmp hx_scan
@@ -358,14 +358,14 @@ hx_store:
   9A67: ef                       mov A,R7
   9A68: f0                       movx @DPTR,A
   9A69: 22                       ret
-            ; hn_paint: draw the string in the FP block: font FP_FONT, string FP_STR (FP_SPC 0 XDATA, 1 code),
+            ; uk_paint: draw the string in the FP block: font FP_FONT, string FP_STR (FP_SPC 0 XDATA, 1 code),
             ; at FP_X, FP_Y, ink FP_INK on FP_BG, scale FP_SCALE (1 or 2), only the columns FP_CX0..FP_CX1.
             ; Each character is a cell of w*scale columns, drawn in full (background included), and the next
             ; one starts w*scale further on (narrow characters: the font's narrow advance * scale), as the stock
             ; text renderers do. FP_END is the last column of the last cell (FP_X - 1 for an empty string).
             ; An empty clip window (FP_CX0 > FP_CX1) draws nothing: a measurement.
-hn_paint:
-  9A6A: 12 99 9a                 lcall hn_fp_load
+uk_paint:
+  9A6A: 12 99 9a                 lcall uk_fp_load
   9A6D: 90 01 35                 mov DPTR,#0x0135
   9A70: e0                       movx A,@DPTR
   9A71: fe                       mov R6,A
@@ -398,11 +398,11 @@ hn_paint:
   9A95: 90 01 4d                 mov DPTR,#0x014D
   9A98: f0                       movx @DPTR,A
 hp_char:
-  9A99: 12 99 ba                 lcall hn_fetch
+  9A99: 12 99 ba                 lcall uk_fetch
   9A9C: 70 01                    jnz hp_have
   9A9E: 22                       ret
 hp_have:
-  9A9F: 12 99 e1                 lcall hn_map
+  9A9F: 12 99 e1                 lcall uk_map
   9AA2: fc                       mov R4,A           ; index | narrow
   9AA3: 90 01 41                 mov DPTR,#0x0141
   9AA6: 30 e7 03                 jnb ACC.7,hp_wide
@@ -508,7 +508,7 @@ hp_c1:
   9B28: a3                       inc DPTR
   9B29: ed                       mov A,R5
   9B2A: f0                       movx @DPTR,A
-  9B2B: 12 9b 43                 lcall hn_cell
+  9B2B: 12 9b 43                 lcall uk_cell
 hp_skip:
   9B2E: 90 01 4e                 mov DPTR,#0x014E
   9B31: e0                       movx A,@DPTR
@@ -522,8 +522,8 @@ hp_skip:
   9B3D: 34 00                    addc A,#0
   9B3F: f0                       movx @DPTR,A
   9B40: 02 9a 99                 ljmp hp_char
-            ; hn_cell: the visible columns FP_VX0..FP_VX1 of the glyph at FP_GLY in the cell at FP_CUR
-hn_cell:
+            ; uk_cell: the visible columns FP_VX0..FP_VX1 of the glyph at FP_GLY in the cell at FP_CUR
+uk_cell:
   9B43: 90 01 4a                 mov DPTR,#0x014A
   9B46: e0                       movx A,@DPTR
   9B47: ff                       mov R7,A
@@ -1149,7 +1149,7 @@ hv_num:
   9F41: a3                       inc DPTR
   9F42: 74 02                    mov A,#2
   9F44: f0                       movx @DPTR,A
-  9F45: 02 9a 6a                 ljmp hn_paint
+  9F45: 02 9a 6a                 ljmp uk_paint
             ; hv_name: the input name, small font, white, at 16,30 (inputs 1..6)
 hv_name:
   9F48: 12 99 81                 lcall hn_name_ptr
@@ -1209,10 +1209,10 @@ hvn_go:
   9F92: a3                       inc DPTR
   9F93: 74 01                    mov A,#1
   9F95: f0                       movx @DPTR,A
-  9F96: 02 9a 6a                 ljmp hn_paint
+  9F96: 02 9a 6a                 ljmp uk_paint
             ; hv_vol: "VOL" in the accent, small font, at 158,14
 hv_vol:
-  9F99: 12 99 70                 lcall hn_acc
+  9F99: 12 99 70                 lcall uk_acc
   9F9C: 90 01 30                 mov DPTR,#0x0130
   9F9F: 74 98                    mov A,#hi(font_small)
   9FA1: f0                       movx @DPTR,A
@@ -1264,7 +1264,7 @@ hv_vol:
   9FDC: a3                       inc DPTR
   9FDD: 74 01                    mov A,#1
   9FDF: f0                       movx @DPTR,A
-  9FE0: 02 9a 6a                 ljmp hn_paint
+  9FE0: 02 9a 6a                 ljmp uk_paint
             ; hv_div: the divider, 1 x 104 at 140,14
 hv_div:
   9FE3: 7a 00                    mov R2,#0x00
@@ -1274,7 +1274,7 @@ hv_div:
   9FEB: 7c 68                    mov R4,#104
   9FED: 7e 21                    mov R6,#0x21
   9FEF: 7f 04                    mov R7,#0x04
-  9FF1: 02 99 1a                 ljmp hn_fill
+  9FF1: 02 99 1a                 ljmp uk_fill
             ; hv_line: the whole position line
 hv_line:
   9FF4: 90 01 1d                 mov DPTR,#0x011D
@@ -1332,7 +1332,7 @@ hl_a0:
   A03B: 94 00                    subb A,#0
   A03D: fc                       mov R4,A           ; R4:R5 = split - 1
   A03E: 12 a0 7d                 lcall hl_minS1
-  A041: 12 99 70                 lcall hn_acc
+  A041: 12 99 70                 lcall uk_acc
   A044: 12 a0 6c                 lcall hl_fill
             ; track part: max(S0, split) .. min(S1, 279)
   A047: 90 01 21                 mov DPTR,#0x0121
@@ -1374,7 +1374,7 @@ hl_fill:
   A074: 09                       inc R1             ; width <= 240
   A075: 7d 88                    mov R5,#136
   A077: 7c 03                    mov R4,#3
-  A079: 02 99 1a                 ljmp hn_fill
+  A079: 02 99 1a                 ljmp uk_fill
 hl_none:
   A07C: 22                       ret
             ; hl_minS1: R4:R5 = min(R4:R5, HN_S1); keeps R2, R3
@@ -1525,7 +1525,7 @@ hc_bufs:
   A152: f0                       movx @DPTR,A
   A153: a3                       inc DPTR
   A154: f0                       movx @DPTR,A
-  A155: 12 9a 6a                 lcall hn_paint
+  A155: 12 9a 6a                 lcall uk_paint
   A158: 90 01 4b                 mov DPTR,#0x014B
   A15B: e0                       movx A,@DPTR
   A15C: fe                       mov R6,A
@@ -1687,7 +1687,7 @@ hn_fp_name:
   A226: a3                       inc DPTR
   A227: 74 01                    mov A,#1
   A229: f0                       movx @DPTR,A
-  A22A: 02 99 fd                 ljmp hn_home_x
+  A22A: 02 99 fd                 ljmp uk_home_x
             ; hn_fp_status: the same for the status line (small font, buffer 0x50, y 135)
 hn_fp_status:
   A22D: 90 01 30                 mov DPTR,#0x0130
@@ -1737,7 +1737,7 @@ hn_fp_status:
   A269: a3                       inc DPTR
   A26A: 74 01                    mov A,#1
   A26C: f0                       movx @DPTR,A
-  A26D: 02 99 fd                 ljmp hn_home_x
+  A26D: 02 99 fd                 ljmp uk_home_x
             ; home elements, each as the stock routine for that part draws it
 hh_icon:
   A270: 02 57 44                 ljmp 0x5744        ; home_draw_output_icon
@@ -1749,23 +1749,23 @@ hh_fmt:
 hh_eq:
   A27B: 02 49 a1                 ljmp 0x49A1        ; home_draw_eq_tag
 hh_bar:
-  A27E: 12 99 70                 lcall hn_acc
+  A27E: 12 99 70                 lcall uk_acc
   A281: 7a 00                    mov R2,#0x00
   A283: 7b 12                    mov R3,#0x12
   A285: 79 1c                    mov R1,#28
   A287: 7d 72                    mov R5,#114
   A289: 7c 03                    mov R4,#3
-  A28B: 02 99 1a                 ljmp hn_fill
+  A28B: 02 99 1a                 ljmp uk_fill
 hh_name:
   A28E: 12 a1 ea                 lcall hn_fp_name
-  A291: 02 9a 6a                 ljmp hn_paint
+  A291: 02 9a 6a                 ljmp uk_paint
 hh_stat:
   A294: 12 a2 2d                 lcall hn_fp_status
-  A297: 02 9a 6a                 ljmp hn_paint
-            ; hn_tasks: replaces main_tasks_on's lcall main_tick_tasks (0x5B2A). When a 10 ms tick is pending,
+  A297: 02 9a 6a                 ljmp uk_paint
+            ; uk_tasks: replaces main_tasks_on's lcall main_tick_tasks (0x5B2A). When a 10 ms tick is pending,
             ; main_tick_tasks handles it (countdowns, renders, the periodic refresh) and then, with the amp on,
-            ; one wipe step runs.
-hn_tasks:
+            ; the step routine that follows runs once.
+uk_tasks:
   A29A: 20 07 03                 jb 0x20.7,ht_tick
   A29D: 02 33 25                 ljmp 0x3325
 ht_tick:
@@ -1950,11 +1950,11 @@ hs_edge:
   A393: 79 02                    mov R1,#2
   A395: 7d 00                    mov R5,#0
   A397: 7c aa                    mov R4,#170
-  A399: 12 99 70                 lcall hn_acc
-  A39C: 12 99 1a                 lcall hn_fill
+  A399: 12 99 70                 lcall uk_acc
+  A39C: 12 99 1a                 lcall uk_fill
 hs_band:
             ; the band, black, with the old edge's two columns last: on the way in they are the band's top
-            ; end (hn_fill goes up in x); on the way out its bottom end, so the rest goes first
+            ; end (uk_fill goes up in x); on the way out its bottom end, so the rest goes first
   A39F: 90 01 17                 mov DPTR,#0x0117
   A3A2: e0                       movx A,@DPTR
   A3A3: fa                       mov R2,A
@@ -2538,7 +2538,7 @@ rs_ready:
   A701: f0                       movx @DPTR,A
   A702: a3                       inc DPTR
   A703: f0                       movx @DPTR,A
-  A704: 12 9a 6a                 lcall hn_paint
+  A704: 12 9a 6a                 lcall uk_paint
   A707: 90 01 4b                 mov DPTR,#0x014B
   A70A: e0                       movx A,@DPTR
   A70B: fa                       mov R2,A
@@ -2564,7 +2564,7 @@ rs_ready:
   A724: eb                       mov A,R3
   A725: f0                       movx @DPTR,A
   A726: 12 a2 2d                 lcall hn_fp_status
-  A729: 12 9a 6a                 lcall hn_paint
+  A729: 12 9a 6a                 lcall uk_paint
   A72C: 90 01 0a                 mov DPTR,#0x010A
   A72F: e0                       movx A,@DPTR
   A730: 44 40                    orl A,#0x40
@@ -2643,7 +2643,7 @@ hs_black:
   A785: 7c aa                    mov R4,#170
   A787: 7e 00                    mov R6,#0
   A789: 7f 00                    mov R7,#0
-  A78B: 02 99 1a                 ljmp hn_fill
+  A78B: 02 99 1a                 ljmp uk_fill
 hs_dmg_band:
   A78E: 90 01 13                 mov DPTR,#0x0113
   A791: ec                       mov A,R4
@@ -2661,13 +2661,13 @@ hs_dmg_band:
             ; hn_home_tail: replaces home_refresh's ljmp 0x5916; adds the accent bar
 hn_home_tail:
   A79D: 12 59 16                 lcall 0x5916       ; as before, R7 = volume
-  A7A0: 12 99 70                 lcall hn_acc
+  A7A0: 12 99 70                 lcall uk_acc
   A7A3: 7a 00                    mov R2,#0x00
   A7A5: 7b 12                    mov R3,#0x12
   A7A7: 79 1c                    mov R1,#28
   A7A9: 7d 72                    mov R5,#114
   A7AB: 7c 03                    mov R4,#3
-  A7AD: 02 99 1a                 ljmp hn_fill
+  A7AD: 02 99 1a                 ljmp uk_fill
             ; hn_align_big: on page 1 move the stored start x (XDATA 0x04:0x05) to 16
 hn_align_big:
   A7B0: e5 45                    mov A,0x45

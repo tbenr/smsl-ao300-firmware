@@ -59,7 +59,7 @@ calls `main_tick_tasks` (0x3325) at 0x5B2A:
 - if the 10 ms tick flag 0x20.7 is set, it runs `main_tick_10ms` (0x3335): countdowns,
   page renders, the periodic home refresh, format poll, unmute.
 
-The `lcall 0x3325` at 0x5B2A becomes `lcall hn_tasks`. `hn_tasks` looks at the tick flag first.
+The `lcall 0x3325` at 0x5B2A becomes `lcall uk_tasks`. `uk_tasks` looks at the tick flag first.
 - No tick: it tail-jumps to 0x3325, which does exactly what it did before.
 - Tick: it calls 0x3325, then, if RAM 0x4F is 1 (amp on), runs `hn_step`.
 
@@ -86,7 +86,7 @@ Each step:
    band runs to the screen edge.
 3. Fills the band the edge swept since the last step with black (the new page's background).
    The old edge's two columns go last: on the way in they are the band's top end, and
-   `hn_fill` goes up in x; on the way out they are its bottom end, so the rest of the band is
+   `uk_fill` goes up in x; on the way out they are its bottom end, so the rest of the band is
    filled first.
 4. Marks as "not on screen" every element of either page that the band or the edge
    columns touched.
@@ -117,10 +117,10 @@ directions, at four frame phases. Every frame between the first and last step ha
 
 | Way out: element | Drawn by | Appears (OPTICAL, "No signal") |
 |---|---|---|
-| output icon 15..44, accent bar 18..45 | `home_draw_output_icon` 0x5744, `hn_fill` | 5 (47) |
+| output icon 15..44, accent bar 18..45 | `home_draw_output_icon` 0x5744, `uk_fill` | 5 (47) |
 | volume 48..75 | `home_draw_volume` 0x5916 | 7 (87) |
-| status line 16..16+14n-1 | `hn_paint`, small font, buffer XDATA 0x50 | 11 (184): once the stock refresh has loaded the buffer, and the edge has passed its end |
-| input name 16..end of the text | `hn_paint`, big font, buffer XDATA 0x35 | 13 (231); USB 8 (110), BT 7 (87) |
+| status line 16..16+14n-1 | `uk_paint`, small font, buffer XDATA 0x50 | 11 (184): once the stock refresh has loaded the buffer, and the edge has passed its end |
+| input name 16..end of the text | `uk_paint`, big font, buffer XDATA 0x35 | 13 (231); USB 8 (110), BT 7 (87) |
 | format tag 208..263 | `home_draw_format_tag` 0x41CA | 15 (271) |
 | EQ tag 266..307 | `home_draw_eq_tag` 0x49A1 | 18 (310) |
 
@@ -233,10 +233,13 @@ is the hn3 home screen.
   Its entry wipe starts, then `post_power_on`'s clear cancels it, and home comes up as
   stock.
 
-## The text painter (`hn_paint`)
+## The text painter (`uk_paint`)
 
-`hn_paint` is a general text painter, built for later passes (per-element tint, number roll,
-clipped reveals, new fonts). It is used for all our text:
+`uk_paint` is a general text painter, built for later passes (per-element tint, number roll,
+clipped reveals, new fonts). Since hn4.1 it lives in the shared UI kit, `tools/patch/uikit.py`,
+together with `uk_fill`, `uk_acc` and the per-tick driver `uk_tasks`. This build emits them at
+the same addresses as before, so the image is unchanged. The kit's own tests are in
+`tools/patch/uikit_test.py`. It is used for all our text:
 - the volume page's name, "VOL" and number;
 - the exit's name and status line.
 
@@ -268,7 +271,7 @@ Outside the wipes, the home screen is still drawn by the stock `big_text_render`
   `hn_digit2x`. Pixels are streamed on the fast-lcd bus pattern, unrolled per bit:
   3.68 ms for OPTICAL (6720 px, 13.1 clocks per pixel), 3.04 ms for two 2x digits (7680 px,
   9.5), 1.84 ms for "2.8224MHz".
-- **Layout.** `hn_home_x` computes where the stock renderer starts a text on page 1:
+- **Layout.** `uk_home_x` computes where the stock renderer starts a text on page 1:
   - centred, `(320 - n*w) / 2`, or `(333 - n*w) / 2` when a big text has a narrow character;
   - then x 16 as `hn_align_*` do, unless the text is wider than 288 px.
 - **Tested against stock.** Every mapped character in both fonts, and 38 big-font and 85
@@ -331,7 +334,7 @@ volume page. Every stock byte is asserted by `build_patch.py`.
 | 0x2A25 | `E4 78 02` | ljmp `hn_align_big` | page 1: stored start x 16 |
 | 0x3A82 | `E4 78 02` | ljmp `hn_align_small` | the same, status line |
 | 0x5C99 | `02 59 16` | ljmp `hn_home_tail` | `home_refresh`'s tail: volume as stock, then the accent bar |
-| 0x5B2A | `12 33 25` lcall `main_tick_tasks` | lcall `hn_tasks` | the driver: one wipe step after each tick |
+| 0x5B2A | `12 33 25` lcall `main_tick_tasks` | lcall `uk_tasks` | the driver: one wipe step after each tick |
 | 0x4081 | `12 5C 8B` lcall `home_refresh` | ljmp `hn_hold` | periodic refresh held back during a wipe |
 | 0x5D42 | `12 5C BC` (`ui_clear_screen`'s first call) | ljmp `hn_cancel` | every stock clear cancels a wipe |
 | 0x4A85 | `E5 47 14` (`home_draw_input_name`) | ljmp `hn_name_guard` | a name drawn during an exit: the whole home first, then the name |
@@ -348,7 +351,7 @@ volume page. Every stock byte is asserted by `build_patch.py`.
 
 | Address | Name | Holds |
 |---|---|---|
-| 0x0100, 0x0102 | `HN_N`, `HN_C` | `hn_fill`'s pixel count and colour |
+| 0x0100, 0x0102 | `HN_N`, `HN_C` | `uk_fill`'s pixel count and colour |
 | 0x0104 | `HN_VOL` | the volume shown (0..60) |
 | 0x0105..0x0107 | `HN_NUM` | its two characters and a NUL (tens blank: 0x7F) |
 | 0x0108 | `HN_MODE` | 0 idle, 1 wipe in, 2 wipe out |
@@ -362,8 +365,8 @@ volume page. Every stock byte is asserted by `build_patch.py`.
 | 0x0117, 0x0119 | `HN_B0`, `HN_B1` | the band |
 | 0x011B, 0x0123 | `HN_NAMER`, `HN_STATR` | right end of the home name / status line |
 | 0x011D, 0x011F, 0x0121 | `HN_S0`, `HN_S1`, `HN_SPL` | `hn_line_seg`: columns, 40 + 4 * volume |
-| 0x0130..0x0140 | `FP_*` | `hn_paint`'s parameters |
-| 0x0141..0x0155 | `FP_*` | `hn_paint`'s work area |
+| 0x0130..0x0140 | `FP_*` | `uk_paint`'s parameters |
+| 0x0141..0x0155 | `FP_*` | `uk_paint`'s work area |
 
 - **Stack:** the tour (with two entries and two exits) was run with a canary above SP. The
   deepest idata used is 0xAF, the same as fast-lcd.
@@ -376,7 +379,7 @@ volume page. Every stock byte is asserted by `build_patch.py`.
 
 - **Image diff:** only the fifteen hook sites (plus the version pointer) differ from
   fast-lcd inside the base image. The labels in `SmslAo300Labels.java` match this build.
-- **Painter:** see above. `hn_fill` runs at 9.0 clocks per pixel.
+- **Painter:** see above. `uk_fill` runs at 9.0 clocks per pixel.
 - **`hn_draw_volume`:** every value 0..60 in three themes. It records and skips drawing
   during a wipe unless the box or line is revealed.
 - **`hn_step`, unit:** starting from a pattern screen, each of the 20 entry steps checks:
@@ -389,7 +392,7 @@ volume page. Every stock byte is asserted by `build_patch.py`.
   pixel-identical to `hn_volpage` / the stock home refresh. Reversals after steps 1, 5, 10
   and 19 each way end on the right page; the exit reversal redraws with the new volume.
 - **Logic:** `hn_enter_vol` and `hn_clear` in every mode; `hn_cancel` from both modes;
-  `hn_hold` in each mode; `hn_name_guard`; `hn_tasks` (a step only after a tick, only with
+  `hn_hold` in each mode; `hn_name_guard`; `uk_tasks` (a step only after a tick, only with
   0x4F = 1); a bogus mode stops.
 - **Tour** (whole firmware, lockstep with fast-lcd, real Timer0 ISR):
   - each step lands on the same page, power, volumes, input and output;
@@ -465,7 +468,7 @@ volume page. Every stock byte is asserted by `build_patch.py`.
 
 ## Risks
 
-- **Panel timing: same as fast-lcd.** `hn_fill` and `hn_paint` use fast-lcd's byte timing (the
+- **Panel timing: same as fast-lcd.** `uk_fill` and `uk_paint` use fast-lcd's byte timing (the
   WR pulse `features/blit-test` proved on the panel).
 - **The main loop now runs during the wipes.** A step is at most 5.4 ms, after the tick's own
   work. The volume keys, format poll, unmute and re-mute run as on fast-lcd (tested

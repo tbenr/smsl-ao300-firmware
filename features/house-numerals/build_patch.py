@@ -16,7 +16,7 @@ A reduced build of study 3 in features/ui-theme/ui_themes.html:
             lcall main_tick_tasks, 0x5B2A) runs one step after each tick it handles. Each
             step fills the band the edge swept with black, draws the edge and draws every
             element of the new page the edge has fully passed (hn_step).
-  text      hn_paint, a streaming painter for the stock fonts (small 14x24 at 0x5DAB,
+  text      uk_paint, a streaming painter for the stock fonts (small 14x24 at 0x5DAB,
             big 30x32 at 0x6A23) at scale 1 or 2, with ink, background and an x clip
             window. It draws all our text: the volume page's name, "VOL" and number, and
             the input name and status line revealed by the exit wipe. Outside the wipes
@@ -41,7 +41,14 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(ROOT, "tools", "patch"))
-from asm51 import Asm, hi8, lo8  # noqa: E402
+from asm51 import Asm, hi8, lo8  # noqa: E402,F401
+import uikit  # noqa: E402
+from uikit import (hi, lo, S, st_imm16, ld16, st16, FONTS, SMALL_MAP, BIG_MAP, BIG_NARROW,  # noqa: E402,F401
+                   LCD_SET_WINDOW, FONT_SMALL, FONT_BIG, HOME_DRAW_VOLUME, HOME_DRAW_OUTPUT_ICON,
+                   HOME_DRAW_FORMAT_TAG, HOME_DRAW_EQ_TAG, HOME_REFRESH, UI_CLEAR_SCREEN,
+                   CLEAR_SMALL_BUF, CLEAR_BIG_BUF, BIG_TEXT_LOAD, MAIN_TICK_TASKS, RENDER_DONE,
+                   BIG_BUF, SMALL_BUF, NAME_Y, STATUS_Y, INPUT_NAMES, P1, STOCK_SITES,
+                   VOL_ENTRY_SITES, VOL_ENTRY_ORIG, vol_entry_bytes, VERSION_PTR_ADDR, VERSION_MAX_LEN)
 
 BASE_IMAGE = os.path.join(ROOT, "features", "fast-lcd", "build", "flash_fastlcd.bin")
 BASE_SHA = "b292a64855975584dda5fe3fb282103bfde77f7f7237ca9945ac4b5442dae859"
@@ -50,29 +57,6 @@ OUT_LISTING = os.path.join(HERE, "house_numerals.asm")
 
 CODE_ADDR = 0x9800                  # after fast-lcd (code 0x9700..0x976B, version string)
 
-# stock routines and data
-LCD_SET_WINDOW = 0x4437
-FONT_SMALL = 0x5DAB                 # 14 x 24, 3 bytes per column, MSB = top pixel
-FONT_BIG = 0x6A23                   # 30 x 32, 4 bytes per column
-HOME_DRAW_VOLUME = 0x5916
-HOME_DRAW_OUTPUT_ICON = 0x5744
-HOME_DRAW_FORMAT_TAG = 0x41CA
-HOME_DRAW_EQ_TAG = 0x49A1
-HOME_REFRESH = 0x5C8B
-UI_CLEAR_SCREEN = 0x5D42
-CLEAR_SMALL_BUF = 0x5CBC
-CLEAR_BIG_BUF = 0x5CCB
-BIG_TEXT_LOAD = 0x4C8F
-MAIN_TICK_TASKS = 0x3325
-RENDER_DONE = 0x22FA
-BIG_BUF, SMALL_BUF = 0x35, 0x50     # XDATA text buffers of big_text_render / small_text_render
-NAME_Y, STATUS_Y = 75, 135          # stock y of the home input name and status line
-# input names as home_draw_input_name 0x4A85 loads them (its table at 0x4A9B); input 7: none
-INPUT_NAMES = [(1, 0x904F, "USB"), (2, 0x9053, "OPTICAL"), (3, 0x905B, "COAXIAL"),
-               (4, 0x9048, "BT"), (5, 0x904B, "ARC"), (6, 0x9063, "AUX"), (8, 0x9067, "PHONO")]
-
-P1 = 0x90
-
 # colours (RGB565)
 ORANGE = 0xFC43                     # #ff8a1f, accent on the White theme
 DIVIDER = 0x2104                    # #222
@@ -80,10 +64,9 @@ TRACK = 0x18E3                      # #1d1d1d
 WHITE = 0xFFFF
 
 # XDATA
-HN_N = 0x0100                       # hn_fill pixel count (hi, lo) ...
-HN_C = 0x0102                       # ... immediately followed by its colour
+HN_N = 0x0100                       # uk_fill's work area (4 bytes, see KIT below)
 HN_VOL = 0x0104                     # volume being shown (0..60)
-HN_NUM = 0x0105                     # its two characters and a NUL, for hn_paint
+HN_NUM = 0x0105                     # its two characters and a NUL, for uk_paint
 HN_MODE = 0x0108                    # 0 idle, 1 wipe into the volume page, 2 wipe back home
 HN_VF = 0x0109                      # volume-page elements on screen (VF_* bits)
 HN_HF = 0x010A                      # home elements drawn by the exit wipe (HF_* bits)
@@ -102,14 +85,13 @@ HN_S1 = 0x011F                      # ... to
 HN_SPL = 0x0121                     # hn_line_seg: 40 + 4 * volume
 HN_STATR = 0x0123                   # exit: right end of the status line as drawn
 
-# hn_paint parameter block (FP_FONT..FP_SCALE are set by the caller) and work area
-FP = 0x0130
-FP_FONT, FP_STR, FP_SPC, FP_X, FP_Y = 0x0130, 0x0132, 0x0134, 0x0135, 0x0137
-FP_INK, FP_BG, FP_CX0, FP_CX1, FP_SCALE = 0x0138, 0x013A, 0x013C, 0x013E, 0x0140
-FP_W, FP_BPC, FP_BPG, FP_DATA, FP_MAP, FP_NADV = 0x0141, 0x0142, 0x0143, 0x0144, 0x0146, 0x0148
-FP_CUR, FP_END, FP_CW, FP_ADV, FP_GLY = 0x0149, 0x014B, 0x014D, 0x014E, 0x014F
-FP_VX0, FP_VX1, FP_OFF = 0x0151, 0x0153, 0x0155
-XDATA_END = 0x0155
+# uk_fill's work area (HN_N, HN_C) and uk_paint's parameter block and work area (FP..FP_OFF)
+# belong to the kit, placed where hn4.1 had them
+KIT = uikit.Kit(fill_ws=HN_N, fp_base=0x0130)
+(FP, FP_FONT, FP_STR, FP_SPC, FP_X, FP_Y, FP_INK, FP_BG, FP_CX0, FP_CX1, FP_SCALE, FP_W, FP_BPC, FP_BPG,
+ FP_DATA, FP_MAP, FP_NADV, FP_CUR, FP_END, FP_CW, FP_ADV, FP_GLY, FP_VX0, FP_VX1, FP_OFF) = KIT.fp_layout()
+XDATA_END = FP + uikit.Kit.FP_SIZE - 1
+assert XDATA_END == 0x0155
 
 # volume-page elements: (bit, name, x0, x1); an element appears once the edge is left of x0
 VF_NAME, VF_DIV, VF_VOL, VF_NUM, VF_LINE = 1, 2, 4, 8, 16
@@ -129,127 +111,29 @@ STEPS = 20
 EDGE_MAX = 318
 # ease-in-out: edge x for entry step k (318 -> 0); the exit uses 318 - EASE[k]. Symmetric, so a
 # reversal maps step k to 20 - k at the same x.
-EASE = [round(EDGE_MAX * (1 + math.cos(math.pi * k / STEPS)) / 2) for k in range(STEPS + 1)]
+EASE = uikit.ease_in_out(STEPS, EDGE_MAX)
 assert all(EASE[k] + EASE[STEPS - k] == EDGE_MAX for k in range(STEPS + 1))
 assert all(EASE[k] - EASE[k + 1] >= 2 for k in range(STEPS))
 
-# font descriptors: width, bytes per column, bytes per glyph, glyph data, character map, narrow advance
-# The character map covers 0x20..0x7F: glyph index, bit 7 = narrow (advance by the narrow width).
-# Characters the stock painters don't map (they reuse the previous glyph) draw as a blank here.
-SMALL_MAP = {" ": 0, ".": 1, ":": 2, "-": 3, "+": 4, "=": 5, "<": 68, ">": 69, "{": 70, "}": 71,
-             "(": 72, ")": 73, "!": 74, "'": 75}
-SMALL_MAP.update({chr(0x30 + i): 6 + i for i in range(10)})
-SMALL_MAP.update({chr(0x41 + i): 16 + i for i in range(26)})
-SMALL_MAP.update({chr(0x61 + i): 42 + i for i in range(26)})
-BIG_MAP = {" ": 0, ".": 1, ":": 2, "-": 3, "+": 4, "=": 5}
-BIG_MAP.update({chr(0x30 + i): 6 + i for i in range(10)})
-BIG_MAP.update({chr(0x41 + i): 16 + i for i in range(26)})
-BIG_NARROW = " .-+=I"               # big_text_render: advance 17 (0x2A9E), centring +13 (0x29C8)
-FONTS = {"font_small": (14, 3, 42, FONT_SMALL, "map_small", 0, SMALL_MAP, ""),
-         "font_big": (30, 4, 120, FONT_BIG, "map_big", 17, BIG_MAP, BIG_NARROW)}
-
 # (address, original bytes, new opcode, target label); the new bytes are opcode + target
-HOOKS = [
-    (0x2106, bytes([0x12, 0x5D, 0x42]), 0x12, "hn_clear"),        # ui_render_page: lcall ui_clear_screen
-    (0x2143, bytes([0x02, 0x21, 0x67]), 0x02, "hn_volpage"),      # page 2 jump-table entry
-    (0x5936, bytes([0xAB, 0x07, 0xE5]), 0x02, "hn_draw_volume"),  # volpage_draw_volume entry
-    (0x2A25, bytes([0xE4, 0x78, 0x02]), 0x02, "hn_align_big"),    # big_text_render: clr A; mov R0,#2
-    (0x3A82, bytes([0xE4, 0x78, 0x02]), 0x02, "hn_align_small"),  # small_text_render: same
-    (0x5C99, bytes([0x02, 0x59, 0x16]), 0x02, "hn_home_tail"),    # home_refresh: ljmp home_draw_volume
-    (0x5B2A, bytes([0x12, 0x33, 0x25]), 0x12, "hn_tasks"),        # main_tasks_on: lcall main_tick_tasks
-    (0x4081, bytes([0x12, 0x5C, 0x8B]), 0x02, "hn_hold"),         # periodic refresh: lcall home_refresh
-    (0x5D42, bytes([0x12, 0x5C, 0xBC]), 0x02, "hn_cancel"),       # ui_clear_screen: lcall ui_clear_small_buf
-    (0x4A85, bytes([0xE5, 0x47, 0x14]), 0x02, "hn_name_guard"),   # home_draw_input_name: mov A,0x47; dec A
-    (0x3FF8, bytes([0xC2, 0x0B, 0xC2]), 0x02, "hn_flag_path"),    # home_refresh_periodic: clr 0x21.3; clr..
-]
-
-# where the volume keys open page 2 themselves (after `mov 0x45,#0x02`); 22 stock bytes each:
-# lcall ui_clear_screen, load "volume", small_text_render at y 135. The first 5 become
-# `lcall hn_enter_vol ; sjmp site+0x16`.
-VOL_ENTRY_SITES = (0x0D33, 0x0DB3, 0x0E5A, 0x0F02)
-VOL_ENTRY_ORIG = bytes.fromhex("125d427bff7a937947e4fdff124d3a7f877e00123a53")
-
-
-def vol_entry_bytes(target):
-    return bytes([0x12, target >> 8, target & 0xFF, 0x80, len(VOL_ENTRY_ORIG) - 5])
-
-
+HOOKS = [STOCK_SITES[site] + (op, target) for site, op, target in (
+    ("page_clear", 0x12, "hn_clear"),
+    ("page2_entry", 0x02, "hn_volpage"),
+    ("volpage_draw_volume", 0x02, "hn_draw_volume"),
+    ("big_text_start_x", 0x02, "hn_align_big"),
+    ("small_text_start_x", 0x02, "hn_align_small"),
+    ("home_refresh_tail", 0x02, "hn_home_tail"),
+    ("tick", 0x12, "uk_tasks"),
+    ("home_refresh_periodic", 0x02, "hn_hold"),
+    ("ui_clear_screen", 0x02, "hn_cancel"),
+    ("home_draw_input_name", 0x02, "hn_name_guard"),
+    ("home_refresh_flag_path", 0x02, "hn_flag_path"),
+)]
 VERSION_TEXT = "v1.4 tbenr hn4.1"
-VERSION_PTR_ADDR = 0x22CA
-VERSION_MAX_LEN = 20
 
 
-def hi(v):
-    return "#0x%02X" % (v >> 8)
-
-
-def lo(v):
-    return "#0x%02X" % (v & 0xFF)
-
-
-def S(a, text):
-    """Assemble lines of text: `label:`, `; comment`, or an instruction (with an optional comment)."""
-    for ln in text.strip("\n").split("\n"):
-        ln = ln.strip()
-        if not ln:
-            continue
-        if ln.startswith(";"):
-            a.comment(ln[1:].strip())
-        elif ln.split(";")[0].strip().endswith(":") and " " not in ln.split(";")[0].strip():
-            a.L(ln.split(";")[0].strip()[:-1])
-        else:
-            a.op(ln)
-
-
-def st_imm16(a, addr, v):
-    S(a, "mov DPTR,#0x%04X\nmov A,%s\nmovx @DPTR,A\ninc DPTR\nmov A,%s\nmovx @DPTR,A" % (addr, hi(v), lo(v)))
-
-
-def ld16(a, rh, rl, addr):
-    S(a, "mov DPTR,#0x%04X\nmovx A,@DPTR\nmov %s,A\ninc DPTR\nmovx A,@DPTR\nmov %s,A" % (addr, rh, rl))
-
-
-def st16(a, addr, rh, rl):
-    S(a, "mov DPTR,#0x%04X\nmov A,%s\nmovx @DPTR,A\ninc DPTR\nmov A,%s\nmovx @DPTR,A" % (addr, rh, rl))
-
-
-def rect(a, x, w, y, h, colour=None):
-    """Load hn_fill's arguments (colour None: R6:R7 already set)."""
-    S(a, "mov R2,%s\nmov R3,%s\nmov R1,#%d\nmov R5,#%d\nmov R4,#%d" % (hi(x), lo(x), w, y, h))
-    if colour is not None:
-        S(a, "mov R6,%s\nmov R7,%s" % (hi(colour), lo(colour)))
-
-
-def fp_setup(a, font, string, space, x, y, ink, bg=0, clip=(0, 319), scale=1):
-    """Fill hn_paint's parameter block. string: an address (int), a code label (str), or None
-    (FP_STR already set);
-    x: int, or None (set later, e.g. by hn_home_x); ink: int, "theme" (RAM 0x48:0x49) or "acc"
-    (hn_acc, R6:R7)."""
-    if ink == "acc":
-        S(a, "lcall hn_acc")
-    S(a, "mov DPTR,#0x%04X\nmov A,#hi(%s)\nmovx @DPTR,A\ninc DPTR\nmov A,#lo(%s)\nmovx @DPTR,A\ninc DPTR"
-      % (FP_FONT, font, font))
-    if isinstance(string, str):
-        S(a, "mov A,#hi(%s)\nmovx @DPTR,A\ninc DPTR\nmov A,#lo(%s)\nmovx @DPTR,A\ninc DPTR" % (string, string))
-    elif string is not None:
-        S(a, "mov A,%s\nmovx @DPTR,A\ninc DPTR\nmov A,%s\nmovx @DPTR,A\ninc DPTR" % (hi(string), lo(string)))
-    else:
-        S(a, "inc DPTR\ninc DPTR")
-    S(a, "mov A,#%d\nmovx @DPTR,A\ninc DPTR" % space)
-    if x is not None:
-        S(a, "mov A,%s\nmovx @DPTR,A\ninc DPTR\nmov A,%s\nmovx @DPTR,A\ninc DPTR" % (hi(x), lo(x)))
-    else:
-        S(a, "inc DPTR\ninc DPTR")
-    S(a, "mov A,#%d\nmovx @DPTR,A\ninc DPTR" % y)
-    if ink == "theme":
-        S(a, "mov A,0x48\nmovx @DPTR,A\ninc DPTR\nmov A,0x49\nmovx @DPTR,A\ninc DPTR")
-    elif ink == "acc":
-        S(a, "mov A,R6\nmovx @DPTR,A\ninc DPTR\nmov A,R7\nmovx @DPTR,A\ninc DPTR")
-    else:
-        S(a, "mov A,%s\nmovx @DPTR,A\ninc DPTR\nmov A,%s\nmovx @DPTR,A\ninc DPTR" % (hi(ink), lo(ink)))
-    for v in (bg, clip[0], clip[1]):
-        S(a, "mov A,%s\nmovx @DPTR,A\ninc DPTR\nmov A,%s\nmovx @DPTR,A\ninc DPTR" % (hi(v), lo(v)))
-    S(a, "mov A,#%d\nmovx @DPTR,A" % scale)
+rect = KIT.rect
+fp_setup = KIT.fp_setup
 
 
 # ---------------------------------------------------------------------------------------------
@@ -270,105 +154,12 @@ def build_data(a):
     a.L("ease")
     for k, v in enumerate(EASE):
         a.data("dw %d              ; step %d" % (v, k), [v >> 8, v & 0xFF])
-    for name, (w, bpc, bpg, data, mapl, nadv, cmap, narrow) in FONTS.items():
-        a.comment("%s: width, bytes per column, bytes per glyph, glyph data, map, narrow advance" % name)
-        a.L(name)
-        a.data("db %d,%d,%d" % (w, bpc, bpg), [w, bpc, bpg])
-        a.data("dw 0x%04X" % data, [data >> 8, data & 0xFF])
-        a.i("dw %s" % mapl, hi8(mapl), lo8(mapl))
-        a.data("db %d" % nadv, [nadv])
-    for name, (w, bpc, bpg, data, mapl, nadv, cmap, narrow) in FONTS.items():
-        a.comment("%s: glyph index per character 0x20..0x7F, bit 7 = narrow" % mapl)
-        a.L(mapl)
-        row = []
-        for c in range(0x20, 0x80):
-            v = cmap.get(chr(c), 0) | (0x80 if chr(c) in narrow else 0)
-            row.append(v)
-        for k in range(0, 96, 16):
-            a.data("db " + ",".join("%d" % v for v in row[k:k + 16]), row[k:k + 16])
-
+    KIT.emit_font_data(a)
 
 def build_primitives(a):
+    KIT.emit_fill(a)
+    KIT.emit_accent(a, ORANGE)
     S(a, """
-; hn_fill: R2:R3 x, R1 w (1..255), R5 y, R4 h (1..170), R6:R7 colour
-hn_fill:
-mov DPTR,#0x%04X""" % HN_C + """
-mov A,R6
-movx @DPTR,A
-inc DPTR
-mov A,R7
-movx @DPTR,A
-mov A,R1
-mov B,R4
-mul AB             ; B:A = w*h
-mov DPTR,#0x%04X""" % HN_N + """
-xch A,B
-movx @DPTR,A       ; count hi
-inc DPTR
-xch A,B
-movx @DPTR,A       ; count lo
-mov A,R1
-dec A
-add A,R3           ; x1 = x + w - 1
-mov R0,#0x30
-movx @R0,A
-clr A
-addc A,R2
-dec R0
-movx @R0,A
-mov A,R5
-mov R7,A           ; y0
-mov R6,#0
-mov A,R4
-dec A
-add A,R5           ; y1 = y + h - 1
-mov R5,A
-mov R4,#0
-lcall 0x4437       ; lcd_set_window, ends with RAMWR
-mov DPTR,#0x%04X""" % HN_N + """
-movx A,@DPTR
-mov R5,A           ; count hi
-inc DPTR
-movx A,@DPTR
-mov R4,A           ; count lo
-inc DPTR
-movx A,@DPTR
-mov R6,A           ; colour hi
-inc DPTR
-movx A,@DPTR
-mov R7,A           ; colour lo
-mov A,R4
-jz hf_go
-inc R5             ; djnz pair runs hi*256 + lo times
-hf_go:
-setb P0.3          ; D/C = data
-clr P0.7           ; CS low
-hf_px:
-mov P1,R6
-clr P0.5
-setb P0.5
-mov P1,R7
-clr P0.5
-setb P0.5
-djnz R4,hf_px
-djnz R5,hf_px
-setb P0.7          ; CS high
-ret
-
-; hn_acc: R6:R7 = the accent: the theme colour (RAM 0x48:0x49), SMSL orange on White; keeps R1..R5
-hn_acc:
-mov A,0x48
-anl A,0x49
-cpl A              ; 0 only on the White theme
-jnz ha_theme
-mov R6,%s
-mov R7,%s
-ret
-ha_theme:
-mov R6,0x48
-mov R7,0x49
-ret
-
 ; hn_name_ptr: input 0x47 in 1..6 -> C=0, R2:R3 = name; else C=1
 hn_name_ptr:
 mov A,0x47
@@ -390,495 +181,11 @@ ret
 hnp_none:
 setb C
 ret
-""" % (hi(ORANGE), lo(ORANGE)))
+""")
 
 
 def build_painter(a):
-    S(a, """
-; hn_fp_load: copy the font descriptor FP_FONT points to into FP_W..FP_NADV (8 bytes)
-hn_fp_load:
-mov DPTR,#0x%04X""" % FP_FONT + """
-movx A,@DPTR
-mov R6,A
-inc DPTR
-movx A,@DPTR
-mov R7,A
-mov R5,#0
-fl_next:
-mov DPH,R6
-mov DPL,R7
-mov A,R5
-movc A,@A+DPTR
-mov R4,A
-mov A,R5
-add A,%s""" % lo(FP_W) + """
-mov DPL,A
-mov DPH,%s""" % hi(FP_W) + """
-mov A,R4
-movx @DPTR,A
-inc R5
-cjne R5,#8,fl_next
-ret
-
-; hn_fetch: next character of the FP_STR string (FP_SPC: 0 XDATA, 1 code) -> A, R5; FP_STR advanced
-; unless it is the terminating 0
-hn_fetch:
-mov DPTR,#0x%04X""" % FP_STR + """
-movx A,@DPTR
-mov R6,A
-inc DPTR
-movx A,@DPTR
-mov R7,A
-inc DPTR
-movx A,@DPTR       ; FP_SPC
-mov DPH,R6
-mov DPL,R7
-jnz hft_code
-movx A,@DPTR
-sjmp hft_got
-hft_code:
-clr A
-movc A,@A+DPTR
-hft_got:
-mov R5,A
-jz hft_ret
-inc DPTR
-mov R6,DPH
-mov R7,DPL
-mov DPTR,#0x%04X""" % FP_STR + """
-mov A,R6
-movx @DPTR,A
-inc DPTR
-mov A,R7
-movx @DPTR,A
-mov A,R5
-hft_ret:
-ret
-
-; hn_map: character R5 -> A = glyph index | 0x80 if narrow (0 outside 0x20..0x7F)
-hn_map:
-mov A,R5
-clr C
-subb A,#0x20
-jc hm_blank
-cjne A,#0x60,hm_cmp
-hm_cmp:
-jnc hm_blank
-mov R4,A
-mov DPTR,#0x%04X""" % FP_MAP + """
-movx A,@DPTR
-mov R6,A
-inc DPTR
-movx A,@DPTR
-mov DPL,A
-mov DPH,R6
-mov A,R4
-movc A,@A+DPTR
-ret
-hm_blank:
-clr A
-ret
-
-; hn_home_x: FP_X = where the stock renderer starts the FP_STR string on page 1: centred as
-; big_text_render / small_text_render compute it ((320 [+ w - narrow if any narrow char] - n*w) / 2),
-; then moved to x 16 as hn_align_big / hn_align_small do unless that is below 16. Keeps FP_STR.
-hn_home_x:
-lcall hn_fp_load
-mov DPTR,#0x%04X""" % FP_STR + """
-movx A,@DPTR
-push ACC
-inc DPTR
-movx A,@DPTR
-push ACC
-mov R2,#0          ; n
-mov R3,#0          ; any narrow character
-hx_scan:
-lcall hn_fetch
-jz hx_count
-inc R2
-lcall hn_map
-jnb ACC.7,hx_scan
-mov R3,#1
-sjmp hx_scan
-hx_count:
-mov DPTR,#0x%04X""" % FP_STR + """
-pop ACC
-mov R7,A
-pop ACC
-movx @DPTR,A
-inc DPTR
-mov A,R7
-movx @DPTR,A
-mov DPTR,#0x%04X""" % FP_W + """
-movx A,@DPTR
-mov R6,A           ; w
-mov B,R2
-mul AB             ; B:A = n*w
-mov R4,B
-mov R5,A
-mov R0,#0          ; extra: w - narrow advance when a narrow character is there
-mov A,R3
-jz hx_base
-mov DPTR,#0x%04X""" % FP_NADV + """
-movx A,@DPTR
-xch A,R6
-clr C
-subb A,R6
-mov R0,A
-hx_base:
-mov A,R0
-add A,#0x40
-mov R7,A
-clr A
-addc A,#0x01       ; R6:R7 = 320 + extra
-mov R6,A
-clr C
-mov A,R7
-subb A,R5
-mov R7,A
-mov A,R6
-subb A,R4
-clr C
-rrc A              ; logical shift right, as the stock code
-mov R6,A
-mov A,R7
-rrc A
-mov R7,A
-mov A,R6
-jnz hx_store       ; far off (never for our strings): keep
-mov A,R7
-clr C
-subb A,#16
-jc hx_store        ; wider than 288 px: stays centred
-mov R7,#16
-hx_store:
-mov DPTR,#0x%04X""" % FP_X + """
-mov A,R6
-movx @DPTR,A
-inc DPTR
-mov A,R7
-movx @DPTR,A
-ret
-""")
-    S(a, """
-; hn_paint: draw the string in the FP block: font FP_FONT, string FP_STR (FP_SPC 0 XDATA, 1 code),
-; at FP_X, FP_Y, ink FP_INK on FP_BG, scale FP_SCALE (1 or 2), only the columns FP_CX0..FP_CX1.
-; Each character is a cell of w*scale columns, drawn in full (background included), and the next
-; one starts w*scale further on (narrow characters: the font's narrow advance * scale), as the stock
-; text renderers do. FP_END is the last column of the last cell (FP_X - 1 for an empty string).
-; An empty clip window (FP_CX0 > FP_CX1) draws nothing: a measurement.
-hn_paint:
-lcall hn_fp_load
-mov DPTR,#0x%04X""" % FP_X + """
-movx A,@DPTR
-mov R6,A
-inc DPTR
-movx A,@DPTR
-mov R7,A
-mov DPTR,#0x%04X""" % FP_CUR + """
-mov A,R6
-movx @DPTR,A
-inc DPTR
-mov A,R7
-movx @DPTR,A
-inc DPTR           ; FP_END = x - 1
-clr C
-mov A,R7
-subb A,#1
-mov R7,A
-mov A,R6
-subb A,#0
-movx @DPTR,A
-inc DPTR
-mov A,R7
-movx @DPTR,A
-mov DPTR,#0x%04X""" % FP_W + """
-movx A,@DPTR
-mov B,A
-mov DPTR,#0x%04X""" % FP_SCALE + """
-movx A,@DPTR
-mul AB
-mov DPTR,#0x%04X""" % FP_CW + """
-movx @DPTR,A
-hp_char:
-lcall hn_fetch
-jnz hp_have
-ret
-hp_have:
-lcall hn_map
-mov R4,A           ; index | narrow
-mov DPTR,#0x%04X""" % FP_W + """
-jnb ACC.7,hp_wide
-mov DPTR,#0x%04X""" % FP_NADV + """
-hp_wide:
-movx A,@DPTR
-mov B,A
-mov DPTR,#0x%04X""" % FP_SCALE + """
-movx A,@DPTR
-mul AB
-mov DPTR,#0x%04X""" % FP_ADV + """
-movx @DPTR,A
-mov A,R4
-anl A,#0x7F
-mov B,A
-mov DPTR,#0x%04X""" % FP_BPG + """
-movx A,@DPTR
-mul AB             ; B:A = glyph offset
-mov R7,A
-mov R6,B
-mov DPTR,#0x%04X""" % (FP_DATA + 1) + """
-movx A,@DPTR
-add A,R7
-mov R7,A
-mov DPTR,#0x%04X""" % FP_DATA + """
-movx A,@DPTR
-addc A,R6
-mov DPTR,#0x%04X""" % FP_GLY + """
-movx @DPTR,A
-inc DPTR
-mov A,R7
-movx @DPTR,A
-; cell: R2:R3 = x0 = FP_CUR, R4:R5 = x1 = x0 + cw - 1
-mov DPTR,#0x%04X""" % FP_CUR + """
-movx A,@DPTR
-mov R2,A
-inc DPTR
-movx A,@DPTR
-mov R3,A
-mov DPTR,#0x%04X""" % FP_CW + """
-movx A,@DPTR
-dec A
-add A,R3
-mov R5,A
-clr A
-addc A,R2
-mov R4,A
-mov DPTR,#0x%04X""" % FP_END + """
-movx @DPTR,A
-inc DPTR
-mov A,R5
-movx @DPTR,A
-; visible columns: vx0 = max(x0, cx0) in R2:R3, vx1 = min(x1, cx1) in R4:R5
-mov DPTR,#0x%04X""" % FP_CX0 + """
-movx A,@DPTR
-mov R6,A
-inc DPTR
-movx A,@DPTR
-mov R7,A
-clr C
-mov A,R3
-subb A,R7
-mov A,R2
-subb A,R6
-jnc hp_c0          ; x0 >= cx0
-mov A,R6
-mov R2,A
-mov A,R7
-mov R3,A
-hp_c0:
-mov DPTR,#0x%04X""" % FP_CX1 + """
-movx A,@DPTR
-mov R6,A
-inc DPTR
-movx A,@DPTR
-mov R7,A
-clr C
-mov A,R7
-subb A,R5
-mov A,R6
-subb A,R4
-jnc hp_c1          ; cx1 >= x1
-mov A,R6
-mov R4,A
-mov A,R7
-mov R5,A
-hp_c1:
-clr C
-mov A,R5
-subb A,R3
-mov A,R4
-subb A,R2
-jc hp_skip         ; vx1 < vx0: nothing of this cell is visible
-mov DPTR,#0x%04X""" % FP_VX0 + """
-mov A,R2
-movx @DPTR,A
-inc DPTR
-mov A,R3
-movx @DPTR,A
-inc DPTR
-mov A,R4
-movx @DPTR,A
-inc DPTR
-mov A,R5
-movx @DPTR,A
-lcall hn_cell
-hp_skip:
-mov DPTR,#0x%04X""" % FP_ADV + """
-movx A,@DPTR
-mov R7,A
-mov DPTR,#0x%04X""" % (FP_CUR + 1) + """
-movx A,@DPTR
-add A,R7
-movx @DPTR,A
-mov DPTR,#0x%04X""" % FP_CUR + """
-movx A,@DPTR
-addc A,#0
-movx @DPTR,A
-ljmp hp_char
-""")
-    # hn_cell: window, then stream the visible columns
-    S(a, """
-; hn_cell: the visible columns FP_VX0..FP_VX1 of the glyph at FP_GLY in the cell at FP_CUR
-hn_cell:
-mov DPTR,#0x%04X""" % (FP_CUR + 1) + """
-movx A,@DPTR
-mov R7,A
-mov DPTR,#0x%04X""" % (FP_VX0 + 1) + """
-movx A,@DPTR
-clr C
-subb A,R7          ; off = vx0 - x0 (0..59)
-mov DPTR,#0x%04X""" % FP_OFF + """
-movx @DPTR,A
-; window: x vx0..vx1, y FP_Y .. FP_Y + 8*bpc*scale - 1
-mov DPTR,#0x%04X""" % (FP_VX1) + """
-movx A,@DPTR
-mov R0,#0x2F
-movx @R0,A
-inc DPTR
-movx A,@DPTR
-inc R0
-movx @R0,A
-mov DPTR,#0x%04X""" % FP_BPC + """
-movx A,@DPTR
-rl A
-rl A
-rl A               ; rows at scale 1
-mov B,A
-mov DPTR,#0x%04X""" % FP_SCALE + """
-movx A,@DPTR
-mul AB
-dec A
-mov R5,A
-mov DPTR,#0x%04X""" % FP_Y + """
-movx A,@DPTR
-mov R7,A
-add A,R5
-mov R5,A
-clr A
-addc A,#0
-mov R4,A           ; R4:R5 = y1
-mov R6,#0          ; R6:R7 = y0
-mov DPTR,#0x%04X""" % FP_VX0 + """
-movx A,@DPTR
-mov R2,A
-inc DPTR
-movx A,@DPTR
-mov R3,A
-lcall 0x4437       ; lcd_set_window, ends with RAMWR
-; start column: glyph + (off >> (scale - 1)) * bpc; F1 = off & 1 at scale 2
-clr F1
-clr F0
-mov DPTR,#0x%04X""" % FP_SCALE + """
-movx A,@DPTR
-mov R0,A
-mov DPTR,#0x%04X""" % FP_OFF + """
-movx A,@DPTR
-cjne R0,#2,hc_s1
-setb F0
-clr C
-rrc A
-mov F1,C
-hc_s1:
-mov R0,A
-mov DPTR,#0x%04X""" % FP_BPC + """
-movx A,@DPTR
-mov B,A
-mov A,R0
-mul AB
-mov R0,A
-mov DPTR,#0x%04X""" % (FP_GLY + 1) + """
-movx A,@DPTR
-add A,R0
-mov R1,A
-mov DPTR,#0x%04X""" % FP_GLY + """
-movx A,@DPTR
-addc A,#0
-push ACC
-push 0x01          ; R1
-; columns to draw: vx1 - vx0 + 1
-mov DPTR,#0x%04X""" % (FP_VX0 + 1) + """
-movx A,@DPTR
-mov R0,A
-mov DPTR,#0x%04X""" % (FP_VX1 + 1) + """
-movx A,@DPTR
-clr C
-subb A,R0
-inc A
-mov R7,A
-; colours: R2:R3 ink, R4:R5 background; B = bytes per column
-mov DPTR,#0x%04X""" % FP_INK + """
-movx A,@DPTR
-mov R2,A
-inc DPTR
-movx A,@DPTR
-mov R3,A
-inc DPTR
-movx A,@DPTR
-mov R4,A
-inc DPTR
-movx A,@DPTR
-mov R5,A
-mov DPTR,#0x%04X""" % FP_BPC + """
-movx A,@DPTR
-mov B,A
-pop DPL
-pop DPH
-setb P0.3          ; D/C = data
-clr P0.7           ; CS low
-jnb F0,hc_col1
-ljmp hc_col2
-""")
-    for scale in (1, 2):
-        pfx = "c%d" % scale
-        S(a, """
-hc_col%d:
-mov R0,B
-%s_byte:
-clr A
-movc A,@A+DPTR
-inc DPTR""" % (scale, pfx))
-        for bit in range(8):
-            S(a, "rlc A\njc %s_i%d" % (pfx, bit))
-            for _ in range(scale):
-                S(a, "mov P1,R4\nclr P0.5\nsetb P0.5\nmov P1,R5\nclr P0.5\nsetb P0.5")
-            S(a, "sjmp %s_n%d\n%s_i%d:" % (pfx, bit, pfx, bit))
-            for _ in range(scale):
-                S(a, "mov P1,R2\nclr P0.5\nsetb P0.5\nmov P1,R3\nclr P0.5\nsetb P0.5")
-            S(a, "%s_n%d:" % (pfx, bit))
-        S(a, "djnz R0,%s_more\nsjmp %s_coldone\n%s_more:\nljmp %s_byte\n%s_coldone:" % ((pfx,) * 5))
-        if scale == 1:
-            S(a, "djnz R7,c1_again\nsetb P0.7\nret\nc1_again:\nljmp hc_col1")
-        else:
-            S(a, """
-; at scale 2 every glyph column is sent twice: F1 = this was the first copy -> rewind
-cpl F1
-jnb F1,c2_adv
-mov A,DPL
-clr C
-subb A,B
-mov DPL,A
-mov A,DPH
-subb A,#0
-mov DPH,A
-c2_adv:
-djnz R7,c2_again
-setb P0.7
-clr F0
-clr F1
-ret
-c2_again:
-ljmp hc_col2
-""")
+    KIT.emit_painter(a)
 
 
 def build_volume_page(a):
@@ -938,17 +245,17 @@ ljmp hv_line
 """)
     S(a, "; hv_num: the number, stock big digits at 2x, white, at 184,42 (leading zero blank)\nhv_num:")
     fp_setup(a, "font_big", HN_NUM, 0, 184, 42, WHITE, scale=2)
-    S(a, "ljmp hn_paint")
+    S(a, "ljmp uk_paint")
     S(a, "; hv_name: the input name, small font, white, at 16,30 (inputs 1..6)\nhv_name:\nlcall hn_name_ptr\njnc hvn_go\nret\nhvn_go:")
     S(a, "mov DPTR,#0x%04X\nmov A,R2\nmovx @DPTR,A\ninc DPTR\nmov A,R3\nmovx @DPTR,A" % FP_STR)
     fp_setup(a, "font_small", None, 1, 16, 30, WHITE)
-    S(a, "ljmp hn_paint")
+    S(a, "ljmp uk_paint")
     S(a, "; hv_vol: \"VOL\" in the accent, small font, at 158,14\nhv_vol:")
     fp_setup(a, "font_small", "str_vol", 1, 158, 14, "acc")
-    S(a, "ljmp hn_paint")
+    S(a, "ljmp uk_paint")
     S(a, "; hv_div: the divider, 1 x 104 at 140,14\nhv_div:")
     rect(a, 140, 1, 14, 104, DIVIDER)
-    S(a, "ljmp hn_fill")
+    S(a, "ljmp uk_fill")
     S(a, "; hv_line: the whole position line\nhv_line:")
     st_imm16(a, HN_S0, 40)
     st_imm16(a, HN_S1, 279)
@@ -996,7 +303,7 @@ mov A,R4
 subb A,#0
 mov R4,A           ; R4:R5 = split - 1
 lcall hl_minS1
-lcall hn_acc
+lcall uk_acc
 lcall hl_fill
 ; track part: max(S0, split) .. min(S1, 279)
 mov DPTR,#0x%04X""" % HN_SPL + """
@@ -1038,7 +345,7 @@ jc hl_none
 inc R1             ; width <= 240
 mov R5,#136
 mov R4,#3
-ljmp hn_fill
+ljmp uk_fill
 hl_none:
 ret
 ; hl_minS1: R4:R5 = min(R4:R5, HN_S1); keeps R2, R3
@@ -1198,7 +505,7 @@ inc DPTR
 movx @DPTR,A
 inc DPTR
 movx @DPTR,A
-lcall hn_paint
+lcall uk_paint
 mov DPTR,#0x%04X""" % FP_END + """
 movx A,@DPTR
 mov R6,A
@@ -1320,10 +627,10 @@ ret
 """)
     S(a, "; hn_fp_name: the FP block for the home input name (big font, buffer 0x35, stock x and y, theme ink)\nhn_fp_name:")
     fp_setup(a, "font_big", BIG_BUF, 0, None, NAME_Y, "theme")
-    S(a, "ljmp hn_home_x")
+    S(a, "ljmp uk_home_x")
     S(a, "; hn_fp_status: the same for the status line (small font, buffer 0x50, y 135)\nhn_fp_status:")
     fp_setup(a, "font_small", SMALL_BUF, 0, None, STATUS_Y, "theme")
-    S(a, "ljmp hn_home_x")
+    S(a, "ljmp uk_home_x")
     S(a, """
 ; home elements, each as the stock routine for that part draws it
 hh_icon:
@@ -1336,30 +643,21 @@ ljmp 0x41CA        ; home_draw_format_tag
 hh_eq:
 ljmp 0x49A1        ; home_draw_eq_tag
 hh_bar:
-lcall hn_acc""")
+lcall uk_acc""")
     rect(a, 18, 28, 114, 3)
     S(a, """
-ljmp hn_fill
+ljmp uk_fill
 hh_name:
 lcall hn_fp_name
-ljmp hn_paint
+ljmp uk_paint
 hh_stat:
 lcall hn_fp_status
-ljmp hn_paint
+ljmp uk_paint
 """)
 
     # ---- the step ----
+    KIT.emit_tick_driver(a, "hs_ret")        # uk_tasks falls through into hn_step
     S(a, """
-; hn_tasks: replaces main_tasks_on's lcall main_tick_tasks (0x5B2A). When a 10 ms tick is pending,
-; main_tick_tasks handles it (countdowns, renders, the periodic refresh) and then, with the amp on,
-; one wipe step runs.
-hn_tasks:
-jb 0x20.7,ht_tick
-ljmp 0x3325
-ht_tick:
-lcall 0x3325
-mov A,0x4F
-cjne A,#1,hs_ret
 ; hn_step: one step of the running wipe
 hn_step:
 mov DPTR,#0x%04X""" % HN_MODE + """
@@ -1543,11 +841,11 @@ mov R3,A
 mov R1,#2
 mov R5,#0
 mov R4,#170
-lcall hn_acc
-lcall hn_fill
+lcall uk_acc
+lcall uk_fill
 hs_band:
 ; the band, black, with the old edge's two columns last: on the way in they are the band's top
-; end (hn_fill goes up in x); on the way out its bottom end, so the rest goes first
+; end (uk_fill goes up in x); on the way out its bottom end, so the rest goes first
 mov DPTR,#0x%04X""" % HN_B0 + """
 movx A,@DPTR
 mov R2,A
@@ -1724,7 +1022,7 @@ inc DPTR
 movx @DPTR,A
 inc DPTR
 movx @DPTR,A
-lcall hn_paint""")
+lcall uk_paint""")
             ld16(a, "R2", "R3", FP_END)
         else:
             S(a, "mov R2,%s\nmov R3,%s" % (hi(x1), lo(x1)))
@@ -1743,7 +1041,7 @@ subb A,R6
 jnc %s""" % (HN_LIM, skip))
         if name == "hh_stat":
             st16(a, HN_STATR, "R2", "R3")
-            S(a, "lcall hn_fp_status\nlcall hn_paint")
+            S(a, "lcall hn_fp_status\nlcall uk_paint")
         else:
             S(a, "lcall %s" % name)
         S(a, """
@@ -1827,7 +1125,7 @@ mov R5,#0
 mov R4,#170
 mov R6,#0
 mov R7,#0
-ljmp hn_fill
+ljmp uk_fill
 hs_dmg_band:       ; damage = band (HN_D0 = R4:R5, HN_D1 = R6:R7)
 mov DPTR,#0x%04X""" % HN_D0 + """
 mov A,R4
@@ -1850,9 +1148,9 @@ def build_home(a):
 ; hn_home_tail: replaces home_refresh's ljmp 0x5916; adds the accent bar
 hn_home_tail:
 lcall 0x5916       ; as before, R7 = volume
-lcall hn_acc""")
+lcall uk_acc""")
     rect(a, 18, 28, 114, 3)
-    S(a, "ljmp hn_fill")
+    S(a, "ljmp uk_fill")
     for name, back in (("hn_align_big", 0x2A28), ("hn_align_small", 0x3A85)):
         S(a, """
 ; %s: on page 1 move the stored start x (XDATA 0x04:0x05) to 16
@@ -1893,66 +1191,28 @@ def assemble():
 
 
 def main():
-    src = sys.argv[1] if len(sys.argv) > 1 else BASE_IMAGE
-    img = bytearray(open(src, "rb").read())
-    sha = hashlib.sha256(img).hexdigest()
-    if sha != BASE_SHA:
-        raise SystemExit("base image is not the fast-lcd build (sha %s)" % sha)
-    for addr, orig, _, _ in HOOKS:
-        assert img[addr:addr + 3] == orig, "bytes at 0x%04X not as expected" % addr
-    for s in VOL_ENTRY_SITES:
-        assert img[s:s + len(VOL_ENTRY_ORIG)] == VOL_ENTRY_ORIG, "volume entry at 0x%04X not as expected" % s
-    for inp, addr, text in INPUT_NAMES:
-        assert img[addr:addr + len(text) + 1] == text.encode() + b"\0", "input name %d moved" % inp
-    assert len(img) <= CODE_ADDR
-    assert img[0x2A28] == 0xF2 and img[0x3A85] == 0xF2, "movx @R0,A after the align hooks moved"
-    # the instructions the new hooks jump back past
-    assert img[0x4084:0x4089] == bytes.fromhex("7f877e00") + b"\x02", "0x4084 not as expected"
-    assert img[0x5D45:0x5D48] == bytes.fromhex("125ccb"), "ui_clear_screen's second call moved"
-    assert img[0x4A88:0x4A8B] == bytes.fromhex("b40800"), "home_draw_input_name's cjne moved"
-    assert img[0x3FF8:0x3FFE] == bytes.fromhex("c20bc206c209"), "home_refresh_periodic's flag path moved"
+    base = open(sys.argv[1] if len(sys.argv) > 1 else BASE_IMAGE, "rb").read()
+    asserts = [(addr, text.encode() + b"\0", "input name %d moved" % inp) for inp, addr, text in INPUT_NAMES]
+    asserts += [
+        (0x2A28, b"\xF2", "movx @R0,A after the align hooks moved"),
+        (0x3A85, b"\xF2", "movx @R0,A after the align hooks moved"),
+        # the instructions the new hooks jump back past
+        (0x4084, bytes.fromhex("7f877e00") + b"\x02", "0x4084 not as expected"),
+        (0x5D45, bytes.fromhex("125ccb"), "ui_clear_screen's second call moved"),
+        (0x4A88, bytes.fromhex("b40800"), "home_draw_input_name's cjne moved"),
+        (0x3FF8, bytes.fromhex("c20bc206c209"), "home_refresh_periodic's flag path moved"),
+        (0x4A9B + 3 * 6, bytes.fromhex("024aef"), "input 7 draws the buffer as it is"),
+    ]
     # home_draw_input_name's table (0x4A9B) loads the strings INPUT_NAMES lists
     for inp, addr, text in INPUT_NAMES:
-        t = (img[0x4A9B + 3 * (inp - 1) + 1] << 8) | img[0x4A9B + 3 * (inp - 1) + 2]
-        assert img[t:t + 6] == bytes([0x7B, 0xFF, 0x7A, addr >> 8, 0x79, addr & 0xFF]), "name table %d" % inp
-    assert img[0x4A9B + 3 * 6:0x4A9B + 3 * 7] == bytes.fromhex("024aef"), "input 7 draws the buffer as it is"
-
-    code, labels, a = assemble()
-    img += b"\xFF" * (CODE_ADDR - len(img))
-    img += code
-
-    lines = []
-    for addr, orig, op, target in HOOKS:
-        t = labels[target]
-        img[addr:addr + 3] = bytes([op, t >> 8, t & 0xFF])
-        lines.append("; 0x%04X: %s -> %02x %02x %02x  (%s)" % (addr, orig.hex(" "), op, t >> 8, t & 0xFF, target))
-
-    for s in VOL_ENTRY_SITES:
-        new = vol_entry_bytes(labels["hn_enter_vol"])
-        lines.append("; 0x%04X: %s -> %s  (lcall hn_enter_vol ; sjmp 0x%04X)" %
-                     (s, VOL_ENTRY_ORIG[:5].hex(" "), new.hex(" "), s + len(VOL_ENTRY_ORIG)))
-        img[s:s + 5] = new
-
-    assert len(VERSION_TEXT) <= VERSION_MAX_LEN
-    assert img[VERSION_PTR_ADDR] == 0x7A and img[VERSION_PTR_ADDR + 2] == 0x79
-    ver = len(img)
-    img += VERSION_TEXT.encode("ascii") + b"\0"
-    img[VERSION_PTR_ADDR + 1] = ver >> 8
-    img[VERSION_PTR_ADDR + 3] = ver & 0xFF
-    assert len(img) <= 0xF400
-
-    os.makedirs(os.path.dirname(OUT_IMAGE), exist_ok=True)
-    open(OUT_IMAGE, "wb").write(img)
-    with open(OUT_LISTING, "w") as f:
-        f.write("; House Numerals patch, generated by build_patch.py; do not edit\n")
-        f.write("\n".join(lines) + ("\n" if lines else ""))
-        f.write("; version string %r at 0x%04X, pointer 0x%04X repointed\n\n" % (VERSION_TEXT, ver, VERSION_PTR_ADDR))
-        f.write(a.listing())
-    print("code %d bytes at 0x%04X..0x%04X" % (len(code), CODE_ADDR, CODE_ADDR + len(code) - 1))
-    print("\n".join(ln[2:] for ln in lines))
-    print("labels: " + " ".join("%s=0x%04X" % (k, v) for k, v in labels.items() if k.startswith("hn_")))
-    print("version %r at 0x%04X" % (VERSION_TEXT, ver))
-    print("wrote %s (%d bytes, sha256 %s)" % (OUT_IMAGE, len(img), hashlib.sha256(img).hexdigest()))
+        t = (base[0x4A9B + 3 * (inp - 1) + 1] << 8) | base[0x4A9B + 3 * (inp - 1) + 2]
+        asserts.append((t, bytes([0x7B, 0xFF, 0x7A, addr >> 8, 0x79, addr & 0xFF]), "name table %d" % inp))
+    patches = [(s, VOL_ENTRY_ORIG, lambda labels: vol_entry_bytes(labels["hn_enter_vol"]),
+                "lcall hn_enter_vol ; sjmp 0x%04X" % (s + len(VOL_ENTRY_ORIG))) for s in VOL_ENTRY_SITES]
+    uikit.build_image(base_path=sys.argv[1] if len(sys.argv) > 1 else BASE_IMAGE, base_sha=BASE_SHA,
+                      code_addr=CODE_ADDR, assemble=assemble, hooks=HOOKS, patches=patches, asserts=asserts,
+                      version_text=VERSION_TEXT, out_image=OUT_IMAGE, out_listing=OUT_LISTING,
+                      title="House Numerals patch", label_prefixes=("hn_", "uk_"))
 
 
 if __name__ == "__main__":

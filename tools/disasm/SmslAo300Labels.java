@@ -104,15 +104,15 @@ public class SmslAo300Labels extends GhidraScript {
         {0x9700, "fast_pixel"},        // features/fast-lcd, replaces lcd_write_pixel
         {0x9716, "fast_clear"},        // features/fast-lcd, replaces lcd_clear_black's loop
         // features/house-numerals (hn4)
-        {0x991A, "hn_fill"},           // rectangle in one colour, streamed
-        {0x9970, "hn_acc"},            // R6:R7 = accent (theme colour, SMSL orange on White)
+        {0x991A, "uk_fill"},           // rectangle in one colour, streamed
+        {0x9970, "uk_acc"},            // R6:R7 = accent (theme colour, SMSL orange on White)
         {0x9981, "hn_name_ptr"},       // volume page: input 1..6 -> name pointer
-        {0x999A, "hn_fp_load"},        // hn_paint: copy the font descriptor
-        {0x99BA, "hn_fetch"},          // hn_paint: next character (code or XDATA string)
-        {0x99E1, "hn_map"},            // hn_paint: character -> glyph index | narrow
-        {0x99FD, "hn_home_x"},         // stock page-1 start x of a text (centring + x 16 rule)
-        {0x9A6A, "hn_paint"},          // text painter: font, string, x, y, ink, background, x clip, scale 1/2
-        {0x9B43, "hn_cell"},           // hn_paint: one glyph cell, streamed
+        {0x999A, "uk_fp_load"},        // uk_paint: copy the font descriptor
+        {0x99BA, "uk_fetch"},          // uk_paint: next character (code or XDATA string)
+        {0x99E1, "uk_map"},            // uk_paint: character -> glyph index | narrow
+        {0x99FD, "uk_home_x"},         // stock page-1 start x of a text (centring + x 16 rule)
+        {0x9A6A, "uk_paint"},          // text painter: font, string, x, y, ink, background, x clip, scale 1/2
+        {0x9B43, "uk_cell"},           // uk_paint: one glyph cell, streamed
         {0x9EB2, "hn_draw_volume"},    // replaces volpage_draw_volume 0x5936
         {0x9EFF, "hv_num"},            // volume page: number (big font at 2x)
         {0x9F48, "hv_name"},           // volume page: input name
@@ -133,7 +133,7 @@ public class SmslAo300Labels extends GhidraScript {
         {0xA22D, "hn_fp_status"},
         {0xA270, "hh_icon"},  {0xA273, "hh_vol"},  {0xA278, "hh_fmt"},  {0xA27B, "hh_eq"},
         {0xA27E, "hh_bar"},   {0xA28E, "hh_name"}, {0xA294, "hh_stat"}, // exit wipe: home elements
-        {0xA29A, "hn_tasks"},          // replaces main_tasks_on's lcall main_tick_tasks (0x5B2A): one wipe step per tick
+        {0xA29A, "uk_tasks"},          // replaces main_tasks_on's lcall main_tick_tasks (0x5B2A): one wipe step per tick
         {0xA19E, "hn_home_now"},       // stop a wipe, black, home_refresh + status line (hn_name_guard)
         {0xA1B4, "hn_flag_path"},      // 0x3FF8: during a wipe the flag path skips its 0x412F fill
         {0xA2A8, "hn_step"},           // one wipe step
@@ -154,7 +154,7 @@ public class SmslAo300Labels extends GhidraScript {
         {0x3335, "main_tick_10ms"},         // runs once per 0x20.7 tick flag; missed ticks are lost
         {0x332F, "main_tick_flag_test"},    // jb 0x20.7: the 10 ms tick path of main_tick_tasks
         {0x3351, "osd_timer_expired"},      // page 1, 0x27:0x28 ran out: lcall home_refresh_periodic
-        {0x5B2A, "main_tasks_tick_call"},   // main_tasks_on: lcall main_tick_tasks (hooked, features/house-numerals: hn_tasks)
+        {0x5B2A, "main_tasks_tick_call"},   // main_tasks_on: lcall main_tick_tasks (hooked, features/house-numerals: uk_tasks)
         {0x5422, "main_loop_tasks_call"},   // main loop, amp on: lcall main_tasks_on
         {0x4081, "home_refresh_periodic_draw"}, // lcall home_refresh; status line (hooked, features/house-numerals: hn_hold)
         {0x3FF8, "home_refresh_periodic_flags"}, // 0x21.3 / 0x21.1 / 0x20.6 set: clear them, page 1, 0x412F fill (hooked, features/house-numerals: hn_flag_path)

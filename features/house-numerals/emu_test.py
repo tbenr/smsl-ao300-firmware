@@ -18,7 +18,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(ROOT, "tools", "emu"))
 sys.path.insert(0, HERE)
-from emu8051 import Emu8051                                     # noqa: E402
+import uitest as ut                                             # noqa: E402
 from ao300 import Amp, CLOCK_HZ, NEC_POWER, NEC_DOWN, NEC_SOURCE, \
     NEC_VOL_UP, NEC_VOL_DOWN, STATE_KEY                          # noqa: E402
 import build_patch as bp                                         # noqa: E402
@@ -28,7 +28,7 @@ NEW = open(bp.OUT_IMAGE, "rb").read()
 LAB = bp.assemble()[1]
 W, H = 320, 170
 EASE = bp.EASE
-STEP_END = 0x5B2D                        # main_tasks_on, after the lcall hn_tasks (0x5B2A)
+STEP_END = 0x5B2D                        # main_tasks_on, after the lcall uk_tasks (0x5B2A)
 fails = []
 
 
@@ -39,54 +39,15 @@ def check(name, ok, detail=""):
 
 
 def emu(theme=(0xFF, 0xFF), img=NEW):
-    e = Emu8051(img)
-    e.sfr[0x81] = 0x88                       # SP as the firmware sets it
-    e.iram[0x48], e.iram[0x49] = theme
-    return e
+    return ut.emu(img, theme)
 
 
-def px(e, x, y):
-    return e.lcd.screen_pixel(x, y)
-
-
-def screen(e):
-    return [[px(e, x, y) for y in range(H)] for x in range(W)]
-
-
-def fill_screen(e, colour):
-    e.lcd.gram = [colour] * len(e.lcd.gram)
-
-
-def ink_in(e, x0, y0, w, h):
-    return any(px(e, x, y) for x in range(x0, x0 + w) for y in range(y0, y0 + h))
-
-
-def stray(e, boxes):
-    """Lit pixels outside every (x, y, w, h) box."""
-    n = 0
-    for x in range(W):
-        for y in range(H):
-            if px(e, x, y) and not any(bx <= x < bx + bw and by <= y < by + bh
-                                       for bx, by, bw, bh in boxes):
-                n += 1
-    return n
-
-
-def stock_small(e, ch, x, y):
-    e.setR(6, 0); e.setR(7, y); e.setR(4, x >> 8); e.setR(5, x & 0xFF); e.setR(3, ord(ch))
-    e.call(0x2DF8)
-
-
-def stock_big(e, ch, x, y):
-    e.setR(6, 0); e.setR(7, y); e.setR(4, x >> 8); e.setR(5, x & 0xFF); e.setR(3, ord(ch))
-    e.call(0x3F3C)
+px, screen, fill_screen, ink_in, stray = ut.px, ut.screen, ut.fill_screen, ut.ink_in, ut.stray
+stock_small, stock_big, scaled_match = ut.stock_small, ut.stock_big, ut.scaled_match
 
 
 def stock_glyph(ch, theme=(0xFF, 0xFF)):
-    """30 x 32 bitmap of a big-font character, painted by the stock big_glyph_paint."""
-    e = emu(theme)
-    stock_big(e, ch, 10, 10)
-    return [[px(e, 10 + i, 10 + j) for j in range(32)] for i in range(30)]
+    return ut.stock_glyph(NEW, ch, theme)
 
 
 _GLYPHS = {}
@@ -96,11 +57,6 @@ def glyphs():
     if not _GLYPHS:
         _GLYPHS.update({d: stock_glyph(str(d)) for d in range(10)})
     return _GLYPHS
-
-
-def scaled_match(e, x0, y0, ref):
-    return all(px(e, x0 + 2 * i + a, y0 + 2 * j + b) == ref[i][j]
-               for i in range(30) for j in range(32) for a in (0, 1) for b in (0, 1))
 
 
 def image_diff():
@@ -127,127 +83,42 @@ def image_diff():
     check("new XDATA state inside 0x0100..0x01FF", 0x0100 <= bp.HN_N and bp.XDATA_END < 0x0200)
     import re
     java = open(os.path.join(ROOT, "tools", "disasm", "SmslAo300Labels.java")).read()
-    named = {n: int(a, 16) for a, n in re.findall(r'\{0x([0-9A-F]{4}), "(h[nvh]_\w+)"\}', java)}
+    named = {n: int(a, 16) for a, n in re.findall(r'\{0x([0-9A-F]{4}), "((?:h[nvh]|uk)_\w+)"\}', java)}
     lab = dict(LAB, hn_ease=LAB["ease"], hn_font_small=LAB["font_small"], hn_font_big=LAB["font_big"],
                hn_map_small=LAB["map_small"], hn_map_big=LAB["map_big"])
     wrong = sorted(k for k in named if named[k] != lab.get(k))
-    check("SmslAo300Labels.java: the %d hn_/hv_/hh_ labels match this build" % len(named), not wrong, str(wrong))
-
-
-def test_fill():
-    print("\nhn_fill")
-    e = emu()
-
-    def fill(x, w, y, h, c):
-        for n, v in ((2, x >> 8), (3, x & 0xFF), (1, w), (5, y), (4, h), (6, c >> 8), (7, c & 0xFF)):
-            e.setR(n, v)
-        c0 = e.cycles
-        e.call(LAB["hn_fill"])
-        return e.cycles - c0
-    t1 = fill(250, 40, 100, 20, 0xF81F)
-    check("40x20 across x=256 in the exact colour",
-          all(px(e, x, y) == 0xF81F for x in range(250, 290) for y in range(100, 120)))
-    check("nothing outside the rectangle", stray(e, [(250, 100, 40, 20)]) == 0)
-    t2 = fill(0, 80, 0, 20, 0x07E0)          # about the same window cost, 800 more pixels
-    per_px = (t2 - t1) / 800
-    check("fill loop at most 10 clocks per pixel", per_px <= 10, "(%.1f)" % per_px)
-    fill(0, 2, 0, 170, 0x001F)
-    check("2 x 170 column (count above 255)", all(px(e, x, y) == 0x001F for x in (0, 1) for y in range(170)))
-    check("theme colour untouched", (e.iram[0x48], e.iram[0x49]) == (0xFF, 0xFF))
+    check("SmslAo300Labels.java: the %d hn_/hv_/hh_/uk_ labels match this build" % len(named), not wrong, str(wrong))
 
 
 # ---- the painter ---------------------------------------------------------------------------
-STR_AT = 0x0200                          # scratch XDATA for test strings (not used by the firmware)
+STR_AT = ut.STR_AT
 
 
-def set_fp(e, font, text=None, code_ptr=None, x=0, y=0, ink=0xFFFF, bg=0, clip=(0, 319), scale=1):
-    if text is not None:
-        for k, ch in enumerate(text.encode() + b"\0"):
-            e.xram[STR_AT + k] = ch
-        ptr, spc = STR_AT, 0
-    else:
-        ptr, spc = code_ptr, 1
-    f = LAB[font]
-    vals = [f >> 8, f & 0xFF, ptr >> 8, ptr & 0xFF, spc, x >> 8, x & 0xFF, y, ink >> 8, ink & 0xFF,
-            bg >> 8, bg & 0xFF, clip[0] >> 8, clip[0] & 0xFF, clip[1] >> 8, clip[1] & 0xFF, scale]
-    for k, v in enumerate(vals):
-        e.xram[bp.FP + k] = v
+def set_fp(e, *args, **kw):
+    ut.set_fp(e, LAB, bp.KIT, *args, **kw)
 
 
 def fp_end(e):
-    return (e.xram[bp.FP_END] << 8) | e.xram[bp.FP_END + 1]
+    return ut.fp_end(e, bp.KIT)
 
 
 def paint(e, *args, **kw):
-    set_fp(e, *args, **kw)
-    c0 = e.cycles
-    e.call(LAB["hn_paint"])
-    return e.cycles - c0
-
-
-def stock_ok(font, ch):
-    return ch in (bp.SMALL_MAP if font == "font_small" else bp.BIG_MAP)
+    return ut.paint(e, LAB, bp.KIT, *args, **kw)
 
 
 def firmware_strings():
-    """Every NUL-terminated printable string in the stock string area (0x9040..0x9397)."""
-    out, cur = [], b""
-    for b in BASE[0x9040:0x9398]:
-        if b == 0:
-            if len(cur) >= 2:
-                out.append(cur.decode())
-            cur = b""
-        elif 0x20 <= b < 0x7F:
-            cur += bytes([b])
-        else:
-            cur = b""
-    return sorted(set(out))
+    return ut.firmware_strings(BASE)
 
 
 def sample_rate_strings():
-    """The status strings format 0x3CDC writes for every sample-rate code."""
-    seen = set()
-    for v in range(256):
-        e = emu(img=BASE)
-        e.setR(7, v)
-        e.call(0x3CDC, 2_000_000)
-        s = bytes(e.xram[0x50:0x69]).split(b"\0")[0]
-        if s:
-            seen.add(s.decode())
-    return sorted(seen)
+    return ut.sample_rate_strings(BASE)
 
 
 def test_painter():
-    print("\nhn_paint against the stock glyph painters and text renderers")
-    for font, stock, w, h in (("font_small", stock_small, 14, 24), ("font_big", stock_big, 30, 32)):
-        bad, blank = [], []
-        for c in range(0x20, 0x80):
-            ch = chr(c)
-            e = emu(); fill_screen(e, 0x1234)
-            paint(e, font, text=ch if c else "", x=100, y=40, ink=0xF81F, bg=0x0841)
-            if stock_ok(font, ch):
-                ref = emu((0xF8, 0x1F)); fill_screen(ref, 0x1234)
-                stock(ref, ch, 100, 40)
-                cell = all(px(e, 100 + i, 40 + j) == (0xF81F if px(ref, 100 + i, 40 + j) == 0xF81F else 0x0841)
-                           for i in range(w) for j in range(h))
-                if not cell or stray(e, [(100, 40, w, h)]) != (W * H - w * h):
-                    bad.append(ch)
-            elif not all(px(e, 100 + i, 40 + j) == 0x0841 for i in range(w) for j in range(h)):
-                blank.append(ch)
-        check("%s: every stock-mapped character 0x20..0x7F = the stock glyph, ink and background"
-              % font, not bad, str(bad))
-        check("%s: characters the stock font does not map draw blank" % font, not blank, str(blank))
-    bad = []
-    for ch in "0123456789AOIZ ":
-        ref = stock_glyph(ch)
-        e = emu()
-        paint(e, "font_big", text=ch, x=150, y=40, scale=2)
-        if not scaled_match(e, 150, 40, ref) or stray(e, [(150, 40, 60, 64)]):
-            bad.append(ch)
-    check("big font at scale 2 = the stock glyph doubled (digits, letters, blank)", not bad, str(bad))
-
+    print("\nhn_fp_name / hn_fp_status + uk_paint against the stock text renderers (the painter itself:"
+          " tools/patch/uikit_test.py)")
     # whole strings on page 1: the name (big, y 75) and the status line (small, y 135), as the exit
-    # wipe draws them (hn_fp_name / hn_fp_status + hn_paint), against the stock renderers
+    # wipe draws them (hn_fp_name / hn_fp_status + uk_paint), against the stock renderers
     names = [t for _, _, t in bp.INPUT_NAMES]
     big_strings = names + [s for s in firmware_strings() if all(c in bp.BIG_MAP for c in s)]
     small_strings = sorted(set(firmware_strings() + sample_rate_strings()))
@@ -267,7 +138,7 @@ def test_painter():
                 ref.setR(6, 0); ref.setR(7, y)
                 ref.call(stock_entry)
                 new.call(LAB[fp])
-                new.call(LAB["hn_paint"])
+                new.call(LAB["uk_paint"])
                 if new.lcd.gram != ref.lcd.gram:
                     bad.append((s, theme))
         check("%s text on page 1: %d strings x 2 themes, pixel-identical to the stock renderer"
@@ -275,37 +146,6 @@ def test_painter():
     print("    big: %s" % ", ".join(sorted(set(big_strings))))
     print("    small: %s" % ", ".join(small_strings))
 
-    # clip windows: the same pixels as a full paint, restricted to the window
-    bad = []
-    for kw, cells, rows in ((dict(text="OPTICAL", x=16, y=75), (16, 212), (75, 107)),
-                            (dict(text="47", x=184, y=42, scale=2), (184, 303), (42, 106))):
-        ref = emu()
-        paint(ref, "font_big", **kw)
-        for c0, c1 in ((0, 319), (50, 60), (100, 100), (121, 400), (0, 15), (185, 200), (215, 250),
-                       (243, 244), (245, 303), (304, 319), (212, 212)):
-            e = emu(); fill_screen(e, 0x1234)
-            paint(e, "font_big", clip=(c0, c1), **kw)
-            ok = all(px(e, x, y) == (px(ref, x, y) if c0 <= x <= c1 and cells[0] <= x <= cells[1] and
-                                     rows[0] <= y < rows[1] else 0x1234)
-                     for x in range(W) for y in range(H))
-            if not ok:
-                bad.append((kw["text"], c0, c1))
-    check("clip windows (scale 1 and 2, odd edges, empty): only those columns, same pixels", not bad, str(bad))
-    e = emu(); fill_screen(e, 0x1234)
-    paint(e, "font_big", text="OPTICAL", x=16, y=75, clip=(256, 0))
-    check("empty clip window: nothing drawn, FP_END = 212 (OPTICAL at 16, narrow I)",
-          all(v == 0x1234 for v in e.lcd.gram) and fp_end(e) == 212, "(%d)" % fp_end(e))
-    e = emu()
-    paint(e, "font_small", text="", x=16, y=0)
-    check("empty string: FP_END = x - 1", fp_end(e) == 15)
-    e = emu()
-    t1 = paint(e, "font_big", text="OPTICAL", x=16, y=75)
-    t2 = paint(e, "font_big", text="47", x=184, y=42, scale=2)
-    t3 = paint(e, "font_small", text="2.8224MHz", x=16, y=135)
-    print("    OPTICAL (big, 6720 px) %.2f ms, 47 (scale 2, 7680 px) %.2f ms, 2.8224MHz (small, 3024 px) %.2f ms"
-          % (t1 * 1000 / CLOCK_HZ, t2 * 1000 / CLOCK_HZ, t3 * 1000 / CLOCK_HZ))
-    check("painter at most 14 clocks per pixel (scale 1) and 10 (scale 2)",
-          t1 / 6720 <= 14 and t2 / 7680 <= 10, "(%.1f, %.1f)" % (t1 / 6720, t2 / 7680))
 
 
 def test_name_ptr():
@@ -736,7 +576,7 @@ def test_enter_vol():
         check("flag path 0x3FF8, mode %d: flags cleared, page 1, %s" % (mode, "fill skipped" if mode else "fill as stock"),
               seen == (["status"] if mode else ["fill", "status"]) and not e.iram[0x21] & 0x0A and
               not e.iram[0x20] & 0x40 and e.iram[0x45] == 1, str(seen))
-    # hn_tasks: a step only after a tick, and only with the amp on
+    # uk_tasks: a step only after a tick, and only with the amp on
     for tick, power, mode, want in ((0, 1, 1, False), (1, 1, 1, True), (1, 0, 1, False), (1, 2, 1, False), (1, 1, 0, False)):
         e = st(mode, 0, 3, EASE[3])
         e.iram[0x4F] = power
@@ -744,8 +584,8 @@ def test_enter_vol():
         e.iram[0x45] = 5                      # a page without a renderer: main_tick_tasks draws nothing
         seen = []
         e.hooks[0x3325] = lambda em: seen.append(em.xram[bp.HN_STEP])
-        e.call(LAB["hn_tasks"])
-        check("hn_tasks: tick %d, 0x4F %d, mode %d -> main_tick_tasks%s" % (tick, power, mode,
+        e.call(LAB["uk_tasks"])
+        check("uk_tasks: tick %d, 0x4F %d, mode %d -> main_tick_tasks%s" % (tick, power, mode,
               ", then one step" if want else " only"),
               seen == [3] and e.xram[bp.HN_STEP] == (4 if want else 3))
     e = st(7, 0, 3, 50)
@@ -893,7 +733,7 @@ def countdown(e):
 
 
 class Watch:
-    """Logs every wipe step (start clock, mode, step, x after, duration) and hn_fill calls."""
+    """Logs every wipe step (start clock, mode, step, x after, duration) and uk_fill calls."""
 
     def __init__(self, amp):
         self.amp = amp
@@ -902,7 +742,7 @@ class Watch:
         e = amp.e
         e.hooks[LAB["hn_step"]] = self._start
         e.hooks[STEP_END] = self._end
-        e.hooks[LAB["hn_fill"]] = lambda em: self.fills.append(
+        e.hooks[LAB["uk_fill"]] = lambda em: self.fills.append(
             (em.cycles, (em.R(2) << 8) | em.R(3), em.R(1), (em.R(6) << 8) | em.R(7)))
 
     def _start(self, em):
@@ -1228,7 +1068,7 @@ def input_scenarios():
 def stock_home_now(amp):
     """The home screen the stock refresh would draw for amp's state right now (lcd_clear_black,
     home_refresh, the status line from XDATA 0x50), drawn in a copy of its RAM and XDATA."""
-    e = Emu8051(NEW)
+    e = ut.Emu8051(NEW)
     e.iram[:] = amp.e.iram
     e.sfr[:] = amp.e.sfr
     e.xram[:] = amp.e.xram
@@ -1584,7 +1424,7 @@ def report_steps():
 
 
 GROUPS = {
-    "unit": [image_diff, test_fill, test_painter, test_name_ptr, test_draw_volume, test_volpage,
+    "unit": [image_diff, test_painter, test_name_ptr, test_draw_volume, test_volpage,
              test_step, test_enter_vol, test_home_tail, test_align],
     "tour": [tour, input_scenarios, key_scenarios, flag_exit_scenarios, edge_scan],
     "int1": [int1],

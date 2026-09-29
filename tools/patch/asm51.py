@@ -30,6 +30,7 @@ class Asm:
         return self.org + len(self.buf)
 
     def L(self, name):
+        assert name not in self.labels, "label %s defined twice" % name
         self.labels[name] = self.pc
         self.lines.append(("label", name))
 

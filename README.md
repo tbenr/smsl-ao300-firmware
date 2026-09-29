@@ -28,12 +28,17 @@ tools/
   emu/core8051.c, emu/cemu8051.py the same emulator in C, loaded through ctypes and
                                   compiled on first use; what Emu8051() runs, ~100x faster
   emu/test_core.py                differential test: C core against the Python reference
-  run_tests.py                    runs every features/*/emu_test.py in parallel
+  run_tests.py                    runs every features/*/emu_test.py and the UI kit's test
+                                  in parallel
   emu/ao300.py                    harness: boot the whole firmware, press remote keys, log
                                   audio-chip writes and pins per 10 ms tick
   emu/panel_video.py              60 fps video of what the glass shows: samples panel memory
                                   line by line at the 60 Hz refresh (needs ffmpeg)
+  emu/uitest.py                   shared helpers for UI tests: screen access, the stock
+                                  glyph painters, uk_paint calls, the firmware's strings
   patch/asm51.py                  label-resolving 8051 assembler used by the build scripts
+  patch/uikit.py                  shared building blocks for UI themes (see "UI themes")
+  patch/uikit_test.py             the kit's own emulator tests, on fast-lcd + the kit
 
 features/
   status-line-flicker/            analysis of the "flickering C" display bug (no build yet)
@@ -54,8 +59,8 @@ features/
                                   direct-select; emulator-verified, see its README
     build_patch.py, emu_test.py   build build/flash_fastlcd.bin, lockstep UI tour vs stock
   house-numerals/                 stock UI + House Numerals home and volume page, on top
-                                  of fast-lcd; emulator-verified, not yet tried on
-                                  hardware, see its README
+                                  of fast-lcd, built with tools/patch/uikit.py; tried on
+                                  the amp on 2026-09-29 (hn4.1), see its README
     build_patch.py, emu_test.py   build build/flash_house_numerals.bin (hn4: non-blocking
                                    eased wipes in and out of the volume page, text painter),
                                    lockstep UI tour, keys during wipes, INT1 sweep,
@@ -212,6 +217,40 @@ never sends. The mechanism is described in `features/direct-select/ir_direct_sel
 The RESET menu page shows `v1.4 tbenr` instead of `v1.4`. Change `VERSION_TEXT` in
 `build_patch.py` to alter it; the row fits 20 characters.
 
+## UI themes
+
+The designs in `features/ui-theme/ui_themes.html` are built as features on top of fast-lcd.
+The parts every theme needs live in `tools/patch/uikit.py`, extracted from house-numerals
+(which builds byte-identical with it):
+
+- **Routines** (a `Kit` emits them into the theme's code; XDATA for them is passed in):
+  - `uk_fill`: rectangle fill in any colour, about 9 clocks per pixel.
+  - `uk_paint`: streaming text painter for the stock fonts. It takes ink and background
+    colours, an x clip window and scale 1 or 2, and is pixel-identical to the stock text
+    renderers. `uk_home_x` gives a string's page-1 start x.
+  - `uk_acc`: the accent colour (the COLOR tint, or the theme's own colour on White).
+  - `uk_tasks`: the per-tick driver. It is hooked on `main_tasks_on`'s call to
+    `main_tick_tasks` (0x5B2A) and runs the theme's step routine once per 10 ms tick,
+    after the stock tick work and only while the amp is on. Animations never block the
+    main loop.
+- **Fonts:** descriptors and character maps of the two stock fonts. A new font only needs
+  a descriptor, a map and glyph data in the same column-major layout.
+- **Stock facts:** the stock routines, buffers and variables themes use, and a catalogue of
+  hook sites with their original bytes (`STOCK_SITES`, and `VOL_ENTRY_SITES`, where the
+  volume keys open page 2).
+- **Helpers:** `ease_in_out()`, `rgb565()`, and assembly written as text lines (`S`).
+- **`build_image()`:** the common build, from the base sha check through to the listing.
+
+`tools/patch/uikit_test.py` tests the kit on its own. It builds fast-lcd plus the kit and
+compares `uk_paint` against the stock glyph painters and text renderers for every character
+and every string in the firmware. `tools/emu/uitest.py` holds the helpers theme tests share.
+`tools/emu/panel_video.py` renders what the glass shows, with the panel's 60 Hz line-by-line
+refresh, for checking animations.
+
+Not in the kit yet: the wipe's step engine and page-element model (still in house-numerals),
+shapes (dots, arcs, 7-segment), colour blending, per-pixel transitions and fonts other than
+the stock two.
+
 ## Testing
 
 `emu_test.py` runs the patched image's IR-translate routine in a small 8051 interpreter:
@@ -228,8 +267,10 @@ The RESET menu page shows `v1.4 tbenr` instead of `v1.4`. Change `VERSION_TEXT` 
 clocks counted from the STC8 instruction table. The LCD bus is decoded into an ST7789
 model and saved as PNG.
 
-`python3 tools/run_tests.py` runs all the feature tests at once, on the C core, in
-about 5 s (the Python reference, `EMU8051=py`, took about 8 minutes). After changing
+`python3 tools/run_tests.py` runs all the feature tests and the UI kit's test at once, on
+the C core, in about 2 minutes, most of it the house-numerals 256-command sweep (before
+house-numerals the run took about 5 s; the Python reference, `EMU8051=py`, took about 8
+minutes). `python3 tools/run_tests.py uikit` runs only the kit's test (about 3 s). After changing
 the emulator, `python3 tools/emu/test_core.py` checks the C core against the Python
 reference: every opcode from random states, random programs, and a boot scenario of
 the stock firmware compared at every 10 ms tick.

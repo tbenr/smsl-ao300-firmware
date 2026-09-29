@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Run the emulator tests in parallel and print each one's full output.
 
-    python3 tools/run_tests.py                 every features/*/emu_test.py
-    python3 tools/run_tests.py fast-lcd        only the named features
+    python3 tools/run_tests.py                 every features/*/emu_test.py and the UI kit's
+                                               tools/patch/uikit_test.py
+    python3 tools/run_tests.py fast-lcd        only the named features ("uikit": the kit)
     python3 tools/run_tests.py --core          also tools/emu/test_core.py (C core
                                                against the Python reference)
 
@@ -39,6 +40,8 @@ def main():
         name = os.path.basename(os.path.dirname(path))
         if not args.features or name in args.features:
             tests.append((name, [sys.executable, path]))
+    if not args.features or "uikit" in args.features:     # the shared UI kit's own tests
+        tests.append(("uikit", [sys.executable, os.path.join(ROOT, "tools", "patch", "uikit_test.py")]))
     missing = set(args.features) - {n for n, _ in tests}
     if missing:
         sys.exit("no emu_test.py in features/%s" % ", features/".join(sorted(missing)))

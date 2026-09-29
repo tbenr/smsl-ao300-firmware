@@ -44,6 +44,10 @@ rules apply to anyone working here, human or agent.
 - Each build sets its own `VERSION_TEXT` (20 characters at most), so the RESET page
   shows which image is running.
 - Build on top of direct-select unless the user asks otherwise.
+- UI themes build on fast-lcd and `tools/patch/uikit.py`. Code more than one theme can use goes
+  into the kit, with tests in `tools/patch/uikit_test.py`. After a kit change, rebuild every
+  theme: an image whose sha changes needs its tests run again and a new `KNOWN_IMAGES` entry.
+  Animations run from the kit's per-tick driver (`uk_tasks`) and never block the main loop.
 
 ## Testing
 
