@@ -1,178 +1,498 @@
 # House Numerals
 
-A reduced first build of study 3 ("House Numerals", after SMSL's SU and DO series
-screens) from `features/ui-theme/ui_themes.html`. Built on top of fast-lcd. The RESET
-page shows `v1.4 tbenr hn`.
+A reduced build of study 3 ("House Numerals", after SMSL's SU and DO series screens) from
+`features/ui-theme/ui_themes.html`. Built on top of fast-lcd. The RESET page shows
+`v1.4 tbenr hn4.1`.
+
+This is image hn4.1. The wipe into the volume page no longer blocks anything: it runs one
+step per 10 ms main-loop tick, eased, and there is a wipe back home too. All our text goes
+through a streaming text painter.
+
+hn4.1 fixes three things found in hn4 (`v1.4 tbenr hn4`, sha256 `86aacb8b…`):
+- **The edge could vanish for a whole panel frame.** hn4 erased the old edge (with the band)
+  before it drew the new one. The new edge now comes first, and the old edge's columns are
+  erased last.
+- **The stock refresh's flag path could damage the exit.** After a Source press, the flag path
+  (0x3FF8) could run mid-exit and black out revealed parts at 0x412F. It now skips that fill
+  during a wipe.
+- **A name drawn during an exit left the screen incomplete.** Such a draw (Source,
+  direct-select, the BT key's home_refresh) cleared the screen in the middle of stock sequences
+  that had already drawn other parts. It now ends the exit with the whole home screen.
+
+Earlier images:
+- hn3 (`v1.4 tbenr hn3`, sha256 `2c4809ab…`) and hn2 (`2819e0b0…`) drew a 200 ms wipe inside the
+  volume-key handler, which stopped the main loop.
+- Flashed so far: the first image (`v1.4 tbenr hn`, `deada16a…`, 47 ms wipe) and hn4.1.
 
 ## Status
 
-Emulator-verified (all tests pass), not yet tried on hardware.
+Emulator-verified (all tests pass). Tried on the amp on 2026-09-29: hn4.1
+(`v1.4 tbenr hn4.1`, `5eddb6df…`) looks OK. Longer use is still to come.
 
 ## What the build shows
 
-Kept from the mockup (the rest — number roll animation, spring on the line, dB
-readout and captions, MUTE state on the volume page, status text on the volume page,
-a true reveal wipe, an exit wipe — is cut for later passes; return home uses the stock
-fast clear):
-
-| Element | First build |
+| Element | Build |
 |---|---|
 | Home: input name | stock big font and y (75), left-aligned at x 16 on page 1 only |
 | Home: status line | stock small font and y (135), left-aligned at x 16 on page 1 only |
 | Home: accent bar | 28 x 3 at 18,114 (under the name) |
 | Home: icon, volume, tags | stock, unchanged |
-| Volume page: entry | 2-px accent edge sweeps from x 318 to x 0, black behind it; then content is drawn |
 | Volume page: name | small font, white, at 16,30 |
 | Volume page: divider | 1 x 104 at 140,14, colour 0x2104 |
 | Volume page: label | "VOL" in accent, small font, at 158,14 |
 | Volume page: number | stock big digits at 2x (60 x 64 each), white, at 184,42 and 244,42; leading zero blank |
 | Volume page: position line | 240 x 3 at 40,136: accent for 4 px per step, 0x18E3 for the rest |
+| Wipe in | 2-px accent edge from x 318 to 0 over 20 ticks (about 200 ms), ease-in-out; black behind it; each element appears once the edge has passed it |
+| Wipe out | the same from x 0 to 318; the home elements appear once the edge has passed them |
 | Accent | theme colour (RAM 0x48:0x49); SMSL orange 0xFC43 when the theme is White (0xFFFF) |
 
-Everything goes through the fast pixel path of fast-lcd; `hn_fill` and `hn_digit2x`
-stream bytes themselves, text goes through the stock glyph painters (`small_glyph_paint`
-0x2DF8, `big_glyph_paint` 0x3F3C via the stock font at 0x6A23).
+Still cut from the mockup: number roll, spring on the line, dB readout and captions, MUTE state
+and status text on the volume page.
+
+## How the wipes work
+
+### Driver: one step per tick
+
+The main loop (0x540A) calls `main_tasks_on` (0x5B22) when the amp is on. `main_tasks_on`
+calls `main_tick_tasks` (0x3325) at 0x5B2A:
+- `main_tick_tasks` first handles the re-mute request 0x21.4;
+- if the 10 ms tick flag 0x20.7 is set, it runs `main_tick_10ms` (0x3335): countdowns,
+  page renders, the periodic home refresh, format poll, unmute.
+
+The `lcall 0x3325` at 0x5B2A becomes `lcall hn_tasks`. `hn_tasks` looks at the tick flag first.
+- No tick: it tail-jumps to 0x3325, which does exactly what it did before.
+- Tick: it calls 0x3325, then, if RAM 0x4F is 1 (amp on), runs `hn_step`.
+
+The step comes after all of that tick's stock work. A page render in the same tick (for
+example the Timer0 return home) has already started the wipe, and the unmute and format
+poll are never delayed by a step. Hooking this call was chosen over:
+- the flag test at 0x332F, which would put the step before the tick's duties;
+- the main loop's `lcall 0x5B22` at 0x5422, where `post_power_on` and the power-off path
+  share the call.
+
+A step never waits. The main loop keeps its timing, and a lost tick only delays the wipe
+by one tick.
+
+### A step (`hn_step`)
+
+State lives in XDATA: mode (0 idle, 1 in, 2 out), step 0..20, edge x. `ease` holds 21 edge
+positions for the way in: `round(318 (1 + cos(pi k / 20)) / 2)`, that is 318 316 310 301 288
+271 252 231 208 184 159 134 110 87 66 47 30 17 8 2 0. The way out uses 318 - x. The table is
+symmetric, so turning a wipe round maps step k to 20 - k at the same x.
+
+Each step:
+1. Takes the next x.
+2. Draws the 2-px accent edge at [x, x+1] (outside the band), except on step 20, where the
+   band runs to the screen edge.
+3. Fills the band the edge swept since the last step with black (the new page's background).
+   The old edge's two columns go last: on the way in they are the band's top end, and
+   `hn_fill` goes up in x; on the way out they are its bottom end, so the rest of the band is
+   filled first.
+4. Marks as "not on screen" every element of either page that the band or the edge
+   columns touched.
+5. On the way in, redraws the part of the position line inside the band.
+6. Draws every element of the new page that is not on screen and that the edge has fully
+   passed:
+   - on the way in, when its left edge is right of the edge (x0 >= x + 2);
+   - on the way out, when its right edge is left of it (x1 < x);
+   - on step 20, everything.
+
+The wipe ends after step 20.
+
+GRAM therefore always holds a whole edge between the first and the last step: the new one is
+there before the old one goes. The panel reads one row (firmware x) per line time, 48 µs,
+and a band column takes 64 µs to fill. So whichever way the scan runs, a frame that misses
+the new edge still reads the old one before its columns are erased.
+
+The `tour` group runs `panel_video.py`'s scan model over an entry and an exit, both scan
+directions, at four frame phases. Every frame between the first and last step has a whole
+2-px edge (hn4 failed this in 11 of the 16 cases).
+
+| Way in: element | Columns | Appears at step (edge x) |
+|---|---|---|
+| number box | 184..303 | 10 (159) |
+| "VOL", divider | 158..199, 140 | 11 (134) |
+| position line | 40..279 | drawn in parts inside each band; in full at 16 (30) |
+| name | 16.. | 18 (8) |
+
+| Way out: element | Drawn by | Appears (OPTICAL, "No signal") |
+|---|---|---|
+| output icon 15..44, accent bar 18..45 | `home_draw_output_icon` 0x5744, `hn_fill` | 5 (47) |
+| volume 48..75 | `home_draw_volume` 0x5916 | 7 (87) |
+| status line 16..16+14n-1 | `hn_paint`, small font, buffer XDATA 0x50 | 11 (184): once the stock refresh has loaded the buffer, and the edge has passed its end |
+| input name 16..end of the text | `hn_paint`, big font, buffer XDATA 0x35 | 13 (231); USB 8 (110), BT 7 (87) |
+| format tag 208..263 | `home_draw_format_tag` 0x41CA | 15 (271) |
+| EQ tag 266..307 | `home_draw_eq_tag` 0x49A1 | 18 (310) |
+
+The status line waits for its buffer:
+- The stock refresh loads XDATA 0x50 10 ticks after the return home (0x27:0x28 = 10 after
+  the render). `hn_hold` notes when it has run (`HN_SBUF`).
+- The status line is drawn on the first step after that on which the edge has passed its
+  end. On step 20 it is drawn in any case.
+- The name is loaded into XDATA 0x35 at the start of the exit, as `home_draw_input_name` does
+  (`big_text_load` 0x4C8F with the string from its table; input 7: the buffer as it is).
+
+### Entry (home -> volume page)
+
+`hn_enter_vol` starts the entry. It is called:
+- by the four volume-key sites (0x0D33, 0x0DB3, 0x0E5A, 0x0F02: `lcall hn_enter_vol ; sjmp`
+  past the stock "volume" caption);
+- through the page-2 renderer path, 0x2106 (`hn_clear` with page 2).
+
+It draws nothing. It clears the two text buffers, as the stock `ui_clear_screen` did at those
+places, and sets mode 1, step 0, x 318. If the page is already on screen or an entry is
+running, it does nothing. If an exit is running, it turns it round.
+
+The key handler's common tail (0x0F48) still writes the volume to the NJW1194 first, then
+calls 0x5936 (`hn_draw_volume`).
+- During a wipe, `hn_draw_volume` only records the value (`HN_VOL`, `HN_NUM`). It draws the
+  number and the line only if the wipe has already revealed them.
+- The wipe draws them with the latest value when it reaches them.
+- Without a wipe, a volume change redraws the number and the line, as before.
+- The page-2 renderer (0x2143, `hn_volpage`) does the same during a wipe, and draws the whole
+  page when idle.
+
+In the emulator the volume write comes 0.2 to 15 ms before the first step. Nothing is drawn
+in between.
+
+### Exit (volume page -> home)
+
+The stock path is:
+1. The Timer0 ISR counts RAM 0x3F:0x40 down (armed at 200 by the key tail) and at 0 sets page
+   1 and 0x22.3 (`t0_return_home` 0x3ED9).
+2. The next tick's render calls `ui_render_page(1)`, which clears the screen at 0x2106. Page 1
+   has no renderer. 0x27:0x28 is set to 10.
+3. 10 ticks later `main_tick_10ms` calls `home_refresh_periodic` (0x3FE3). It loads the status
+   line into XDATA 0x50, then at 0x4081 calls `home_refresh` 0x5C8B and `small_text_render`
+   0x3A53 at y 135.
+4. It runs again every 50 ticks.
+
+hn4 changes two of those steps:
+- `hn_clear` at 0x2106, with page 1 and the volume page on screen (or an entry running),
+  starts the exit (mode 2 from x 0) instead of clearing. It clears the text buffers (as
+  `ui_clear_screen` did), loads the name and measures where it ends.
+- At 0x4081 the `lcall home_refresh` becomes `ljmp hn_hold`. While a wipe runs, `hn_hold`
+  returns at once (0x4088 is a tail jump, so this is 0x3FE3's own return): no `home_refresh`,
+  no status line. It notes that the status buffer is loaded. Otherwise it does
+  `lcall home_refresh ; ljmp 0x4084`, as stock.
+
+The stock refresh therefore draws nothing during the exit. Its next run, 0.41 s after the
+exit ends, draws exactly the same pixels over the revealed screen (tested). The end state
+is the hn3 home screen.
+
+### Interruptions and how a wipe is cancelled
+
+- **Any stock clear cancels.** The first instruction of `ui_clear_screen` (0x5D42, 16
+  callers: menu, Source, standby, the other pages, `post_power_on`, "go home" on page 2)
+  becomes `ljmp hn_cancel`. `hn_cancel` sets mode, the volume-page flags and the home flags
+  to 0, then runs the stock clear (`lcall 0x5CBC ; ljmp 0x5D45`). `hn_clear` for any other
+  page, and for page 1 while an exit already runs, goes the same way.
+- **Volume key during the entry:** the value is recorded and drawn when revealed (or at once
+  if its box already is).
+- **Volume key during the exit:** the key handler sets page 2. `hn_enter_vol` turns the wipe
+  round at its x (step 20 - k), and the edge heads left again. Volume-page elements the
+  exit had not touched are still on screen and stay. The rest are redrawn as the edge passes
+  them. The number on screen is redrawn at once with the new value.
+- **Source, direct-select, or any other name draw on page 1 during the exit:** the hook on
+  `home_draw_input_name`'s first instruction (0x4A85, `hn_name_guard`) ends the exit with the
+  whole home screen (`hn_home_now`), then lets the stock name draw go on:
+  - stop the wipe;
+  - `lcd_clear_black`;
+  - `home_refresh`, whose own name draw passes the guard;
+  - the status line from XDATA 0x50, as `home_refresh_periodic` draws it.
+
+  The stock sequences that get there have often drawn other home parts already, and a bare
+  clear would lose them:
+  - `key_bt_function` (IR 0x0E) calls `home_refresh` itself at 0x108E, so the EQ and format
+    tags are drawn before the name;
+  - Source with 0x21.3 or 0x21.1 set (0x0FA7, 0x0FE3) draws the EQ tag, icon and volume first.
+
+  The text buffers are kept, so the BT key's own "BT Reconnect" status line still follows.
+  The screen is a whole home 0.15 s after the key (tested for Source, direct-select, the BT
+  key and the 0x21.3 Source path).
+- **The refresh's flag path during a wipe:** Source (and `key_59`, `key_output_toggle`) set
+  0x20.6, 0x21.3 or 0x21.1. They stay set until `home_refresh_periodic` runs on page 1,
+  about 3 s after Source, so also across a volume page opened in that time. The exit's render
+  then makes the refresh run 10 ticks into the exit, and its flag path (0x3FF8) would clear
+  the flags, set page 1 and black out x 0..239, y 43..169 through the slow `0x412F` (125 ms),
+  erasing revealed parts.
+  - During a wipe, the hook at 0x3FF8 (`hn_flag_path`) does the flag and page part and skips
+    the fill. The status line is loaded and the held refresh proceeds as usual, and the exit
+    draws the home.
+  - Tested: Source, then Vol+ 0.2, 1.0 and 2.0 s later. All 20 exit steps run, and two ticks
+    after the exit the screen is a whole home.
+- **Menu (NEC 0x04):** during the exit it opens the menu through the stock clear, which
+  cancels. During the entry the page is 2, so `read_key` turns it into "go home"
+  (0x3DD6), whose clear cancels.
+- **Power off:** the standby path (0x5B0B) calls `ui_clear_screen`, which cancels. The
+  driver also steps only while 0x4F is 1. Standby looks exactly as stock (tested).
+- **Power on:** `post_power_on` ends with `ljmp ui_clear_screen`, so the wipe state is reset
+  before the first step. XDATA after a cold start is not trusted: a mode other than 0/1/2
+  stops the wipe.
+- **A volume key during the power-on logo:** it is dispatched just before `post_power_on`.
+  Its entry wipe starts, then `post_power_on`'s clear cancels it, and home comes up as
+  stock.
+
+## The text painter (`hn_paint`)
+
+`hn_paint` is a general text painter, built for later passes (per-element tint, number roll,
+clipped reveals, new fonts). It is used for all our text:
+- the volume page's name, "VOL" and number;
+- the exit's name and status line.
+
+Outside the wipes, the home screen is still drawn by the stock `big_text_render` /
+`small_text_render`.
+
+- **Parameters.** An XDATA block at 0x0130:
+
+  | Parameter | Meaning |
+  |---|---|
+  | font | pointer to a font descriptor in code |
+  | string | pointer and space (0 XDATA, e.g. the stock buffers 0x35 / 0x50; 1 code) |
+  | x, y | position |
+  | ink, background | RGB565 colours |
+  | clip x0..x1 | x clip window: only those columns are drawn |
+  | scale | 1 or 2 |
+
+- **Result.** `FP_END` is the last column of the last cell. An empty clip window measures
+  without drawing.
+- **Font descriptor.** Glyph width, bytes per column, bytes per glyph, glyph data, a
+  96-entry character map (0x20..0x7F -> glyph index, bit 7 = narrow) and the narrow advance.
+  - Small font: 0x5DAB, 14 x 24, 42 bytes per glyph. It maps the characters
+    `small_glyph_paint` 0x2DF8 maps: space . : - + = 0-9 A-Z a-z < > { } ( ) ! '.
+  - Big font: 0x6A23, 30 x 32, 120 bytes per glyph. It maps space . : - + = 0-9 A-Z, and
+    space . - + = I advance 17 px (big_text_render 0x2A9E).
+  - Characters the stock painters do not map (they reuse the previous glyph) draw blank.
+- **Drawing.** Every cell is drawn in full (background included), and cells may overlap as
+  in stock. At scale 2 each glyph column and row is doubled; this replaces hn3's
+  `hn_digit2x`. Pixels are streamed on the fast-lcd bus pattern, unrolled per bit:
+  3.68 ms for OPTICAL (6720 px, 13.1 clocks per pixel), 3.04 ms for two 2x digits (7680 px,
+  9.5), 1.84 ms for "2.8224MHz".
+- **Layout.** `hn_home_x` computes where the stock renderer starts a text on page 1:
+  - centred, `(320 - n*w) / 2`, or `(333 - n*w) / 2` when a big text has a narrow character;
+  - then x 16 as `hn_align_*` do, unless the text is wider than 288 px.
+- **Tested against stock.** Every mapped character in both fonts, and 38 big-font and 85
+  small-font strings, in two themes:
+  - all input names (USB, OPTICAL, COAXIAL, BT, ARC, AUX, PHONO);
+  - every printable string in the firmware's string area;
+  - every sample-rate text `status_rate_text` 0x3CDC produces;
+  - a 294-px string that stays centred.
+
+  The painter's output is pixel-identical to `big_text_render` / `small_text_render` on
+  page 1. Clip windows at both scales, with odd edges and empty windows, give exactly the
+  columns of a full paint.
+- **Number blank.** The number's blank tens digit is 0x7F, which maps to the blank glyph at
+  full width; a space would be narrow.
+
+## Timing
+
+Worst step measured: **5.38 ms**, on the exit with the OPTICAL/COAXIAL name (3.7 ms name plus
+a 23-px band). Per-step times, unit test, 20 steps each:
+
+| Wipe | Steps (ms) | Worst |
+|---|---|---|
+| Entry | 0.3 0.6 0.8 1.0 1.3 1.4 1.6 1.7 1.8 **4.9** 2.5 1.8 1.7 1.6 1.4 1.6 1.0 2.2 0.6 0.3 | 4.88 ms (number box) |
+| Exit, OPTICAL | 0.3 0.6 0.8 1.0 2.3 1.4 3.0 1.7 1.7 1.8 3.8 1.7 **5.4** 1.5 4.3 1.3 1.0 3.0 0.6 0.3 | 5.38 ms (name) |
+| Exit, USB | … 3.2 (name) … 3.8 (status) … **4.3** (format tag, stock 2.9 ms) … | 4.32 ms |
+| Exit, BT | … 4.1 (volume + name) … **4.4** (status) … | 4.45 ms |
+
+In the whole firmware the worst step seen is 4.91 ms (tour, entries) and 5.38 ms (optical
+exit). For comparison, the stock periodic home refresh blocks the main loop for about 45 ms
+every 0.5 s.
+
+## Per input (emulator, Vol+ from home, whole firmware against fast-lcd)
+
+The wipe runs everywhere. The audio states come in the same order as fast-lcd, none more
+than 0.10 s later.
+
+| Situation | Entry and exit | Unmute vs fast-lcd |
+|---|---|---|
+| Bluetooth, no stream (countdown held at 40..50) | both wipe | no unmute in either image |
+| Optical without signal (held at 100) | both wipe | none in either |
+| Headphone output, P2.6 low (held at 300) | both wipe | none in either |
+| USB, 7.4 s after power-on | both wipe | 0.03 s earlier |
+| HDMI, 0.5 s after the switch | both wipe | 0.03 s earlier |
+| USB, 0.05 s after switching from HDMI | both wipe | 0.03 s earlier |
+| USB, unmute due within the wipe | both wipe | 0.02 s earlier |
+| Vol+ during the power-on logo | wipe starts, `post_power_on` cancels it | 0.03 s earlier |
+
+Earlier, because fast-lcd's own 40 ms volume draw loses ticks and the wipe does not.
 
 ## Hooks
 
-Ten hook sites: six in the drawing routines, plus the four places the volume keys
-actually open the volume page.
+Fifteen hook sites: eleven 3-byte hooks, plus the four places the volume keys open the
+volume page. Every stock byte is asserted by `build_patch.py`.
 
 | Address | Stock bytes | Now | What |
 |---|---|---|---|
-| 0x2106 | `12 5D 42` lcall `ui_clear_screen` | `12 9A 6D` lcall `hn_clear` | `ui_render_page`'s page clear. On page 2 it does the accent-edge wipe (via `hn_wipe`); on every other page it falls through to the stock clear |
-| 0x2143 | `02 21 67` ljmp `volpage_render` | `02 9A 5C` ljmp `hn_volpage` | page-2 jump-table entry (`ui_page_table`) — a second way into the volume page, alongside the four sites below |
-| 0x5936 | `AB 07 E5` (start of `volpage_draw_volume`) | `02 99 99` ljmp `hn_draw_volume` | replaces the volume digits/line draw entirely, so knob and remote steps redraw only the number and the line |
-| 0x2A25 | `E4 78 02` (`big_text_render`'s start-x store) | `02 9B 07` ljmp `hn_align_big` | on page 1, moves the stored start x to 16; page 3 (menus) unchanged |
-| 0x3A82 | `E4 78 02` (`small_text_render`'s start-x store) | `02 9B 21` ljmp `hn_align_small` | same, for the status line |
-| 0x5C99 | `02 59 16` ljmp `home_draw_volume` | `02 9A EE` ljmp `hn_home_tail` | `home_refresh`'s tail: draws the volume as stock, then adds the accent bar |
-| 0x0D33 (in `key_volume_up`) | `12 5D 42 7B FF …` | `12 9A 67 80 11` (lcall `hn_enter_vol` ; sjmp 0x0D49) | volume-key entry site A |
-| 0x0DB3 (in `key_volume_up2`) | `12 5D 42 7B FF …` | `12 9A 67 80 11` (lcall `hn_enter_vol` ; sjmp 0x0DC9) | volume-key entry site B |
-| 0x0E5A (in `key_volume_down4`) | `12 5D 42 7B FF …` | `12 9A 67 80 11` (lcall `hn_enter_vol` ; sjmp 0x0E70) | volume-key entry site C |
-| 0x0F02 (in `key_volume_down`) | `12 5D 42 7B FF …` | `12 9A 67 80 11` (lcall `hn_enter_vol` ; sjmp 0x0F18) | volume-key entry site D |
+| 0x2106 | `12 5D 42` lcall `ui_clear_screen` | lcall `hn_clear` | `ui_render_page`'s clear: page 2 starts the entry, page 1 with the volume page on screen starts the exit; otherwise cancel + stock clear |
+| 0x2143 | `02 21 67` ljmp `volpage_render` | ljmp `hn_volpage` | page-2 jump-table entry |
+| 0x5936 | `AB 07 E5` | ljmp `hn_draw_volume` | number and line; only recorded during a wipe |
+| 0x2A25 | `E4 78 02` | ljmp `hn_align_big` | page 1: stored start x 16 |
+| 0x3A82 | `E4 78 02` | ljmp `hn_align_small` | the same, status line |
+| 0x5C99 | `02 59 16` | ljmp `hn_home_tail` | `home_refresh`'s tail: volume as stock, then the accent bar |
+| 0x5B2A | `12 33 25` lcall `main_tick_tasks` | lcall `hn_tasks` | the driver: one wipe step after each tick |
+| 0x4081 | `12 5C 8B` lcall `home_refresh` | ljmp `hn_hold` | periodic refresh held back during a wipe |
+| 0x5D42 | `12 5C BC` (`ui_clear_screen`'s first call) | ljmp `hn_cancel` | every stock clear cancels a wipe |
+| 0x4A85 | `E5 47 14` (`home_draw_input_name`) | ljmp `hn_name_guard` | a name drawn during an exit: the whole home first, then the name |
+| 0x3FF8 | `C2 0B C2` (`clr 0x21.3; clr 0x20.6`) | ljmp `hn_flag_path` | the refresh's flag path during a wipe: flags and page as stock, the 0x412F fill skipped |
+| 0x0D33, 0x0DB3, 0x0E5A, 0x0F02 | `12 5D 42 7B FF …` | `12 A0 B8 80 11` (lcall `hn_enter_vol` ; sjmp site+0x16) | volume-key entry sites A-D |
 
-The four volume-key sites are inline in the key handlers, right after `mov 0x45,#0x02`
-(labelled `volpage_enter_a`..`d` in `SmslAo300Labels.java`): stock, each ran
-`lcall ui_clear_screen`, loaded "volume" (0x9347) via `small_text_load` (0x4D3A) and
-drew it with `small_text_render` (0x3A53) at y 135. The patch replaces the first 5
-bytes with `lcall hn_enter_vol ; sjmp site+0x16`, which skips straight past that stock
-caption into the same wipe-then-static-page path the 0x2106/0x2143 hooks use. This is
-the path the amp actually uses to enter the volume page; the 0x2106/0x2143 hooks stay
-in as a second way in (the page-2 renderer entry, `volpage_render` at 0x2167).
+## Memory
 
-Code range: `features/house-numerals/build/flash_house_numerals.bin` adds 827 bytes of
-patch code at 0x9800..0x9B3A (fast-lcd's own patch code ends at 0x976B), plus a 14-byte
-version string at 0x9B3B. Image length 39753 bytes, well under the 0xF400 code/EEPROM
-split. `house_numerals.asm` is the generated listing.
-
-XDATA 0x0100..0x010F (new state; the EEPROM sectors and everything fast-lcd/direct-select
-use stay untouched):
+- **Code:** 4068 bytes of patch code at 0x9800..0xA7E3, plus the version string at 0xA7E4.
+  Image length 42997 bytes, under the 0xF400 split. `house_numerals.asm` is the generated
+  listing.
+- **XDATA** 0x0100..0x0155. The EEPROM sectors and everything fast-lcd/direct-select use
+  stay untouched.
 
 | Address | Name | Holds |
 |---|---|---|
-| 0x0100:0x0101 | `HN_THEME` | saved RAM 0x48:0x49 (theme colour), while accent/white ink is in use |
-| 0x0102:0x0103 | `HN_ACC` | the accent colour for this call (theme colour, or SMSL orange on White) |
-| 0x0104:0x0105 | `HN_N` | `hn_fill`'s pixel count, hi then lo |
-| 0x0106:0x0107 | `HN_C` | `hn_fill`'s colour, hi then lo (right after `HN_N`) |
-| 0x0108:0x0109 | `HN_SP` | `hn_text`'s string pointer |
-| 0x010A:0x010B | `HN_TX` | `hn_text`'s current x |
-| 0x010C | `HN_TY` | `hn_text`'s y |
-| 0x010D | `HN_VOL` | the volume value being drawn (0..60, clamped) |
-| 0x010E:0x010F | `HN_WX` | `hn_wipe`'s current edge x, hi then lo |
+| 0x0100, 0x0102 | `HN_N`, `HN_C` | `hn_fill`'s pixel count and colour |
+| 0x0104 | `HN_VOL` | the volume shown (0..60) |
+| 0x0105..0x0107 | `HN_NUM` | its two characters and a NUL (tens blank: 0x7F) |
+| 0x0108 | `HN_MODE` | 0 idle, 1 wipe in, 2 wipe out |
+| 0x0109 | `HN_VF` | volume-page elements on screen (name, divider, VOL, number, line) |
+| 0x010A | `HN_HF` | home elements drawn by the exit (icon, volume, bar, name, format, EQ, status) |
+| 0x010B | `HN_STEP` | step 0..20 |
+| 0x010C | `HN_SBUF` | the stock refresh has loaded the status buffer during this exit |
+| 0x010D, 0x010F | `HN_X`, `HN_XP` | edge x, previous x |
+| 0x0111 | `HN_LIM` | this step's reveal limit |
+| 0x0113, 0x0115 | `HN_D0`, `HN_D1` | damaged columns (band and edge) |
+| 0x0117, 0x0119 | `HN_B0`, `HN_B1` | the band |
+| 0x011B, 0x0123 | `HN_NAMER`, `HN_STATR` | right end of the home name / status line |
+| 0x011D, 0x011F, 0x0121 | `HN_S0`, `HN_S1`, `HN_SPL` | `hn_line_seg`: columns, 40 + 4 * volume |
+| 0x0130..0x0140 | `FP_*` | `hn_paint`'s parameters |
+| 0x0141..0x0155 | `FP_*` | `hn_paint`'s work area |
+
+- **Stack:** the tour (with two entries and two exits) was run with a canary above SP. The
+  deepest idata used is 0xAF, the same as fast-lcd.
 
 ## Emulator results
 
-Running `python3 tools/run_tests.py house-numerals` gives **ALL PASS**, 76.3 s wall.
+`python3 tools/run_tests.py` gives **ALL PASS** for every feature, 116 s wall (house-numerals
+116 s, most of it the sweep). `emu_test.py` has four groups: `unit`, `tour`, `int1`, `sweep`;
+`unit tour` alone runs in about 50 s.
 
-- Image diff: only the ten hooks above (plus the version pointer) differ from fast-lcd
-  inside the base image range; the gap up to 0x9800 is left erased; the image ends at
-  39753 bytes, below 0xF400.
-- `hn_draw_volume` (the 0x5936 hook): every step 0..60, in three themes, redraws only the
-  number box and the line; the fill loop runs at 9.0 clocks per pixel (at most 10
-  allowed).
-- `hn_clear`'s wipe: the edge sweeps from x 318 to 0, 2 px at a time, black behind it,
-  and takes 47 ms (the test allows 30-200 ms).
-- `hn_enter_vol` (the four volume-key sites): each runs the same wipe, then the static
-  page, with the stock "volume" caption skipped, at all four addresses.
-- Left-aligned text (0x2A25/0x3A82): page 1 text moves to x 16 with the same glyphs and
-  cleared margins; page 3 (menus) stays centred, unchanged.
-- Whole-firmware tour, lockstep with fast-lcd (real Timer0 ISR, real main loop):
+- **Image diff:** only the fifteen hook sites (plus the version pointer) differ from
+  fast-lcd inside the base image. The labels in `SmslAo300Labels.java` match this build.
+- **Painter:** see above. `hn_fill` runs at 9.0 clocks per pixel.
+- **`hn_draw_volume`:** every value 0..60 in three themes. It records and skips drawing
+  during a wipe unless the box or line is revealed.
+- **`hn_step`, unit:** starting from a pattern screen, each of the 20 entry steps checks:
+  - x from the table;
+  - the old page left of the edge, then the accent edge;
+  - the volume page right of it with only the passed elements (and the line in parts);
+  - the element flags.
 
-  | Step | fast-lcd drawing | house-numerals drawing |
-  |---|---|---|
-  | power_on | 0 ms | 0 ms |
-  | vol_up | 40 ms | 60 ms |
-  | vol_up2 | 10 ms | 10 ms |
-  | back_home | 0 ms | 0 ms |
-  | source | 60 ms | 60 ms |
-  | menu | 110 ms | 110 ms |
-  | menu_down | 90 ms | 90 ms |
-  | menu_timeout | 0 ms | 0 ms |
-  | hdmi | 80 ms | 80 ms |
-  | vol_down | 40 ms | 60 ms |
-  | vol_timeout | 0 ms | 0 ms |
-  | standby | 20 ms | 20 ms |
+  The same for the exit on three inputs, including the status-buffer rule. Both end
+  pixel-identical to `hn_volpage` / the stock home refresh. Reversals after steps 1, 5, 10
+  and 19 each way end on the right page; the exit reversal redraws with the new volume.
+- **Logic:** `hn_enter_vol` and `hn_clear` in every mode; `hn_cancel` from both modes;
+  `hn_hold` in each mode; `hn_name_guard`; `hn_tasks` (a step only after a tick, only with
+  0x4F = 1); a bogus mode stops.
+- **Tour** (whole firmware, lockstep with fast-lcd, real Timer0 ISR):
+  - each step lands on the same page, power, volumes, input and output;
+  - home screens as fast-lcd outside our bands, with the bar; volume pages exactly as
+    `hn_volpage`; menus and standby identical;
+  - both entries and both exits take 20 steps with the table's x, and the screen at entry
+    step 10 is checked;
+  - the volume write comes before the first step;
+  - the stock home refresh is held during the exit and resumes 0.41 s after it, drawing the
+    same pixels;
+  - home comes back at the same moment as fast-lcd (within 0.05 s);
+  - 160 audio states in the same order, none more than 0.10 s later; same argument sets for
+    every audio writer.
+- **Per input:** the eight scenarios above, each checking entry, exit, screens, the unmute
+  and the audio.
+- **Keys during a wipe:** 14 scenarios, each with the final screens and audio checked
+  against fast-lcd:
+  - Vol+ during the entry;
+  - Vol+ and Vol- during the exit (turned round);
+  - Menu, Source, Power and direct-select (HDMI), each during the entry and during the exit;
+  - Source late in the exit (step 18);
+  - the BT key (IR 0x0E) during the exit on Bluetooth;
+  - Source with 0x21.3 set during the exit.
 
-  Every step: same page, power, volumes, input and output as fast-lcd; the home screen
-  is pixel-identical to fast-lcd outside the accent bar and the two left-aligned bands;
-  the accent bar is 0xFC43 (White theme) at 18,114; menu screens are pixel-identical to
-  fast-lcd; `back_home` and `vol_timeout` return home within 0.1 s of fast-lcd (1.49 s
-  and 1.52-1.54 s).
-- Audio state: 160 audio states, in the same order as fast-lcd, none more than 0.10 s
-  later; the backlight switches the same way; every audio writer (`dac_i2c_write`,
-  `expander_write`, `input_set_hw`, `njw1194_write`) receives the same argument sets.
-- IR sweep: 256 commands x 5 states (standby, home, volume, volume_hp, menu), every
-  screen compared against fast-lcd (home outside our bands, volume against
-  `hn_volpage`'s own reference render, everything else pixel-identical); sweep runs in
-  71 s.
+  For keys on page 1 during the exit, the screen 0.15 s after the key must equal the stock
+  refresh for that state, and so must the screen at the end.
+- **Source, then Vol+ 0.2, 1.0 or 2.0 s later** (the refresh's flags still set, so its flag
+  path runs mid-exit): 20 + 20 steps. Two ticks after the exit the screen is a whole home,
+  and later it matches fast-lcd.
+- **Panel scan:** see "A step" above.
+- **INT1** (`int1`, 100 whole-firmware runs per image, 7 s):
+  - Setup: USB, settled, Vol+ from home with INT1's RAM effects injected at the press
+    (0x21.4, 0x43:0x44 = 30, 0x4E = 0xFF), the press moved in 1 ms steps across one
+    10-tick format-poll period.
+  - Results: the DAC reconfiguration (0x46A0) always comes before the unmute, and the unmute
+    is 0.02-0.03 s earlier than fast-lcd.
+  - The audio states match in order and time at 99 offsets. At offset 66 the press and a
+    format poll fall in the same tick, and the two images take them in a different order:
+    fast-lcd the key first, hn4 the poll first. Both orders are stock behaviour: from 65 to
+    72 ms both images take the poll first. The main loops are just not in the same phase, so
+    that edge is one millisecond apart. The test lists such offsets and allows at most two.
+- **IR sweep:** 256 commands x 5 states, against fast-lcd, all screens as expected, 62 s.
+- **Audio comparison at the end of a run:** both images stop at the same clock. A state
+  fast-lcd reaches in the last 0.10 s may therefore still be to come in hn4, which is up to
+  0.10 s later by design of the check. The comparison requires the states up to 0.10 s
+  before the end to match one for one, and the rest to continue the same sequence.
+- **Videos:** `tools/emu/panel_video.py features/house-numerals/build/flash_house_numerals.bin OUT`
+  shows the entry, two redraws and the exit.
+  - `--press 0.5:0x13 --press 5.0:0x0A --seconds 8.5`: Bluetooth.
+  - `--press 0.5:0x0A --press 2.6:0x0A --seconds 5.5`: an exit turned round by Vol+.
 
 ### Coverage gaps
 
-- The tour reaches volume-entry sites 0x0D33 (`key_volume_up`) and 0x0F02
-  (`key_volume_down`) only. Sites 0x0DB3 (`key_volume_up2`) and 0x0E5A
-  (`key_volume_down4`) are covered by the per-site unit test (`test_enter_vol`) only —
-  the dispatch table at 0x0CAB reaches them from key codes 0x5A/0x5B (bit 0x40:
-  probably a held key / remote repeat, not confirmed).
-- The sweep's layout checks (home bands, accent bar, volume-page reference) apply only
-  while the amp is powered; in standby both screens go blank identically and the check
-  falls back to raw pixel equality.
+- The tour reaches volume-entry sites 0x0D33 (`key_volume_up`) and 0x0F02 (`key_volume_down`)
+  only. 0x0DB3 and 0x0E5A (key codes 0x5A/0x5B, probably a held key) are covered by the
+  per-site unit test.
+- `key_59` (0x0F62) and `key_output_toggle` (0x1006) draw home parts on page 1 without the
+  name path or a clear, and no NEC command reaches them in the emulator. If they come during
+  an exit, they draw over the half-revealed screen until the exit reaches them. The exit's
+  reveal then redraws the same parts, and the flag they set only reaches `hn_flag_path`. No
+  test presses them.
+- **Source or direct-select during an exit differ from fast-lcd in their transient content,
+  for up to about 2.9 s.**
+  - hn4.1 shows the whole home with the new name at once.
+  - fast-lcd, back home a moment earlier, may not have drawn its home yet, and the Source
+    key pushes its next refresh back 2 s. Until then it shows only the name and the status
+    line.
+  - Pressed after fast-lcd's first refresh, fast-lcd shows the whole home too. Both images
+    end on the same screen (tested 2.5 s later).
+- **Input 7** (no name in `home_draw_input_name`'s table; apparently unused) draws a blank
+  name after any volume page. The exit's start clears XDATA 0x35 as stock `ui_clear_screen`
+  does at the return home, and stock then also renders the empty buffer.
 
 ## Risks
 
-- **Panel timing: same as fast-lcd.** `hn_fill` and `hn_digit2x` use fast-lcd's byte
-  timing (the tuned WR pulse `features/blit-test` proved on the panel); no new bus
-  pattern is introduced.
-- **Main-loop timers: the volume page draws slower than in fast-lcd.** `vol_up` and
-  `vol_down` take 60 ms to settle against fast-lcd's 40 ms (the table above). The cost is
-  `hn_wipe`: it takes 46.6 ms against fast-lcd's 9.9 ms stock clear, while `hn_vol_static`
-  takes 7.4 ms and the volume draw at 0x5936 takes 3.7 ms in both images. The first volume
-  write after a key press lands about 37 ms later than on fast-lcd. The tour's audio-state
-  check still shows the same 160 states in the same order, none more than 0.10 s later
-  than fast-lcd, and `back_home` / `vol_timeout` return home within 0.1 s of fast-lcd, so
-  the slower draw does not visibly displace the timers that pace power-on, mutes or the
-  return-home countdown.
-- **RAM 0x48:0x49 (the theme colour) is changed while drawing.** `hn_begin` saves it to
-  XDATA `HN_THEME` and `hn_accent`/`hn_white` overwrite it so the stock glyph painters
-  pick up the accent or white ink; `hn_end` restores it before returning. Every hn_*
-  drawing path (`hn_draw_volume`, `hn_vol_static`, `hn_clear`'s wipe, `hn_home_tail`) is
-  bracketed this way, and the tests check the colour is back afterwards in every case.
+- **Panel timing: same as fast-lcd.** `hn_fill` and `hn_paint` use fast-lcd's byte timing (the
+  WR pulse `features/blit-test` proved on the panel).
+- **The main loop now runs during the wipes.** A step is at most 5.4 ms, after the tick's own
+  work. The volume keys, format poll, unmute and re-mute run as on fast-lcd (tested
+  against it, including the INT1 case the hn3 review raised).
+- **Stock routines called from a step** (`home_draw_output_icon`, `home_draw_volume`,
+  `home_draw_format_tag`, `home_draw_eq_tag`, `big_text_load`) run in the main loop, as
+  they do from `home_refresh_periodic`. The stack peak is unchanged (0xAF).
 - **Recovery: unchanged.** The reset vector, the standby key handler (0x59B2) and
   `read_key`'s Source-in-standby jump to the bootloader (0x3DB8) are untouched.
 
 ## What to look for on the amp
 
-- Turning the knob or pressing Vol+/Vol-: the accent edge sweeps in from the right as
-  the volume page opens. There is no exit wipe; home returns through the stock fast
-  clear.
-- Digits on the volume page: sharp and unbroken at 2x size (60 x 64), no torn columns or
-  swapped bytes (a dropped byte on the panel bus shows as a colour shift, as noted in
-  `features/blit-test`'s README).
-- Accent colour: SMSL orange (0xff8a1f) on the White COLOR theme, the COLOR tint on
-  every other theme, on both the home accent bar and the volume page's "VOL" label,
-  divider is not tinted (fixed dark grey, 0x2104), and the position line.
-- Home screen: input name and status line left-aligned at x 16, not centred.
-- Menus: unchanged, still centred.
-- Volume page returns home 2 s after the last step, same as stock.
+- Vol+/Vol- on home: the volume changes at once. The accent edge sweeps in from the right,
+  slow at the ends and fast in the middle, about 200 ms. The number appears when the edge
+  has passed it, then VOL and the divider, then the line and the name.
+- 2 s after the last key: the edge sweeps back to the right. The icon, volume and bar
+  appear first, then the status line and name, the format tag, and the EQ tag last. The
+  finished screen must not change when the periodic refresh comes about 0.4 s later.
+- Vol+ while the edge is going back: it turns round and the volume page comes back with the
+  new value.
+- Menu, Source, Power or a direct input key during either wipe: the wipe stops and the
+  stock screen follows, without leftovers of the volume page.
+- On Bluetooth, optical without signal, headphones, right after power-on or an input
+  switch: the same wipes; the unmute comes at the same moment as without a key.
+- Digits sharp at 2x, no torn columns or colour shifts (a dropped bus byte shows as a
+  colour shift, see `features/blit-test`).
+- Accent: SMSL orange on the White theme, the theme colour otherwise.
 
 ## How to go back
 
@@ -184,5 +504,7 @@ input selection over IR).
 
 - `build_patch.py` builds `build/flash_house_numerals.bin` from
   `features/fast-lcd/build/flash_fastlcd.bin` and writes the listing
-  `house_numerals.asm`.
-- `emu_test.py` runs the unit tests, the full-firmware tour and the IR sweep above.
+  `house_numerals.asm`. It uses the text instructions added to `tools/patch/asm51.py`
+  (`Asm.op`, `#hi(label)` / `#lo(label)`).
+- `emu_test.py` runs the unit tests, the whole-firmware scenarios, the INT1 sweep and the IR
+  sweep above.
