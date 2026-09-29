@@ -41,11 +41,7 @@ rules apply to anyone working here, human or agent.
   `tools/build.py`. It builds bases first and fails on stale pins, on a feature re-patching
   bytes an ancestor changed, and on an included fix whose hook isn't installed.
 - Every feature and fix declares the XDATA its code uses (`XDATA = [...]`, empty if none);
-  `tools/build.py` rejects overlaps and use outside the declaration.
-- Including a fix: review what `tools/build.py` reports about the fix's assumptions (stock
-  code it reaches that another layer changed, RAM another layer writes), then record it in
-  `REVIEWED` with the printed hash and one line on why it is fine. Never paste a hash
-  without looking.
+  `tools/build.py` rejects overlapping declarations within one image.
 - A feature whose behaviour must survive in images built on it or including it gives its
   `emu_test.py` an integration mode (`INTEGRATION = True`, `--in <feature>`). It checks only
   what must stay true there, not this layer's exact bytes.

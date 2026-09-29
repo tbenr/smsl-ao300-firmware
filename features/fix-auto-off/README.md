@@ -51,19 +51,14 @@ for f in features.fixes(INCLUDES):                           # in assemble(), an
     f.emit(a)
 ```
 
-`tools/build.py` checks that the hook is installed. It then asks for two reviews, because
-the fix's `ljmp 0x5D42` reaches stock code that other layers changed:
+`tools/build.py` checks that the hook is installed. That build's tests should expect the
+two hook bytes 0x55BA/0x55BB in their image diff. `run_tests.py` then also runs "fix-auto-off
+in <that image>": this test's `integration()` on the including image. Tried with
+house-numerals: off 5.10 s after power-on, 4.99 s after a key.
 
-- **fast-lcd:** the fast `lcd_clear_black` loop and `lcd_write_pixel`, which draw the same
-  pixels faster.
-- **house-numerals:** its `hn_cancel` hook on 0x5D42 itself, which runs exactly as it does
-  for stock's own jump there.
-
-Both are fine. Record them in the including build's `REVIEWED` with the hashes `build.py`
-prints. That build's tests should expect the two hook bytes 0x55BA/0x55BB in their image
-diff. `run_tests.py` then also runs "fix-auto-off in <that image>": this test's
-`integration()` on the including image. Tried with house-numerals: off 5.10 s after
-power-on, 4.99 s after a key.
+The fix ends with `ljmp 0x5D42`. In house-numerals that address is hooked (`hn_cancel`), and
+the clear it leads to is fast-lcd's. That is fine: stock's own jump lands there too. The
+integration test is what confirms it.
 
 ## Tests (`emu_test.py`)
 

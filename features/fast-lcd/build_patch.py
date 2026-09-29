@@ -94,12 +94,6 @@ def build(a):
     a.i("ret", 0x22)
 
 
-def assemble():
-    a = Asm(CODE_ADDR)
-    build(a)
-    return a.resolve(), a.labels, a
-
-
 def main():
     src = sys.argv[1] if len(sys.argv) > 1 else BASE_IMAGE
     img = bytearray(open(src, "rb").read())
@@ -111,7 +105,9 @@ def main():
     assert img[0x51EE:CLEAR_LOOP] == CLEAR_WINDOW, "lcd_clear_black window setup not as expected"
     assert len(img) <= CODE_ADDR
 
-    code, _, a = assemble()
+    a = Asm(CODE_ADDR)
+    build(a)
+    code = a.resolve()
     img += b"\xFF" * (CODE_ADDR - len(img))
     img += code
 

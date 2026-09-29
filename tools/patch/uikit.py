@@ -251,7 +251,7 @@ class Kit:
             a.L(name)
             a.data("db %d,%d,%d" % (w, bpc, bpg), [w, bpc, bpg])
             a.data("dw 0x%04X" % data, [data >> 8, data & 0xFF])
-            a.i("dw %s" % mapl, hi8(mapl), lo8(mapl), data=True)
+            a.i("dw %s" % mapl, hi8(mapl), lo8(mapl))
             a.data("db %d" % nadv, [nadv])
         for name, (w, bpc, bpg, data, mapl, nadv, cmap, narrow) in FONTS.items():
             a.comment("%s: glyph index per character 0x20..0x7F, bit 7 = narrow" % mapl)

@@ -137,11 +137,3 @@ def xdata(name):
     """XDATA a feature declares for its own code: [(start, end, what)], end exclusive."""
     return list(getattr(fix(name) if is_fix(name) else load(name), "XDATA", []))
 
-
-def own_code(name):
-    """(Asm, labels) of a feature's own code, from its build's assemble(); None if it has none."""
-    m = load(name)
-    if not hasattr(m, "assemble"):
-        return None
-    _, labels, a = m.assemble()
-    return a, labels

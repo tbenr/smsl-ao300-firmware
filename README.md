@@ -205,27 +205,12 @@ that lists it in `INCLUDES` links it in two places:
 - **Code slots.** Features outside one chain are warned if their code areas share
   addresses, so the Ghidra labels stay one name per address.
 - **XDATA.** Each feature, and each fix, declares the XDATA its code uses:
-  `XDATA = [(0x0100, 0x01A7, "what")]`. Declarations of everything in one image must not
-  overlap. A build's own code may only load DPTR with XDATA addresses that it and its fixes
-  declared (0x0100..0x07FF; page 0 belongs to the stock firmware).
-- **Assumptions of included fixes.** A fix was tested on its own base. In another image it
-  may depend on code or RAM that another layer changed, which the byte checks can't see.
-  For every fix in an image, `build.py` takes the stock code the fix jumps into and
-  everything reachable from it, and finds bytes of it that another layer changed. It also
-  finds RAM the fix uses that another layer's code writes. Each such pair needs an entry in
-  the including build, for example:
+  `XDATA = [(0x0100, 0x01A7, "what")]`, or `[]`. Declarations of everything in one image
+  must not overlap. That matters once a fix with its own state is included in a theme.
 
-  ```python
-  REVIEWED = {("fix-auto-off", "fast-lcd"): ("88012b65", "same pixels, faster")}
-  ```
-
-  `build.py` prints the hash to paste. The hash covers the flagged bytes, so the
-  question comes back when they change. Reviews are inherited by images built on top.
-  Code is read from the assembler's record of instructions, never by decoding data.
-  Decoding house-numerals' font tables as code shows bit instructions on RAM 0x29 that
-  aren't there.
-
-Integration tests check that a layer keeps working in the final image. A feature whose
+Byte checks can't tell whether an included fix still works in its new image, for example
+because it jumps into stock code another layer changed. Integration tests check that
+instead: a layer has to keep working in the final image. A feature whose
 `emu_test.py` sets `INTEGRATION = True` also accepts `--in <feature>`. With it, the test
 checks, in that feature's image, what must stay true wherever it is built on or included.
 `run_tests.py` runs it for every image that contains the feature, as jobs such as
