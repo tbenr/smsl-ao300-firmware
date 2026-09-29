@@ -412,6 +412,15 @@ Things still worth investigating to complete the picture of what the MCU code ca
   byte strobe sequence, would settle it. The redraw-skip workaround sidesteps it.
 - **XRAM size.** 2 KB assumed from the part name; confirm before placing buffers above
   0x0400.
+- **Audio level metering.** The MCU sees no audio level today. The stock firmware never
+  touches the ADC registers (ADC_CONTR 0xBC, ADC_RES/ADC_RESL 0xBD/0xBE, ADCCFG 0xDE),
+  and no chip on the audio path reports one: the NJW1194 bus is write-only, the CS43131
+  and PCM9211 are only configured or read for ID / sample rate, the MA5332MS has no
+  interface, and the XMOS messages carry format only. The one level-like input is the
+  binary signal presence per input (0x5232). A meter would need a hardware tap (rectifier
+  + RC envelope from an analogue node such as the NJW1194 output) into a spare MCU pin.
+  Open: whether the STC8C2K64S2 has an ADC at all (datasheet), and which pins are free
+  (see the expander pin map).
 
 ## Key facts about the firmware
 
