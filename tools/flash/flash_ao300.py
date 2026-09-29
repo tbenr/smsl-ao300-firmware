@@ -65,6 +65,7 @@ KNOWN_IMAGES = {
     "2c4809ab470ba0d161c460ffa69ac57fc5b54f42536c2fdbc2077fad00b920b6": "fast-lcd + House Numerals v3 (wipe also on Bluetooth and no-signal inputs, counts the unmute countdown during it), 'v1.4 tbenr hn3' (features/house-numerals/build/flash_house_numerals.bin)",
     "86aacb8be3f2d811a3bacab3c4316800eed582f07a3682943016ee82e0436623": "fast-lcd + House Numerals v4 (non-blocking eased wipes in and out of the volume page, text painter), 'v1.4 tbenr hn4' (features/house-numerals/build/flash_house_numerals.bin)",
     "5eddb6df9dc63b15a4cfaa920ba2bb745eaf14bec1a0f2b89e14d2514834bf8d": "fast-lcd + House Numerals v4.1 (edge drawn before the band, mid-exit stock redraws fixed), 'v1.4 tbenr hn4.1' (features/house-numerals/build/flash_house_numerals.bin)",
+    "f9b5d14d39a2437e5a7b92089101eb9c71e166df5fb37960abb370ebf420eb01": "direct-select + Auto OFF armed after power-on (AO300 PRO V1.2 fix), 'v1.4 tbenr aof1' (features/fix-auto-off/build/flash_fixautooff.bin)",
 }
 
 
