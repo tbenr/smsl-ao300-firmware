@@ -24,8 +24,8 @@ public class SmslAo300Labels extends GhidraScript {
         {0x0006, "delay_30"},   {0x000E, "delay_6"},   {0x0016, "delay_30b"},
         {0x001E, "delay_1"},    {0x0BB4, "dispatch_key"},
         {0x0CD2, "key_power_off"},     {0x0CE9, "key_exit_to_home"},
-        {0x0D03, "key_volume_up"},     {0x0D83, "key_volume_up2"},    // +2 steps (repeat)
-        {0x0E2A, "key_volume_down4"},  // -4 steps (repeat); 0x0ED2 is the -1 handler
+        {0x0D03, "key_volume_up"},     {0x0D83, "key_volume_up2"},    // +2 steps; key codes 0x5A/0x5B (bit 0x40: probably a held key / remote repeat, not confirmed)
+        {0x0E2A, "key_volume_down4"},  // -4 steps; key codes 0x5A/0x5B (bit 0x40: probably a held key / remote repeat, not confirmed); 0x0ED2 is the -1 handler
         {0x0ED2, "key_volume_down"},
         {0x0F62, "key_59"},            {0x0F93, "key_source_next"},
         {0x0FC8, "key_source_prev"},   {0x1006, "key_output_toggle"},

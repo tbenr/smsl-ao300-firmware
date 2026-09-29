@@ -82,8 +82,7 @@ use stay untouched):
 
 ## Emulator results
 
-`python3 tools/run_tests.py house-numerals` (full output in
-`.superpowers/sdd/2026-09-28-house-numerals/final-tests.txt`): **ALL PASS**, 76.3 s wall.
+Running `python3 tools/run_tests.py house-numerals` gives **ALL PASS**, 76.3 s wall.
 
 - Image diff: only the ten hooks above (plus the version pointer) differ from fast-lcd
   inside the base image range; the gap up to 0x9800 is left erased; the image ends at
@@ -132,8 +131,8 @@ use stay untouched):
 - The tour reaches volume-entry sites 0x0D33 (`key_volume_up`) and 0x0F02
   (`key_volume_down`) only. Sites 0x0DB3 (`key_volume_up2`) and 0x0E5A
   (`key_volume_down4`) are covered by the per-site unit test (`test_enter_vol`) only —
-  what actually triggers a `+2`/`-4` volume step (a remote repeat code, a front-panel
-  encoder detent, or something else) isn't known yet.
+  the dispatch table at 0x0CAB reaches them from key codes 0x5A/0x5B (bit 0x40:
+  probably a held key / remote repeat, not confirmed).
 - The sweep's layout checks (home bands, accent bar, volume-page reference) apply only
   while the amp is powered; in standby both screens go blank identically and the check
   falls back to raw pixel equality.
@@ -144,12 +143,14 @@ use stay untouched):
   timing (the tuned WR pulse `features/blit-test` proved on the panel); no new bus
   pattern is introduced.
 - **Main-loop timers: the volume page draws slower than in fast-lcd.** `vol_up` and
-  `vol_down` take 60 ms to settle against fast-lcd's 40 ms (the table above), because
-  `hn_vol_static` draws more (name, divider, "VOL" label) than the stock volume page's
-  two digits and caption. The tour's audio-state check still shows the same 160 states
-  in the same order, none more than 0.10 s later than fast-lcd, and `back_home` /
-  `vol_timeout` return home within 0.1 s of fast-lcd, so the slower draw does not visibly
-  displace the timers that pace power-on, mutes or the return-home countdown.
+  `vol_down` take 60 ms to settle against fast-lcd's 40 ms (the table above). The cost is
+  `hn_wipe`: it takes 46.6 ms against fast-lcd's 9.9 ms stock clear, while `hn_vol_static`
+  takes 7.4 ms and the volume draw at 0x5936 takes 3.7 ms in both images. The first volume
+  write after a key press lands about 37 ms later than on fast-lcd. The tour's audio-state
+  check still shows the same 160 states in the same order, none more than 0.10 s later
+  than fast-lcd, and `back_home` / `vol_timeout` return home within 0.1 s of fast-lcd, so
+  the slower draw does not visibly displace the timers that pace power-on, mutes or the
+  return-home countdown.
 - **RAM 0x48:0x49 (the theme colour) is changed while drawing.** `hn_begin` saves it to
   XDATA `HN_THEME` and `hn_accent`/`hn_white` overwrite it so the stock glyph painters
   pick up the accent or white ink; `hn_end` restores it before returning. Every hn_*
@@ -161,8 +162,8 @@ use stay untouched):
 ## What to look for on the amp
 
 - Turning the knob or pressing Vol+/Vol-: the accent edge sweeps in from the right as
-  the volume page opens, and back out (via `hn_wipe` again) is not built yet — the
-  page returns home through the stock fast clear.
+  the volume page opens. There is no exit wipe; home returns through the stock fast
+  clear.
 - Digits on the volume page: sharp and unbroken at 2x size (60 x 64), no torn columns or
   swapped bytes (a dropped byte on the panel bus shows as a colour shift, as noted in
   `features/blit-test`'s README).
