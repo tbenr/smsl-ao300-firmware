@@ -41,8 +41,9 @@ Earlier images:
 
 ## Status
 
-hn7: emulator-verified (all tests pass, including "fix-auto-off in house-numerals"), not yet
-tried on the amp.
+hn7: emulator-verified (all tests pass, including "fix-auto-off in house-numerals"). Tried on
+the amp on 2026-09-29: looks good, and with Dimmer on Auto OFF the display goes dark after a cold
+power-up.
 
 hn6.1: emulator-verified (all tests pass, including "fix-auto-off in house-numerals"), not
 yet tried on the amp.

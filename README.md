@@ -271,11 +271,13 @@ hn6 (`v1.4 tbenr hn6`) has them larger, sized in `features/house-numerals/sizing
 emulator-verified and not yet tried on the amp. hn6.1 (`v1.4 tbenr hn6.1`) is hn6 with
 fix-auto-off included, so Dimmer Auto OFF also times out after a cold power-up. hn7
 (`v1.4 tbenr hn7`) is hn6.1 with the sizes redone in `sizing.html` (status line 28 px, name
-54, tags 16). Both are emulator-verified, including the fix's integration test, and not yet
-tried on the amp.
+54, tags 16). Both are emulator-verified, including the fix's integration test. hn7 was tried on
+the amp on 2026-09-29: it looks good, and Auto OFF times out after a cold power-up.
 
-Built and emulator-tested, not yet tried on the amp: `features/fix-auto-off/build/flash_fixautooff.bin`
-(`v1.4 tbenr aof1`), direct-select plus the PRO's Auto OFF power-on fix.
+Verified on the amp on 2026-09-29, as part of hn7: the Auto OFF fix (`features/fix-auto-off`). With
+Dimmer on Auto OFF the display goes dark after a cold power-up. Its standalone image
+`features/fix-auto-off/build/flash_fixautooff.bin` (`v1.4 tbenr aof1`, direct-select plus the
+fix) has not been flashed.
 
 ## What the custom firmware adds
 
