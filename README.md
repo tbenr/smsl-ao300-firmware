@@ -270,6 +270,38 @@ Not in the kit yet: the wipe's step engine and page-element model (still in hous
 shapes (dots, arcs, 7-segment), per-pixel transitions, and a y clip for `uk_text` (for text
 that slides).
 
+### Sizing a theme's home screen
+
+House Numerals takes its home layout from `features/house-numerals/layout.json`: every
+element's font (by raster id), position, the tag boxes, the status colour and the bar.
+`features/house-numerals/sizing.html` edits it. The page shows the home exactly as the
+firmware draws it (same rasteriser, packing and anti-aliasing; checked pixel for pixel against
+the emulator). It also shows each text's cap height on the panel in millimetres and each
+font's exact size in flash, and flags overlaps and texts wider than the screen.
+
+1. Start the font bench, a local server for the page (127.0.0.1 only; it builds nothing):
+
+       python3 tools/fonts/rasterize.py
+
+2. Open the sizing page at the address it prints
+   (`http://127.0.0.1:8767/features/house-numerals/sizing.html`). Pick a starting point or
+   `layout.json`, set the amp's state (input, status, tags, volume, mute, tint) and move
+   the sliders until the checks under the screen are clear.
+3. Press **Save layout and fonts**. It writes the fonts at the chosen sizes
+   (`tools/fonts/raster/<id>.json`, added to `tools/fonts/specs.json`) and `layout.json`.
+4. Rebuild and test by hand:
+
+       python3 features/house-numerals/build_patch.py
+       python3 tools/run_tests.py house-numerals
+
+5. Before flashing, add the new image's sha256 (the build prints it) to `KNOWN_IMAGES` in
+   `tools/flash/flash_ao300.py`, set a new `VERSION_TEXT` in `build_patch.py`, and commit
+   `layout.json` with the new rasters.
+
+The build stops with a message when `layout.json` names a font that has no raster, and asserts
+that the elements don't overlap. The page needs the font bench to save; opened any other way it
+previews only.
+
 ## Testing
 
 `emu_test.py` runs the patched image's IR-translate routine in a small 8051 interpreter:
