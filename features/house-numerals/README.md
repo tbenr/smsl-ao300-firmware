@@ -2,13 +2,16 @@
 
 A reduced build of study 3 ("House Numerals", after SMSL's SU and DO series screens) from
 `features/ui-theme/ui_themes.html`. Built on top of fast-lcd. The RESET page shows
-`v1.4 tbenr hn4.1`.
+`v1.4 tbenr hn5`.
 
-This is image hn4.1. The wipe into the volume page no longer blocks anything: it runs one
-step per 10 ms main-loop tick, eased, and there is a wipe back home too. All our text goes
-through a streaming text painter.
+This is image hn5 (sha256 `510fd138…`). The home screen is now the mock's, drawn in the mock's
+own typefaces: speaker icon and volume top left, the tags as accent boxes top right, the input
+name in the condensed display face, the status line in grey mono under it, the accent bar
+below. See "The home screen" below. The volume page and the wipes are hn4.1's.
 
-hn4.1 fixes three things found in hn4 (`v1.4 tbenr hn4`, sha256 `86aacb8b…`):
+hn4.1 (`v1.4 tbenr hn4.1`, sha256 `5eddb6df…`) made the wipe into the volume page non-blocking:
+one step per 10 ms main-loop tick, eased, and a wipe back home too. It fixed three things found
+in hn4 (`v1.4 tbenr hn4`, sha256 `86aacb8b…`):
 - **The edge could vanish for a whole panel frame.** hn4 erased the old edge (with the band)
   before it drew the new one. The new edge now comes first, and the old edge's columns are
   erased last.
@@ -26,17 +29,21 @@ Earlier images:
 
 ## Status
 
-Emulator-verified (all tests pass). Tried on the amp on 2026-09-29: hn4.1
-(`v1.4 tbenr hn4.1`, `5eddb6df…`) looks OK. Longer use is still to come.
+hn5: emulator-verified (all tests pass), not yet tried on the amp.
+
+Tried on the amp on 2026-09-29: hn4.1 (`v1.4 tbenr hn4.1`, `5eddb6df…`) looks OK. Longer use
+is still to come.
 
 ## What the build shows
 
 | Element | Build |
 |---|---|
-| Home: input name | stock big font and y (75), left-aligned at x 16 on page 1 only |
-| Home: status line | stock small font and y (135), left-aligned at x 16 on page 1 only |
-| Home: accent bar | 28 x 3 at 18,114 (under the name) |
-| Home: icon, volume, tags | stock, unchanged |
+| Home: icon | the mock's 16-px speaker at 12,9, white; red with an X when muted (bit 0x22.1); headphones on the headphone output |
+| Home: volume | Barlow Condensed 22 px, white, at x 36, baseline 24, no leading zero |
+| Home: tags | IBM Plex Mono 10 px in the accent, in 1-px accent boxes 10 px wider than the text, rows 8..24: the EQ tag ends at x 309, the format tag 6 px left of it |
+| Home: input name | Big Shoulders Display 52 px, white, at x 16, baseline 104, 1 px letter spacing |
+| Home: status line | IBM Plex Mono 12 px, grey #8a9096, at x 18, baseline 132, 1 px letter spacing |
+| Home: accent bar | 28 x 3 at 18,144 |
 | Volume page: name | small font, white, at 16,30 |
 | Volume page: divider | 1 x 104 at 140,14, colour 0x2104 |
 | Volume page: label | "VOL" in accent, small font, at 158,14 |
@@ -46,8 +53,52 @@ Emulator-verified (all tests pass). Tried on the amp on 2026-09-29: hn4.1
 | Wipe out | the same from x 0 to 318; the home elements appear once the edge has passed them |
 | Accent | theme colour (RAM 0x48:0x49); SMSL orange 0xFC43 when the theme is White (0xFFFF) |
 
-Still cut from the mockup: number roll, spring on the line, dB readout and captions, MUTE state
-and status text on the volume page.
+Still cut from the mockup: the volume page in the mock's typefaces, number roll, spring on the
+line, dB readout and captions, MUTE state and status text on the volume page, and the reddish
+status line without a signal on the home screen.
+
+## The home screen
+
+Every home element is drawn by our code, in fonts made from the mock's typefaces
+(`tools/fonts/`, packed by `tools/patch/pfont.py`, drawn by the kit's `uk_text`). Rather than
+replacing `home_refresh` and every stock sequence that draws parts of the home, each element's
+own stock painter is replaced. The periodic refresh, Source, direct-select, the BT key, the
+EQ key and the rest all call these painters in their own order, so they all draw ours:
+
+| Element | Stock painter | Ours |
+|---|---|---|
+| icon | `home_draw_output_icon` 0x5744 | `hm_icon`: speaker, muted speaker (red) or headphones, as the stock picks icon 3, 1 or 2 |
+| volume | `home_draw_volume` 0x5916 | `hm_volume`: the speaker or headphone volume, as stock |
+| EQ tag | `eq_tag_paint` 0x4F18 (only caller: `home_draw_eq_tag`) | `hm_eq` |
+| format tag | `home_draw_format_tag`'s `lcall small_text_at` (0x425D) and its two `tag_box_clear` calls (0x41E8, 0x41FC) | `hm_fmt`, `hm_fmt_clear` |
+| input name | `big_text_render` on page 1 at y 75 (hook 0x2A25, after its scan) | `hm_name`, from XDATA 0x35 |
+| status line | `small_text_render` on page 1 at y 135 (hook 0x3A82) | `hm_status`, from XDATA 0x50 |
+| accent bar | `home_refresh`'s tail (0x5C99) | `hn_home_tail` |
+
+- **Text hand-over.** At 0x2A25 / 0x3A82 the stock renderers have scanned the string and
+  computed the start x; nothing is on the stack. On page 1 at the name's or the status line's y
+  our routine draws the buffer and returns for the renderer. The name's scan also sets or
+  clears 0x22.4 (a narrow-character flag it shares with the mute logic); the hand-over keeps
+  that (tested). Other page-1 texts start at x 16 as in hn4.1; other pages are stock. Big text
+  at y 75 that is not a name (the EQ key's preset name, `eq_show` 0x3881) is drawn in the
+  display face too: `NAME_CHARS` has A-Z, space, `.` and `-`.
+- **No flicker.** Each element draws its cells with their background, then clears only what a
+  longer text left to the right (`hm_rest`: to x 319 for the name and the status line, to the
+  next element for the icon and the volume). The stock refresh redraws everything every 0.5 s;
+  the pixels don't change. During a wipe `hm_rest` does nothing: the wipe's band is black and
+  the element is only drawn once the edge has passed it.
+- **Tags.** The stock strings are copied without trailing spaces ("PCM ", "DoP ", "MQA."). The
+  EQ tags are all three letters, so the EQ box is always x 282..309; the format box ends at
+  x 275 and is 28 or 34 px wide; the format tag's area is x 240..275 and is cleared up to the
+  box. The tag arithmetic keeps x - 192 in 8 bits (the EQ box ends past x 255).
+- **Colours.** Name and volume white, status grey, tags and bar in the accent (the COLOR tint;
+  SMSL orange on White), the muted icon red. The stock tinted all of it.
+- **Speed.** A whole home (home_refresh and the status line) takes 10.7 ms; the stock refresh
+  took about 45 ms. The main loop now loses fewer ticks at the refreshes after power-on, so
+  the first unmute comes 0.12 to 0.18 s earlier than on fast-lcd (see "Per input").
+- **Fonts** (7077 bytes): the name face 3164 (A-Z, space, `.`, `-`), the status mono 2370 (the 59
+  characters of every firmware string), the volume digits 610, the tag mono 635, the three
+  icons 298, all 4-level anti-aliased run-length.
 
 ## How the wipes work
 
@@ -117,12 +168,12 @@ directions, at four frame phases. Every frame between the first and last step ha
 
 | Way out: element | Drawn by | Appears (OPTICAL, "No signal") |
 |---|---|---|
-| output icon 15..44, accent bar 18..45 | `home_draw_output_icon` 0x5744, `uk_fill` | 5 (47) |
-| volume 48..75 | `home_draw_volume` 0x5916 | 7 (87) |
-| status line 16..16+14n-1 | `uk_paint`, small font, buffer XDATA 0x50 | 11 (184): once the stock refresh has loaded the buffer, and the edge has passed its end |
-| input name 16..end of the text | `uk_paint`, big font, buffer XDATA 0x35 | 13 (231); USB 8 (110), BT 7 (87) |
-| format tag 208..263 | `home_draw_format_tag` 0x41CA | 15 (271) |
-| EQ tag 266..307 | `home_draw_eq_tag` 0x49A1 | 18 (310) |
+| icon 12..34, accent bar 18..45 | `home_draw_output_icon` 0x5744 (`hm_icon`), `uk_fill` | 5 (47) |
+| volume 36..79 | `home_draw_volume` 0x5916 (`hm_volume`) | 7 (87) |
+| status line 18..end of the text | `hm_status`, buffer XDATA 0x50 | 11 (184): once the stock refresh has loaded the buffer, and the edge has passed its end |
+| input name 16..end of the text | `hm_name`, buffer XDATA 0x35 | 11 (184); USB 8 (110), BT 6 (66) |
+| format tag 240..275 | `home_draw_format_tag` 0x41CA (`hm_fmt`) | 16 (288) |
+| EQ tag 282..309 | `home_draw_eq_tag` 0x49A1 (`hm_eq`) | 18 (310) |
 
 The status line waits for its buffer:
 - The stock refresh loads XDATA 0x50 10 ticks after the return home (0x27:0x28 = 10 after
@@ -235,16 +286,10 @@ is the hn3 home screen.
 
 ## The text painter (`uk_paint`)
 
-`uk_paint` is a general text painter, built for later passes (per-element tint, number roll,
-clipped reveals, new fonts). Since hn4.1 it lives in the shared UI kit, `tools/patch/uikit.py`,
-together with `uk_fill`, `uk_acc` and the per-tick driver `uk_tasks`. This build emits them at
-the same addresses as before, so the image is unchanged. The kit's own tests are in
-`tools/patch/uikit_test.py`. It is used for all our text:
-- the volume page's name, "VOL" and number;
-- the exit's name and status line.
-
-Outside the wipes, the home screen is still drawn by the stock `big_text_render` /
-`small_text_render`.
+`uk_paint` is the kit's painter for the stock fonts (`tools/patch/uikit.py`, tested in
+`tools/patch/uikit_test.py`). In hn5 it draws the volume page's name, "VOL" and number; the
+home screen uses the kit's `uk_text` for the mock's typefaces (see "The home screen" and the
+main README's "UI themes").
 
 - **Parameters.** An XDATA block at 0x0130:
 
@@ -289,24 +334,27 @@ Outside the wipes, the home screen is still drawn by the stock `big_text_render`
 
 ## Timing
 
-Worst step measured: **5.38 ms**, on the exit with the OPTICAL/COAXIAL name (3.7 ms name plus
-a 23-px band). Per-step times, unit test, 20 steps each:
+Worst step measured: **6.54 ms**, on the exit with the OPTICAL name and "No signal", which
+the edge passes on the same step (step 11). The budget is 8 ms, well inside the 10 ms tick.
+Unit test, worst step per wipe:
 
-| Wipe | Steps (ms) | Worst |
-|---|---|---|
-| Entry | 0.3 0.6 0.8 1.0 1.3 1.4 1.6 1.7 1.8 **4.9** 2.5 1.8 1.7 1.6 1.4 1.6 1.0 2.2 0.6 0.3 | 4.88 ms (number box) |
-| Exit, OPTICAL | 0.3 0.6 0.8 1.0 2.3 1.4 3.0 1.7 1.7 1.8 3.8 1.7 **5.4** 1.5 4.3 1.3 1.0 3.0 0.6 0.3 | 5.38 ms (name) |
-| Exit, USB | … 3.2 (name) … 3.8 (status) … **4.3** (format tag, stock 2.9 ms) … | 4.32 ms |
-| Exit, BT | … 4.1 (volume + name) … **4.4** (status) … | 4.45 ms |
+| Wipe | Worst |
+|---|---|
+| Entry | 4.87 ms (number box) |
+| Exit, OPTICAL, "No signal" | 6.53 ms (name and status line together) |
+| Exit, USB, "2.8224MHz" | 3.51 ms |
+| Exit, BT, "Searching..." | 3.22 ms |
 
-In the whole firmware the worst step seen is 4.91 ms (tour, entries) and 5.38 ms (optical
-exit). For comparison, the stock periodic home refresh blocks the main loop for about 45 ms
-every 0.5 s.
+In the whole firmware the worst step seen is 4.91 ms (entries) and 6.54 ms (optical exit).
+For comparison, a whole hn5 home takes 10.7 ms and the stock periodic home refresh blocks the
+main loop for about 45 ms every 0.5 s.
 
 ## Per input (emulator, Vol+ from home, whole firmware against fast-lcd)
 
 The wipe runs everywhere. The audio states come in the same order as fast-lcd, none more
-than 0.10 s later.
+than 0.10 s later. In hn5 the first unmute after power-on comes 0.12 to 0.18 s earlier than on
+fast-lcd in every scenario: hn5's home refreshes are faster, so the main loop loses fewer
+ticks while the unmute counts down.
 
 | Situation | Entry and exit | Unmute vs fast-lcd |
 |---|---|---|
@@ -323,7 +371,7 @@ Earlier, because fast-lcd's own 40 ms volume draw loses ticks and the wipe does 
 
 ## Hooks
 
-Fifteen hook sites: eleven 3-byte hooks, plus the four places the volume keys open the
+Twenty-one hook sites: seventeen 3-byte hooks, plus the four places the volume keys open the
 volume page. Every stock byte is asserted by `build_patch.py`.
 
 | Address | Stock bytes | Now | What |
@@ -331,9 +379,15 @@ volume page. Every stock byte is asserted by `build_patch.py`.
 | 0x2106 | `12 5D 42` lcall `ui_clear_screen` | lcall `hn_clear` | `ui_render_page`'s clear: page 2 starts the entry, page 1 with the volume page on screen starts the exit; otherwise cancel + stock clear |
 | 0x2143 | `02 21 67` ljmp `volpage_render` | ljmp `hn_volpage` | page-2 jump-table entry |
 | 0x5936 | `AB 07 E5` | ljmp `hn_draw_volume` | number and line; only recorded during a wipe |
-| 0x2A25 | `E4 78 02` | ljmp `hn_align_big` | page 1: stored start x 16 |
-| 0x3A82 | `E4 78 02` | ljmp `hn_align_small` | the same, status line |
-| 0x5C99 | `02 59 16` | ljmp `hn_home_tail` | `home_refresh`'s tail: volume as stock, then the accent bar |
+| 0x2A25 | `E4 78 02` | ljmp `hn_align_big` | page 1: at y 75 `hm_name` draws and returns; other texts start at x 16 |
+| 0x3A82 | `E4 78 02` | ljmp `hn_align_small` | page 1: at y 135 `hm_status` draws and returns; other texts start at x 16 |
+| 0x5C99 | `02 59 16` | ljmp `hn_home_tail` | `home_refresh`'s tail: the volume, then the accent bar |
+| 0x5744 | `30 11 0B` (`home_draw_output_icon`) | ljmp `hm_icon` | the icon |
+| 0x5916 | `AB 07 E5` (`home_draw_volume`) | ljmp `hm_volume` | the home volume |
+| 0x4F18 | `7D 0A 7C` (`eq_tag_paint`) | ljmp `hm_eq` | the EQ tag |
+| 0x425D | `12 4F 20` lcall `small_text_at` | lcall `hm_fmt` | the format tag |
+| 0x41E8 | `02 00 26` ljmp `tag_box_clear` | ljmp `hm_fmt_clear` | no format (BT, ARC, AUX, PHONO): the tag's area black |
+| 0x41FC | `12 00 26` lcall `tag_box_clear` | lcall `hm_fmt_clear` | the format changed: the same |
 | 0x5B2A | `12 33 25` lcall `main_tick_tasks` | lcall `uk_tasks` | the driver: one wipe step after each tick |
 | 0x4081 | `12 5C 8B` lcall `home_refresh` | ljmp `hn_hold` | periodic refresh held back during a wipe |
 | 0x5D42 | `12 5C BC` (`ui_clear_screen`'s first call) | ljmp `hn_cancel` | every stock clear cancels a wipe |
@@ -343,10 +397,10 @@ volume page. Every stock byte is asserted by `build_patch.py`.
 
 ## Memory
 
-- **Code:** 4068 bytes of patch code at 0x9800..0xA7E3, plus the version string at 0xA7E4.
-  Image length 42997 bytes, under the 0xF400 split. `house_numerals.asm` is the generated
-  listing.
-- **XDATA** 0x0100..0x0155. The EEPROM sectors and everything fast-lcd/direct-select use
+- **Code:** 13638 bytes at 0x9800..0xCD45 (7077 of them fonts), plus the version string at
+  0xCD46. Image length 52565 bytes; 9899 bytes are left under the 0xF400 split.
+  `house_numerals.asm` is the generated listing.
+- **XDATA** 0x0100..0x01A6. The EEPROM sectors and everything fast-lcd/direct-select use
   stay untouched.
 
 | Address | Name | Holds |
@@ -367,19 +421,37 @@ volume page. Every stock byte is asserted by `build_patch.py`.
 | 0x011D, 0x011F, 0x0121 | `HN_S0`, `HN_S1`, `HN_SPL` | `hn_line_seg`: columns, 40 + 4 * volume |
 | 0x0130..0x0140 | `FP_*` | `uk_paint`'s parameters |
 | 0x0141..0x0155 | `FP_*` | `uk_paint`'s work area |
+| 0x0160..0x0191 | `TP_*` | `uk_text`'s parameters and work area |
+| 0x0192 | `HM_VS` | the home volume as text |
+| 0x0196 | `HM_TAG` | a tag's text, trailing spaces cut |
+| 0x019C..0x019E | `HM_TX`, `HM_TW`, `HM_TWD` | `hm_tag`: box x (- 192), box width, text width |
+| 0x019F..0x01A4 | `HM_RL`, `HM_RY`, `HM_RH`, `HM_RX` | `hm_rest`: last column, rows, next column |
+| 0x01A5, 0x01A6 | `HM_TR`, `HM_TL` | `hm_tag`: where the box ends, where the tag's area starts (- 192) |
 
 - **Stack:** the tour (with two entries and two exits) was run with a canary above SP. The
   deepest idata used is 0xAF, the same as fast-lcd.
 
 ## Emulator results
 
-`python3 tools/run_tests.py` gives **ALL PASS** for every feature, 116 s wall (house-numerals
-116 s, most of it the sweep). `emu_test.py` has four groups: `unit`, `tour`, `int1`, `sweep`;
+`python3 tools/run_tests.py` gives **ALL PASS** for every feature, 112 s wall (house-numerals
+112 s, most of it the sweep). `emu_test.py` has four groups: `unit`, `tour`, `int1`, `sweep`;
 `unit tour` alone runs in about 50 s.
 
 - **Image diff:** only the fifteen hook sites (plus the version pointer) differ from
   fast-lcd inside the base image. The labels in `SmslAo300Labels.java` match this build.
-- **Painter:** see above. `uk_fill` runs at 9.0 clocks per pixel.
+- **Home screen, against `home_model`.** The model is written in Python, independent of the
+  8051 code. It reads the state (input, output, mute bit, volumes, EQ, format, the two text
+  buffers) and draws with `PFont.render`, which the kit test proves pixel-identical to
+  `uk_text`. The tag strings come from the stock tag routines run on the base image. Checks:
+  - 55 states x 2 tints: every input, both outputs, muted, every EQ, every format and MQA
+    variant, volumes 0..60, status lines. The whole screen equals the model.
+  - A home drawn over a different one (longer name, status, volume, a format tag that goes)
+    equals the model of the second.
+  - All 82 firmware strings as the status line and (capitals) as the name: the element, the
+    rest of its rows black, nothing else drawn.
+  - The name hand-over leaves 0x22.4 as the stock scan does. During a wipe nothing is cleared
+    after a shorter text.
+- **Painter:** see the kit test. `uk_fill` runs at 9.0 clocks per pixel.
 - **`hn_draw_volume`:** every value 0..60 in three themes. It records and skips drawing
   during a wipe unless the box or line is revealed.
 - **`hn_step`, unit:** starting from a pattern screen, each of the 20 entry steps checks:
@@ -396,16 +468,16 @@ volume page. Every stock byte is asserted by `build_patch.py`.
   0x4F = 1); a bogus mode stops.
 - **Tour** (whole firmware, lockstep with fast-lcd, real Timer0 ISR):
   - each step lands on the same page, power, volumes, input and output;
-  - home screens as fast-lcd outside our bands, with the bar; volume pages exactly as
-    `hn_volpage`; menus and standby identical;
+  - home screens equal to `home_model`; volume pages exactly as `hn_volpage`; menus and
+    standby identical to fast-lcd;
   - both entries and both exits take 20 steps with the table's x, and the screen at entry
     step 10 is checked;
   - the volume write comes before the first step;
-  - the stock home refresh is held during the exit and resumes 0.41 s after it, drawing the
-    same pixels;
+  - the home refresh is held during the exit and resumes 0.41 s after it, drawing the same
+    pixels;
   - home comes back at the same moment as fast-lcd (within 0.05 s);
-  - 160 audio states in the same order, none more than 0.10 s later; same argument sets for
-    every audio writer.
+  - audio states in the same order, none more than 0.10 s later; same argument sets for every
+    audio writer.
 - **Per input:** the eight scenarios above, each checking entry, exit, screens, the unmute
   and the audio.
 - **Keys during a wipe:** 14 scenarios, each with the final screens and audio checked
@@ -417,8 +489,8 @@ volume page. Every stock byte is asserted by `build_patch.py`.
   - the BT key (IR 0x0E) during the exit on Bluetooth;
   - Source with 0x21.3 set during the exit.
 
-  For keys on page 1 during the exit, the screen 0.15 s after the key must equal the stock
-  refresh for that state, and so must the screen at the end.
+  For keys on page 1 during the exit, the screen 0.15 s after the key must equal a whole
+  refresh for that state, and the screen at the end must equal `home_model`.
 - **Source, then Vol+ 0.2, 1.0 or 2.0 s later** (the refresh's flags still set, so its flag
   path runs mid-exit): 20 + 20 steps. Two ticks after the exit the screen is a whole home,
   and later it matches fast-lcd.
@@ -429,12 +501,20 @@ volume page. Every stock byte is asserted by `build_patch.py`.
     10-tick format-poll period.
   - Results: the DAC reconfiguration (0x46A0) always comes before the unmute, and the unmute
     is 0.02-0.03 s earlier than fast-lcd.
-  - The audio states match in order and time at 99 offsets. At offset 66 the press and a
-    format poll fall in the same tick, and the two images take them in a different order:
-    fast-lcd the key first, hn4 the poll first. Both orders are stock behaviour: from 65 to
-    72 ms both images take the poll first. The main loops are just not in the same phase, so
-    that edge is one millisecond apart. The test lists such offsets and allows at most two.
-- **IR sweep:** 256 commands x 5 states, against fast-lcd, all screens as expected, 62 s.
+  - Near a format poll the main loop takes the key's volume write or the poll's DAC
+    reconfiguration first, depending on where in the loop and in the 10-tick poll period the
+    press is seen. Both orders are stock behaviour. hn5's poll period is shifted against
+    fast-lcd's, because fast-lcd's slower home refreshes after power-on lose more ticks, so
+    at 13 offsets (65..72, 86..92 ms) the two images take the two in a different order. At
+    those offsets the test requires the same number of audio states, the same final state
+    and the DAC reconfiguration no later than fast-lcd's + 0.10 s (hn5's is up to 100 ms
+    earlier). At every other offset the audio states match in order and time.
+- **IR sweep:** 256 commands x 5 states, against fast-lcd, 63 s. Page-1 screens must equal
+  `home_model` 0.5 s after the command. Four commands leave a home the stock sequence has
+  not finished at that point: in standby 0x01 (power on, the logo, identical to fast-lcd) and
+  on home 0x13, 0x14, 0x15 (direct-select BT, ARC, AUX: the input switch postpones the refresh
+  by 2 s, and the old format tag stays on screen in both images until then). Those are
+  checked again once the periodic refresh has run: home equals the model.
 - **Audio comparison at the end of a run:** both images stop at the same clock. A state
   fast-lcd reaches in the last 0.10 s may therefore still be to come in hn4, which is up to
   0.10 s later by design of the check. The comparison requires the states up to 0.10 s
@@ -453,7 +533,8 @@ volume page. Every stock byte is asserted by `build_patch.py`.
   name path or a clear, and no NEC command reaches them in the emulator. If they come during
   an exit, they draw over the half-revealed screen until the exit reaches them. The exit's
   reveal then redraws the same parts, and the flag they set only reaches `hn_flag_path`. No
-  test presses them.
+  test presses them. Through the painter hooks they draw hn5's elements; `eq_show`'s preset
+  name and description (big at y 75, small at y 135) are drawn in our fonts.
 - **Source or direct-select during an exit differ from fast-lcd in their transient content,
   for up to about 2.9 s.**
   - hn4.1 shows the whole home with the new name at once.
@@ -480,6 +561,20 @@ volume page. Every stock byte is asserted by `build_patch.py`.
   `read_key`'s Source-in-standby jump to the bootloader (0x3DB8) are untouched.
 
 ## What to look for on the amp
+
+hn5, the home screen:
+- The home looks like the mock's House Numerals home: speaker and volume top left, the tags
+  in thin accent boxes top right, the input name large in the condensed face, the status in
+  grey mono under it, the short accent bar below.
+- Mute (remote): the speaker turns red with an X. Headphone output: the headphones icon and
+  the headphone volume.
+- Change the input, the EQ and the format (play PCM, then DSD or MQA): the tags and texts
+  follow without leftovers of longer texts, and nothing flickers at the 0.5 s refreshes.
+- The EQ key on the home screen: the preset's name shows large, its description as the
+  status line, then the home comes back.
+- The first unmute after power-on may come a little earlier than before (0.1 to 0.2 s).
+
+From hn4.1, the wipes:
 
 - Vol+/Vol- on home: the volume changes at once. The accent edge sweeps in from the right,
   slow at the ends and fast in the middle, about 200 ms. The number appears when the edge

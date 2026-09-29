@@ -60,13 +60,13 @@ features/
   fast-lcd/                       the stock UI through the tuned pixel path, on top of
                                   direct-select; emulator-verified, see its README
     build_patch.py, emu_test.py   build build/flash_fastlcd.bin, lockstep UI tour vs stock
-  house-numerals/                 stock UI + House Numerals home and volume page, on top
-                                  of fast-lcd, built with tools/patch/uikit.py; tried on
-                                  the amp on 2026-09-29 (hn4.1), see its README
-    build_patch.py, emu_test.py   build build/flash_house_numerals.bin (hn4: non-blocking
-                                   eased wipes in and out of the volume page, text painter),
-                                   lockstep UI tour, keys during wipes, INT1 sweep,
-                                   256-command sweep vs fast-lcd
+  house-numerals/                 House Numerals home and volume page, on top of fast-lcd,
+                                  built with tools/patch/uikit.py; hn4.1 tried on the amp
+                                  on 2026-09-29, hn5 emulator-verified; see its README
+    build_patch.py, emu_test.py   build build/flash_house_numerals.bin (hn5: the mock's home
+                                   in its own typefaces, non-blocking eased wipes in and out
+                                   of the volume page), home model, lockstep UI tour, keys
+                                   during wipes, INT1 sweep, 256-command sweep vs fast-lcd
     house_numerals.asm            annotated listing of the patch code at 0x9800
 
 ghidraPRG/                    * Ghidra project (import original/extracted/flash.bin as
@@ -193,7 +193,8 @@ the stock UI through the fast pixel path. Longer listening tests are still to co
 
 Tried on 2026-09-29 and looks OK: `features/house-numerals/build/flash_house_numerals.bin`
 (hn4.1, `v1.4 tbenr hn4.1`), the House Numerals home and volume page with the non-blocking
-eased wipe. Longer use is still to come.
+eased wipe. Longer use is still to come. Its successor hn5 (`v1.4 tbenr hn5`, the mock's
+home screen in the mock's typefaces) is emulator-verified and not yet tried on the amp.
 
 ## What the custom firmware adds
 
@@ -384,7 +385,7 @@ Measured from the images; the code/EEPROM split is the chip's own setting (0xF40
 
 | Region | Size | Used | Free |
 |---|---|---|---|
-| Code flash, 0x0000..0xF3FF | 62464 bytes | 42913 bytes (features/house-numerals build) | ~19 KB |
+| Code flash, 0x0000..0xF3FF | 62464 bytes | 52565 bytes (features/house-numerals hn5, 7 KB of it fonts) | ~9.7 KB |
 | EEPROM area, 0xF400..0xFDFF | 2560 bytes, 5 sectors of 512 | sectors at offsets 0x0000, 0x0200, 0x0400 | 2 sectors, 1 KB |
 | Internal direct RAM, 0x00..0x7F | 128 bytes | all (registers, bit flags, variables up to 0x7F) | none |
 | Internal indirect RAM, 0x80..0xFF | 128 bytes | stack from 0x88 (`mov SP,#0x88` at 0x44A5) | stack headroom only |

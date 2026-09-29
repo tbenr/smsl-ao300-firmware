@@ -8,6 +8,8 @@
   "coverage": "4-bit alpha, one hex digit per pixel",
   "glyphs": {
     " ": {"adv":6.50323486328125,"x":0,"y":0,"rows":[]},
+    "-": {"adv":12.412460327148438,"x":0,"y":-13,"rows":["5ffffffffffc","6ffffffffffd","6ffffffffffd","6ffffffffffc"]},
+    ".": {"adv":7.1613616943359375,"x":1,"y":-5,"rows":["244440","fffff2","fffff2","fffff2","fffff2"]},
     "0": {"adv":14.200531005859375,"x":1,"y":-25,"rows":["00059cca60000","02dffffffe400","0efffffffff10","8ffffffffffa0","cfffe32dfffe0","efffa007ffff0","ffff9005ffff0","ffff8005ffff0","ffff8004ffff1","ffff7003ffff1","ffff7003ffff2","ffff7003ffff2","ffff7003ffff2","ffff7003ffff2","ffff7003ffff2","ffff7003ffff1","ffff7004ffff1","ffff8004ffff1","ffff8005ffff0","efff9005ffff0","dfffb009ffff0","bffffa9ffffd0","4ffffffffff70","0bffffffffd00","007ffffff9000","0000256200000"]},
     "1": {"adv":7.6588287353515625,"x":0,"y":-25,"rows":["0018884","01efffb","1effffb","4fffffb","1bffffb","00dfffb","00dfffb","00dfffb","00dfffb","00dfffb","00dfffb","00dfffb","00dfffb","00dfffb","00dfffb","00dfffb","00dfffb","00dfffb","00dfffb","00dfffb","00dfffb","00dfffb","00dfffb","00dfffb","00dfffb"]},
     "2": {"adv":13.713119506835938,"x":1,"y":-25,"rows":["0007accb8200","06ffffffff40","1ffffffffff3","affffffffffa","dfffe22efffd","efff9008ffff","ffff8006ffff","ffff8006ffff","ffff8007ffff","dfff700affff","0000001efffd","000001dffffa","00008ffffff1","000cffffff60","01effffff600","0bfffffd2000","3fffff600000","affff4000000","cfffd0000000","efffa0000000","ffff90000000","fffffeeeeeea","fffffffffffd","fffffffffffd","effffffffffd"]},

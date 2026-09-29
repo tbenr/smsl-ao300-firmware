@@ -1,0 +1,14 @@
+{
+  "id": "icons16",
+  "font": "drawn: icons",
+  "px": 16,
+  "ascent": 10,
+  "descent": 2,
+  "engine": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Claude/2.9939.4 Chrome/152.0.7977.130 Safari/537.36",
+  "coverage": "4-bit alpha, one hex digit per pixel",
+  "glyphs": {
+    "H": {"adv":16,"x":0,"y":-15,"rows":["000029beeb920000","0006fffffffe6000","009ffb5225bff900","05ff60000006ff40","1ef6000000006fe1","6fb0000000000cf6","8f700000000008f8","8c632000000236c7","1fffc000000cfff1","1fffc000000cfff1","1fffc000000cfff1","1fffc000000cfff1","1fffc000000cfff1","1fffc000000cfff1","0888600000068880"]},
+    "M": {"adv":20,"x":0,"y":-16,"rows":["00000000070000000000","000000007e0000000000","00000006fe0000000000","0000005ffe0000000000","000004fffe0018000720","88888ffffe00afa07fd0","fffffffffe002efcff40","fffffffffe0003eff500","fffffffffe0003efe500","fffffffffe002efbff40","88888ffffe00afa07fd0","000004fffe0018000720","0000005ffe0000000000","00000006fe0000000000","000000007e0000000000","00000000080000000000"]},
+    "S": {"adv":20,"x":0,"y":-16,"rows":["00000000070000034000","000000007e00000de200","00000006fe00000cfd10","0000005ffe000301df80","000004fffe005f505fd0","88888ffffe004ff10ef2","fffffffffe0007f608f7","fffffffffe0002fa05f9","fffffffffe0003f907f8","fffffffffe0009f808f7","88888ffffe005ff20cf6","000004fffe005f605fe1","0000005ffe000300df70","00000006fe000009fd00","000000007e00001de300","00000000080000033000"]}
+  }
+}

@@ -75,6 +75,18 @@ STOCK_SITES = {
     "ui_clear_screen": (0x5D42, bytes([0x12, 0x5C, 0xBC])),  # lcall ui_clear_small_buf; 0x5D45 follows
     "home_draw_input_name": (0x4A85, bytes([0xE5, 0x47, 0x14])),  # mov A,0x47; dec A; 0x4A88 follows
     "home_refresh_flag_path": (0x3FF8, bytes([0xC2, 0x0B, 0xC2])),  # clr 0x21.3; clr 0x20.6; ...
+    # the home elements' painters (page 1); a theme that replaces one draws the element itself
+    "home_draw_output_icon": (0x5744, bytes([0x30, 0x11, 0x0B])),  # jnb 0x22.1 (muted, red icon 1); icon 3
+    #   speakers (g_output 0x2B = 1), 2 headphones; x 15, y 8; ends with ret (XDATA 6 = the icon)
+    "home_draw_volume": (0x5916, bytes([0xAB, 0x07, 0xE5])),  # R7 speaker volume (0x52 on headphones);
+    #   2 small digits at 48,9; ends with ret
+    "eq_tag_paint": (0x4F18, bytes([0x7D, 0x0A, 0x7C])),     # only caller home_draw_eq_tag 0x4A0F: string
+    #   R3:R2:R1 (generic pointer, 3 letters), small font at 266,10, then ret
+    "format_tag_paint": (0x425D, bytes([0x12, 0x4F, 0x20])),  # home_draw_format_tag: lcall 0x4F20, string
+    #   R3:R2:R1 ("PCM ", "DSD ", "DoP ", "MQA ", "MQA.") at 208,10; ret follows
+    "format_tag_clear": (0x41E8, bytes([0x02, 0x00, 0x26])),  # ljmp 0x0026: clear the tag's box (inputs
+    #   without a format: BT, ARC, AUX, PHONO)
+    "format_tag_clear_changed": (0x41FC, bytes([0x12, 0x00, 0x26])),  # lcall 0x0026: the format changed
 }
 
 # where the volume keys open page 2 themselves (after `mov 0x45,#0x02`); 22 stock bytes each:
@@ -835,7 +847,7 @@ ret
         set); y: the top row of the font's cell (baseline + PFont.top); ink / bg: int, "theme"
         (RAM 0x48:0x49) or "acc" (uk_acc; for the ink only); align 0 left (x = first column),
         1 right (x = last column), 2 centred; spacing: extra columns after every character."""
-        T = self.tp
+        T = self.TP
         if ink == "acc":
             S(a, "lcall uk_acc")
         S(a, "mov DPTR,#0x%04X\nmov A,#hi(%s)\nmovx @DPTR,A\ninc DPTR\nmov A,#lo(%s)\nmovx @DPTR,A\ninc DPTR"

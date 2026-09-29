@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
-"""Build the "House Numerals" image for the SMSL AO300 (on top of fast-lcd), hn4.
+"""Build the "House Numerals" image for the SMSL AO300 (on top of fast-lcd), hn5.
 
 A reduced build of study 3 in features/ui-theme/ui_themes.html:
 
-  home      stock content; on page 1 the input name and the status line are
-            left-aligned at x 16 (hooks in big_text_render 0x2A25 and
-            small_text_render 0x3A82), and a 28x3 accent bar sits at 18,114
-            (hook on home_refresh's tail 0x5C99).
+  home      the mock's home, drawn by us in the mock's typefaces (uk_text, fonts packed from
+            tools/fonts by pfont): the speaker icon (red with an X when muted, headphones on
+            the headphone output) and the volume top left, the format and EQ tags as accent
+            boxes top right, the input name in the display face, the status line in grey mono
+            under it and a 28x3 accent bar at 18,144. Each stock painter of a home element is
+            replaced by ours (icon 0x5744, volume 0x5916, EQ tag 0x4F18, format tag 0x425D and
+            its clears), and on page 1 the stock text renderers hand the name (big, y 75) and
+            the status line (small, y 135) to us (0x2A25, 0x3A82). So every stock sequence that
+            draws home parts draws ours. A shorter text clears the rest of the longer one.
   volume    the input name, a divider, "VOL", the volume in the stock big digits at
             2x and a 240-px position line. volpage_draw_volume 0x5936 is replaced, so
             knob and remote steps redraw only the number and the line.
@@ -16,11 +21,8 @@ A reduced build of study 3 in features/ui-theme/ui_themes.html:
             lcall main_tick_tasks, 0x5B2A) runs one step after each tick it handles. Each
             step fills the band the edge swept with black, draws the edge and draws every
             element of the new page the edge has fully passed (hn_step).
-  text      uk_paint, a streaming painter for the stock fonts (small 14x24 at 0x5DAB,
-            big 30x32 at 0x6A23) at scale 1 or 2, with ink, background and an x clip
-            window. It draws all our text: the volume page's name, "VOL" and number, and
-            the input name and status line revealed by the exit wipe. Outside the wipes
-            the home screen is drawn by the stock routines, as before.
+  text      uk_text (the mock's faces) for the home; uk_paint (the stock fonts) for the
+            volume page's name, "VOL" and number.
 
 Entry: the four volume-key sites and the page-2 renderer only start the animation
 (hn_enter_vol); the key handler's tail still writes the volume before anything is drawn.
@@ -29,9 +31,9 @@ starts the exit instead of clearing, and home_refresh at 0x4081 (hn_hold) is hel
 wipe runs. Any stock clear (ui_clear_screen 0x5D42, hn_cancel) cancels a wipe first; so does
 the name draw 0x4A85 during an exit (Source and direct-select on page 1, hn_name_guard).
 
-Register use: every hn_* routine may clobber A, B, DPTR, PSW and R0-R7 (the stock
+Register use: every hn_* / hm_* routine may clobber A, B, DPTR, PSW and R0-R7 (the stock
 routines they replace or wrap do the same). RAM 0x48:0x49 (the theme colour) is only read.
-New state lives in XDATA 0x0100..0x0155.
+New state lives in XDATA 0x0100..0x01A6.
 """
 import hashlib
 import math
@@ -43,6 +45,7 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(ROOT, "tools", "patch"))
 from asm51 import Asm, hi8, lo8  # noqa: E402,F401
 import uikit  # noqa: E402
+import pfont  # noqa: E402
 from uikit import (hi, lo, S, st_imm16, ld16, st16, FONTS, SMALL_MAP, BIG_MAP, BIG_NARROW,  # noqa: E402,F401
                    LCD_SET_WINDOW, FONT_SMALL, FONT_BIG, HOME_DRAW_VOLUME, HOME_DRAW_OUTPUT_ICON,
                    HOME_DRAW_FORMAT_TAG, HOME_DRAW_EQ_TAG, HOME_REFRESH, UI_CLEAR_SCREEN,
@@ -62,6 +65,8 @@ ORANGE = 0xFC43                     # #ff8a1f, accent on the White theme
 DIVIDER = 0x2104                    # #222
 TRACK = 0x18E3                      # #1d1d1d
 WHITE = 0xFFFF
+RED = 0xF800                        # #ff0000, the muted icon
+DIM = uikit.rgb565(0x8A, 0x90, 0x96)  # the status line
 
 # XDATA
 HN_N = 0x0100                       # uk_fill's work area (4 bytes, see KIT below)
@@ -84,14 +89,58 @@ HN_S0 = 0x011D                      # hn_line_seg: columns from ...
 HN_S1 = 0x011F                      # ... to
 HN_SPL = 0x0121                     # hn_line_seg: 40 + 4 * volume
 HN_STATR = 0x0123                   # exit: right end of the status line as drawn
+TP_BASE = 0x0160                    # uk_text's parameter block and work area (50 bytes)
+HM_VS = 0x0192                      # home volume as text (up to 2 digits and a NUL)
+HM_TAG = 0x0196                     # a tag's text, trailing spaces cut (up to 5 characters and a NUL)
+HM_TX = 0x019C                      # hm_tag: box x
+HM_TW = 0x019D                      # hm_tag: box width
+HM_TWD = 0x019E                     # hm_tag: text width
+HM_RL = 0x019F                      # hm_rest: last column to clear (hi, lo)
+HM_RY = 0x01A1                      # hm_rest: first row
+HM_RH = 0x01A2                      # hm_rest: rows
+HM_RX = 0x01A3                      # hm_rest: next column (hi, lo)
+HM_TR = 0x01A5                      # hm_tag: the box ends before this column
+HM_TL = 0x01A6                      # hm_tag: the tag's area starts at this column
 
 # uk_fill's work area (HN_N, HN_C) and uk_paint's parameter block and work area (FP..FP_OFF)
 # belong to the kit, placed where hn4.1 had them
-KIT = uikit.Kit(fill_ws=HN_N, fp_base=0x0130)
+KIT = uikit.Kit(fill_ws=HN_N, fp_base=0x0130, tp_base=TP_BASE)
 (FP, FP_FONT, FP_STR, FP_SPC, FP_X, FP_Y, FP_INK, FP_BG, FP_CX0, FP_CX1, FP_SCALE, FP_W, FP_BPC, FP_BPG,
  FP_DATA, FP_MAP, FP_NADV, FP_CUR, FP_END, FP_CW, FP_ADV, FP_GLY, FP_VX0, FP_VX1, FP_OFF) = KIT.fp_layout()
-XDATA_END = FP + uikit.Kit.FP_SIZE - 1
-assert XDATA_END == 0x0155
+assert FP + uikit.Kit.FP_SIZE - 1 < TP_BASE
+XDATA_END = HM_TL
+assert TP_BASE + uikit.Kit.TP_SIZE <= HM_VS
+
+# fonts from the UI mock (tools/fonts): what the home screen draws with
+NAME_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ .-"       # page-1 big text: input names, EQ preset names
+TAG_CHARS = "ABCDFIKLMPQRSTUo. "                   # the format and EQ tags
+PF_NAME = pfont.PFont("pf_name", "disp52", NAME_CHARS, bpp=2)
+PF_STATUS = pfont.PFont("pf_status", "mono12", "".join(sorted(set(
+    " !'-.0123456789ABCDEFGHIKLMNOPQRSTUVXabcdeghiklmnoprstuvwyz"))), bpp=2)   # every firmware string
+PF_TAG = pfont.PFont("pf_tag", "mono10", TAG_CHARS, bpp=2)
+PF_HVOL = pfont.PFont("pf_hvol", "num22", "0123456789", bpp=2)
+PF_ICON = pfont.PFont("pf_icon", "icons16", "SMH", bpp=2)
+PFONTS = (PF_NAME, PF_STATUS, PF_TAG, PF_HVOL, PF_ICON)
+
+# home layout (the mock's House Numerals home): x, baseline -> the cell's top row y = baseline + top
+ICON_X, ICON_Y = 12, 9 + 16 + PF_ICON.top           # the mock's 16-px speaker at 12,9
+ICON_END = 34                                       # icon cells end at 31; cleared up to here
+HVOL_X, HVOL_Y = 36, 24 + PF_HVOL.top
+HVOL_END = 79
+TAG_Y0, TAG_Y1 = 8, 24                              # the boxes' rows (17)
+TAG_TY = 20 + PF_TAG.top                            # the text's top row (baseline 20)
+EQ_RIGHT = 310                                      # the EQ box ends before x 310 ...
+FMT_RIGHT = 276                                     # ... the format box 6 px left of it (EQ tags are 3 letters)
+FMT_LEFT = 240                                      # the format tag's area (4 letters: 34 px)
+TAG_BASE = 192                                      # hm_tag keeps its columns as x - 192 (8 bits)
+HNAME_X, HNAME_Y = 16, 104 + PF_NAME.top
+STAT_X, STAT_Y = 18, 132 + PF_STATUS.top
+BAR_Y = 144
+assert PF_TAG.width("SDB") == 18 and FMT_RIGHT - PF_TAG.width("MQA.") - 10 >= FMT_LEFT >= TAG_BASE
+assert all((FMT_RIGHT - PF_TAG.width(t) - 10) & 0xFF != 0xFF for t in ("PCM", "DSD", "DoP", "MQA", "MQA."))
+assert EQ_RIGHT - TAG_BASE < 256
+assert TAG_Y0 < TAG_TY and TAG_TY + PF_TAG.H - 1 < TAG_Y1
+assert ICON_X + max(PF_ICON.width(c) for c in "SMH") - 1 <= ICON_END < HVOL_X
 
 # volume-page elements: (bit, name, x0, x1); an element appears once the edge is left of x0
 VF_NAME, VF_DIV, VF_VOL, VF_NUM, VF_LINE = 1, 2, 4, 8, 16
@@ -103,8 +152,9 @@ VOL_ELEMENTS = [(VF_NAME, "hv_name", 16, 16 + 14 * 7 - 1), (VF_DIV, "hv_div", 14
 # status line end where their text ends: x1 is read from XDATA (HN_NAMER, HN_STATR) instead.
 HF_ICON, HF_VOL, HF_BAR, HF_NAME, HF_FMT, HF_EQ, HF_STAT = 1, 2, 4, 8, 16, 32, 64
 HF_ALL = 127
-HOME_ELEMENTS = [(HF_ICON, "hh_icon", 15, 44), (HF_VOL, "hh_vol", 48, 75), (HF_BAR, "hh_bar", 18, 45),
-                 (HF_NAME, "hh_name", 0, HN_NAMER), (HF_FMT, "hh_fmt", 208, 263), (HF_EQ, "hh_eq", 266, 307),
+HOME_ELEMENTS = [(HF_ICON, "hh_icon", ICON_X, ICON_END), (HF_VOL, "hh_vol", HVOL_X, HVOL_END),
+                 (HF_BAR, "hh_bar", 18, 45), (HF_NAME, "hh_name", 0, HN_NAMER),
+                 (HF_FMT, "hh_fmt", FMT_LEFT, FMT_RIGHT - 1), (HF_EQ, "hh_eq", EQ_RIGHT - 28, EQ_RIGHT - 1),
                  (HF_STAT, "hh_stat", 0, HN_STATR)]
 
 STEPS = 20
@@ -128,12 +178,19 @@ HOOKS = [STOCK_SITES[site] + (op, target) for site, op, target in (
     ("ui_clear_screen", 0x02, "hn_cancel"),
     ("home_draw_input_name", 0x02, "hn_name_guard"),
     ("home_refresh_flag_path", 0x02, "hn_flag_path"),
+    ("home_draw_output_icon", 0x02, "hm_icon"),
+    ("home_draw_volume", 0x02, "hm_volume"),
+    ("eq_tag_paint", 0x02, "hm_eq"),
+    ("format_tag_paint", 0x12, "hm_fmt"),
+    ("format_tag_clear", 0x02, "hm_fmt_clear"),
+    ("format_tag_clear_changed", 0x12, "hm_fmt_clear"),
 )]
-VERSION_TEXT = "v1.4 tbenr hn4.1"
+VERSION_TEXT = "v1.4 tbenr hn5"
 
 
 rect = KIT.rect
 fp_setup = KIT.fp_setup
+tp_setup = KIT.tp_setup
 
 
 # ---------------------------------------------------------------------------------------------
@@ -155,6 +212,12 @@ def build_data(a):
     for k, v in enumerate(EASE):
         a.data("dw %d              ; step %d" % (v, k), [v >> 8, v & 0xFF])
     KIT.emit_font_data(a)
+    a.comment("icon strings for uk_text")
+    for lab, ch in (("hm_s_spk", "S"), ("hm_s_mute", "M"), ("hm_s_hp", "H")):
+        a.L(lab)
+        a.data('db "%s",0' % ch, ch.encode() + b"\0")
+    for f in PFONTS:
+        f.emit(a)
 
 def build_primitives(a):
     KIT.emit_fill(a)
@@ -186,6 +249,7 @@ ret
 
 def build_painter(a):
     KIT.emit_painter(a)
+    KIT.emit_text(a)
 
 
 def build_volume_page(a):
@@ -494,19 +558,8 @@ lcall 0x5CBC       ; the text buffers, as ui_clear_screen
 lcall 0x5CCB
 ; the input name as home_draw_input_name loads it, and where it ends
 lcall hn_name_load
-lcall hn_fp_name
-mov DPTR,#0x%04X""" % FP_CX0 + """
-mov A,#0x01        ; empty clip window: measure only
-movx @DPTR,A
-inc DPTR
-clr A
-movx @DPTR,A
-inc DPTR
-movx @DPTR,A
-inc DPTR
-movx @DPTR,A
-lcall uk_paint
-mov DPTR,#0x%04X""" % FP_END + """
+lcall hm_name_meas
+mov DPTR,#0x%04X""" % KIT.TP["END"] + """
 movx A,@DPTR
 mov R6,A
 inc DPTR
@@ -625,12 +678,6 @@ ljmp 0x4C8F        ; big_text_load
 hnl_ret:
 ret
 """)
-    S(a, "; hn_fp_name: the FP block for the home input name (big font, buffer 0x35, stock x and y, theme ink)\nhn_fp_name:")
-    fp_setup(a, "font_big", BIG_BUF, 0, None, NAME_Y, "theme")
-    S(a, "ljmp uk_home_x")
-    S(a, "; hn_fp_status: the same for the status line (small font, buffer 0x50, y 135)\nhn_fp_status:")
-    fp_setup(a, "font_small", SMALL_BUF, 0, None, STATUS_Y, "theme")
-    S(a, "ljmp uk_home_x")
     S(a, """
 ; home elements, each as the stock routine for that part draws it
 hh_icon:
@@ -644,15 +691,11 @@ hh_eq:
 ljmp 0x49A1        ; home_draw_eq_tag
 hh_bar:
 lcall uk_acc""")
-    rect(a, 18, 28, 114, 3)
+    rect(a, 18, 28, BAR_Y, 3)
     S(a, """
 ljmp uk_fill
 hh_name:
-lcall hn_fp_name
-ljmp uk_paint
-hh_stat:
-lcall hn_fp_status
-ljmp uk_paint
+ljmp hm_name
 """)
 
     # ---- the step ----
@@ -1011,19 +1054,8 @@ mov DPTR,#0x%04X""" % HN_STEP + """
 movx A,@DPTR
 cjne A,#%d,%s""" % (STEPS, skip) + """
 rs_ready:
-lcall hn_fp_status
-mov DPTR,#0x%04X""" % FP_CX0 + """
-mov A,#0x01
-movx @DPTR,A
-inc DPTR
-clr A
-movx @DPTR,A
-inc DPTR
-movx @DPTR,A
-inc DPTR
-movx @DPTR,A
-lcall uk_paint""")
-            ld16(a, "R2", "R3", FP_END)
+lcall hm_stat_meas""")
+            ld16(a, "R2", "R3", KIT.TP["END"])
         else:
             S(a, "mov R2,%s\nmov R3,%s" % (hi(x1), lo(x1)))
         S(a, """
@@ -1041,7 +1073,7 @@ subb A,R6
 jnc %s""" % (HN_LIM, skip))
         if name == "hh_stat":
             st16(a, HN_STATR, "R2", "R3")
-            S(a, "lcall hn_fp_status\nlcall uk_paint")
+            S(a, "lcall hm_status")
         else:
             S(a, "lcall %s" % name)
         S(a, """
@@ -1147,16 +1179,26 @@ def build_home(a):
     S(a, """
 ; hn_home_tail: replaces home_refresh's ljmp 0x5916; adds the accent bar
 hn_home_tail:
-lcall 0x5916       ; as before, R7 = volume
+lcall 0x5916       ; the volume (hm_volume), R7 = volume
 lcall uk_acc""")
-    rect(a, 18, 28, 114, 3)
+    rect(a, 18, 28, BAR_Y, 3)
     S(a, "ljmp uk_fill")
-    for name, back in (("hn_align_big", 0x2A28), ("hn_align_small", 0x3A85)):
+    for name, back, y, draw in (("hn_align_big", 0x2A28, NAME_Y, "hm_name"),
+                                ("hn_align_small", 0x3A85, uikit.STATUS_Y, "hm_status")):
         S(a, """
-; %s: on page 1 move the stored start x (XDATA 0x04:0x05) to 16
+; %s: on page 1, the text at the stock y %d is ours (%s, then return from the stock renderer:
+; nothing is pushed at this point); other page-1 texts start at x 16 (XDATA 0x04:0x05)
 %s:
 mov A,0x45
 cjne A,#1,%s_x
+mov R0,#0
+movx A,@R0         ; y hi
+jnz %s_left
+inc R0
+movx A,@R0         ; y lo
+cjne A,#%d,%s_left
+ljmp %s
+%s_left:
 mov R0,#4
 movx A,@R0         ; start x hi
 jnz %s_x
@@ -1171,7 +1213,385 @@ movx @R0,A         ; start x = 16
 clr A              ; the two instructions the hook replaced
 mov R0,#2
 ljmp 0x%04X
-""" % (name, name, name, name, name, name, back))
+""" % (name, y, draw, name, name, name, y, name, draw, name, name, name, name, back))
+
+    S(a, "; hm_name: the input name (XDATA 0x35), display face, white, at x 16, baseline 104\nhm_name:")
+    tp_setup(a, "pf_name", BIG_BUF, 0, HNAME_X, HNAME_Y, WHITE, spacing=1)
+    S(a, "lcall uk_text")
+    S(a, "mov R6,#1\nmov R7,#0x3F\nmov R5,#%d\nmov R4,#%d\nljmp hm_rest" % (HNAME_Y, PF_NAME.H))
+    S(a, "; hm_name_meas: TP_END = where hm_name's text ends (nothing drawn)\nhm_name_meas:")
+    tp_setup(a, "pf_name", BIG_BUF, 0, HNAME_X, HNAME_Y, WHITE, clip=(0x100, 0), spacing=1)
+    S(a, "ljmp uk_text")
+    S(a, "; hm_status: the status line (XDATA 0x50), mono, grey, at x 18, baseline 132\nhm_status:")
+    tp_setup(a, "pf_status", SMALL_BUF, 0, STAT_X, STAT_Y, DIM, spacing=1)
+    S(a, "lcall uk_text")
+    S(a, "mov R6,#1\nmov R7,#0x3F\nmov R5,#%d\nmov R4,#%d\nljmp hm_rest" % (STAT_Y, PF_STATUS.H))
+    S(a, "; hm_stat_meas: TP_END = where hm_status's text ends\nhm_stat_meas:")
+    tp_setup(a, "pf_status", SMALL_BUF, 0, STAT_X, STAT_Y, DIM, clip=(0x100, 0), spacing=1)
+    S(a, "ljmp uk_text")
+
+    S(a, """
+; hm_rest: black from TP_END + 1 to R6:R7 (the element's last column), rows R5 .. R5 + R4 - 1: the
+; rest of a shorter text than before. Not during a wipe: the wipe owns the screen, and its band
+; is black already.
+hm_rest:
+mov DPTR,#0x%04X""" % HN_MODE + """
+movx A,@DPTR
+jz hq_go
+ret
+hq_go:
+mov DPTR,#0x%04X""" % HM_RL + """
+mov A,R6
+movx @DPTR,A
+inc DPTR
+mov A,R7
+movx @DPTR,A
+inc DPTR
+mov A,R5
+movx @DPTR,A       ; HM_RY
+inc DPTR
+mov A,R4
+movx @DPTR,A       ; HM_RH
+mov DPTR,#0x%04X""" % KIT.TP["END"] + """
+movx A,@DPTR
+mov R2,A
+inc DPTR
+movx A,@DPTR
+add A,#1
+mov R3,A
+clr A
+addc A,R2
+mov R2,A           ; x = TP_END + 1
+hq_loop:
+; done when x > limit
+mov DPTR,#0x%04X""" % HM_RL + """
+movx A,@DPTR
+mov R6,A
+inc DPTR
+movx A,@DPTR
+mov R7,A
+clr C
+subb A,R3
+mov R1,A           ; limit - x (lo)
+mov A,R6
+subb A,R2
+jc hq_ret
+jnz hq_wide        ; 256 columns or more left
+mov A,R1
+inc A
+jnz hq_w
+hq_wide:
+mov A,#255
+hq_w:
+mov R1,A           ; width
+mov DPTR,#0x%04X""" % HM_RX + """
+mov A,R1
+add A,R3
+mov R7,A
+clr A
+addc A,R2
+movx @DPTR,A
+inc DPTR
+mov A,R7
+movx @DPTR,A       ; HM_RX = x + width
+mov DPTR,#0x%04X""" % HM_RY + """
+movx A,@DPTR
+mov R5,A
+inc DPTR
+movx A,@DPTR
+mov R4,A
+mov R6,#0
+mov R7,#0
+lcall uk_fill
+mov DPTR,#0x%04X""" % HM_RX + """
+movx A,@DPTR
+mov R2,A
+inc DPTR
+movx A,@DPTR
+mov R3,A
+sjmp hq_loop
+hq_ret:
+ret
+
+; hm_icon: replaces home_draw_output_icon 0x5744: the mock's speaker (red with an X when muted,
+; 0x22.1) or headphones (g_output 0x2B not 1) at 12,9
+hm_icon:
+mov R0,#6
+jnb 0x22.1,hmi_on
+mov A,#1
+movx @R0,A         ; XDATA 6 = the stock icon number, as stock
+""")
+    tp_setup(a, "pf_icon", "hm_s_mute", 1, ICON_X, ICON_Y, RED)
+    S(a, "ljmp hmi_draw\nhmi_on:\nmov A,0x2B\nxrl A,#1\njz hmi_spk\nmov A,#2\nmovx @R0,A")
+    tp_setup(a, "pf_icon", "hm_s_hp", 1, ICON_X, ICON_Y, WHITE)
+    S(a, "ljmp hmi_draw\nhmi_spk:\nmov A,#3\nmovx @R0,A")
+    tp_setup(a, "pf_icon", "hm_s_spk", 1, ICON_X, ICON_Y, WHITE)
+    S(a, "hmi_draw:\nlcall uk_text")
+    S(a, "mov R6,#0\nmov R7,#%d\nmov R5,#%d\nmov R4,#%d\nljmp hm_rest" % (ICON_END, ICON_Y, PF_ICON.H))
+
+    S(a, """
+; hm_volume: replaces home_draw_volume 0x5916 (R7 speaker volume; the headphone volume 0x52 when
+; g_output is not 1): no leading zero, white, at 36, baseline 24
+hm_volume:
+mov A,0x2B
+xrl A,#1
+jz hmv_spk
+mov R7,0x52
+hmv_spk:
+mov R0,#5
+mov A,#2
+movx @R0,A         ; XDATA 5 = 2, as stock
+mov A,R7
+mov B,#10
+div AB             ; A tens, B ones
+mov DPTR,#0x%04X""" % HM_VS + """
+jz hmv_one
+add A,#0x30
+movx @DPTR,A
+inc DPTR
+hmv_one:
+mov A,B
+add A,#0x30
+movx @DPTR,A
+inc DPTR
+clr A
+movx @DPTR,A
+""")
+    tp_setup(a, "pf_hvol", HM_VS, 0, HVOL_X, HVOL_Y, WHITE)
+    S(a, "lcall uk_text")
+    S(a, "mov R6,#0\nmov R7,#%d\nmov R5,#%d\nmov R4,#%d\nljmp hm_rest" % (HVOL_END, HVOL_Y, PF_HVOL.H))
+
+    S(a, """
+; hm_eq: replaces the EQ tag's paint 0x4F18 (string R3:R2:R1): a box ending before x %d""" % EQ_RIGHT + """
+hm_eq:
+lcall hm_tag_copy
+mov A,#%d""" % (EQ_RIGHT - TAG_BASE) + """
+mov R6,#%d""" % (EQ_RIGHT - 28 - TAG_BASE) + """
+sjmp hm_tag
+; hm_fmt: replaces home_draw_format_tag's lcall 0x4F20 (string R3:R2:R1): a box ending before x %d""" % FMT_RIGHT + """
+hm_fmt:
+lcall hm_tag_copy
+mov A,#%d""" % (FMT_RIGHT - TAG_BASE) + """
+mov R6,#%d""" % (FMT_LEFT - TAG_BASE) + """
+; hm_tag: the text in HM_TAG in the accent, mono, centred in a 1-px accent box 10 px wider than it
+; and ending before x A + 192; black from x R6 + 192 up to the box (HM_TR, HM_TL, HM_TX: x - 192)
+hm_tag:
+mov DPTR,#0x%04X""" % HM_TR + """
+movx @DPTR,A
+inc DPTR
+mov A,R6
+movx @DPTR,A       ; HM_TL
+""")
+    tp_setup(a, "pf_tag", HM_TAG, 0, 0, TAG_TY, WHITE, clip=(0x100, 0))
+    S(a, """
+lcall uk_text      ; measure: TP_END = width - 1
+""")
+    st_imm16(a, KIT.TP["STR"], HM_TAG)
+    S(a, """mov DPTR,#0x%04X""" % (KIT.TP["END"] + 1) + """
+movx A,@DPTR
+inc A
+mov R7,A           ; text width
+mov DPTR,#0x%04X""" % HM_TWD + """
+movx @DPTR,A
+add A,#10
+mov R6,A           ; box width
+mov DPTR,#0x%04X""" % HM_TW + """
+movx @DPTR,A
+mov DPTR,#0x%04X""" % HM_TR + """
+movx A,@DPTR
+clr C
+subb A,R6
+mov DPTR,#0x%04X""" % HM_TX + """
+movx @DPTR,A       ; box x
+; black from HM_TL to the box
+mov R7,A
+mov DPTR,#0x%04X""" % HM_TL + """
+movx A,@DPTR
+mov R6,A
+mov A,R7
+clr C
+subb A,R6
+jz ht_box
+jc ht_box
+mov R1,A
+mov A,R6
+add A,#%d""" % TAG_BASE + """
+mov R3,A
+clr A
+addc A,#0
+mov R2,A
+mov R5,#%d""" % TAG_Y0 + """
+mov R4,#%d""" % (TAG_Y1 - TAG_Y0 + 1) + """
+mov R6,#0
+mov R7,#0
+lcall uk_fill
+ht_box:
+; the box: top and bottom rows, left and right columns, in the accent
+lcall ht_xw
+mov R5,#%d""" % TAG_Y0 + """
+mov R4,#1
+lcall ht_acc
+lcall ht_xw
+mov R5,#%d""" % TAG_Y1 + """
+mov R4,#1
+lcall ht_acc
+lcall ht_xw
+mov R1,#1
+mov R5,#%d""" % (TAG_Y0 + 1) + """
+mov R4,#%d""" % (TAG_Y1 - TAG_Y0 - 1) + """
+lcall ht_acc
+lcall ht_xw
+dec A
+add A,R3
+mov R3,A
+clr A
+addc A,R2
+mov R2,A           ; x + w - 1
+mov R1,#1
+mov R5,#%d""" % (TAG_Y0 + 1) + """
+mov R4,#%d""" % (TAG_Y1 - TAG_Y0 - 1) + """
+lcall ht_acc
+; the inside around the text, black: rows above and below it, 4 columns left and right
+lcall ht_xw
+inc R3
+dec R1
+dec R1
+mov R5,#%d""" % (TAG_Y0 + 1) + """
+mov R4,#%d""" % (TAG_TY - TAG_Y0 - 1) + """
+lcall ht_black
+lcall ht_xw
+inc R3
+dec R1
+dec R1
+mov R5,#%d""" % (TAG_TY + PF_TAG.H) + """
+mov R4,#%d""" % (TAG_Y1 - TAG_TY - PF_TAG.H) + """
+lcall ht_black
+lcall ht_xw
+inc R3
+mov R1,#4
+mov R5,#%d""" % TAG_TY + """
+mov R4,#%d""" % PF_TAG.H + """
+lcall ht_black
+lcall ht_xw
+mov DPTR,#0x%04X""" % HM_TWD + """
+movx A,@DPTR
+add A,#5
+add A,R3
+mov R3,A
+clr A
+addc A,R2
+mov R2,A           ; x + 5 + text width
+mov R1,#4
+mov R5,#%d""" % TAG_TY + """
+mov R4,#%d""" % PF_TAG.H + """
+lcall ht_black
+; the text at x + 5
+mov DPTR,#0x%04X""" % HM_TX + """
+movx A,@DPTR
+add A,#%d""" % (5 + TAG_BASE) + """
+mov R7,A
+clr A
+addc A,#0
+mov DPTR,#0x%04X""" % KIT.TP["X"] + """
+movx @DPTR,A
+inc DPTR
+mov A,R7
+movx @DPTR,A
+lcall uk_acc
+mov DPTR,#0x%04X""" % KIT.TP["INK"] + """
+mov A,R6
+movx @DPTR,A
+inc DPTR
+mov A,R7
+movx @DPTR,A
+mov DPTR,#0x%04X""" % KIT.TP["CX0"] + """
+clr A
+movx @DPTR,A
+inc DPTR
+movx @DPTR,A
+inc DPTR
+inc A
+movx @DPTR,A
+inc DPTR
+mov A,#0x3F
+movx @DPTR,A       ; clip 0..319
+ljmp uk_text
+; ht_xw: R2:R3 = box x, R1 = A = box width (the box never starts at x 255 or 511: inc R3 is safe)
+ht_xw:
+mov DPTR,#0x%04X""" % HM_TX + """
+movx A,@DPTR
+add A,#%d""" % TAG_BASE + """
+mov R3,A
+clr A
+addc A,#0
+mov R2,A
+inc DPTR
+movx A,@DPTR
+mov R1,A
+ret
+ht_acc:
+push 0x01          ; uk_acc keeps R1..R5
+lcall uk_acc
+pop 0x01
+ljmp uk_fill
+ht_black:
+mov R6,#0
+mov R7,#0
+ljmp uk_fill
+
+; hm_tag_copy: HM_TAG = the string at R3:R2:R1 (R3 0xFF: code, else XDATA), at most 5 characters,
+; trailing spaces cut
+hm_tag_copy:
+mov DPH,R2
+mov DPL,R1
+mov R4,#0          ; characters copied
+mov R5,#0          ; length up to the last non-space
+htc_loop:
+cjne R3,#0xFF,htc_x
+clr A
+movc A,@A+DPTR
+sjmp htc_got
+htc_x:
+movx A,@DPTR
+htc_got:
+jz htc_end
+inc DPTR
+mov R6,A
+push DPH
+push DPL
+mov A,R4
+add A,%s""" % lo(HM_TAG) + """
+mov DPL,A
+clr A
+addc A,%s""" % hi(HM_TAG) + """
+mov DPH,A
+mov A,R6
+movx @DPTR,A
+pop DPL
+pop DPH
+inc R4
+cjne R6,#0x20,htc_ns
+sjmp htc_sp
+htc_ns:
+mov A,R4
+mov R5,A
+htc_sp:
+cjne R4,#5,htc_loop
+htc_end:
+mov A,R5
+add A,%s""" % lo(HM_TAG) + """
+mov DPL,A
+clr A
+addc A,%s""" % hi(HM_TAG) + """
+mov DPH,A
+clr A
+movx @DPTR,A
+ret
+
+; hm_fmt_clear: replaces home_draw_format_tag's clears (0x0026): the format tag's area, black
+hm_fmt_clear:""")
+    rect(a, FMT_LEFT, FMT_RIGHT - FMT_LEFT, TAG_Y0, TAG_Y1 - TAG_Y0 + 1, 0)
+    S(a, "ljmp uk_fill")
 
 
 def build(a):

@@ -26,8 +26,10 @@ async function main(){
   for (const sp of cfg.specs){
     if (only && !only.split(',').includes(sp.id)) continue;
     const chars = [...new Set([...sp.chars.replace('ascii', ASCII)])];
-    const faces = await document.fonts.load(sp.font, chars.join(''));
-    if (!faces.length){ log(sp.id + ': FONT NOT LOADED, nothing written'); continue; }
+    if (!sp.draw){
+      const faces = await document.fonts.load(sp.font, chars.join(''));
+      if (!faces.length){ log(sp.id + ': FONT NOT LOADED, nothing written'); continue; }
+    }
     const out = raster(sp, chars);
     const r = await fetch('save?id=' + encodeURIComponent(sp.id), {method: 'POST', body: JSON.stringify(out)});
     log(sp.id + ': ' + chars.length + ' glyphs, ' + (await r.text()));
@@ -39,7 +41,7 @@ async function main(){
 
 /* one glyph at a time on a transparent canvas, white ink: alpha = coverage (grey-scale, no subpixel AA) */
 function raster(sp, chars){
-  const px = parseFloat(sp.font.match(/(\d+(?:\.\d+)?)px/)[1]);
+  const px = sp.draw ? sp.size : parseFloat(sp.font.match(/(\d+(?:\.\d+)?)px/)[1]);
   const W = Math.ceil(px * 4), H = Math.ceil(px * 3), ox = Math.ceil(px), base = Math.ceil(px * 2);
   const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
   const g = cv.getContext('2d', {willReadFrequently: true});
@@ -50,8 +52,9 @@ function raster(sp, chars){
     g.clearRect(0, 0, W, H);
     g.font = sp.font; g.textBaseline = 'alphabetic'; g.textAlign = 'left'; g.fillStyle = '#fff';
     if ('letterSpacing' in g) g.letterSpacing = '0px';
-    g.fillText(ch, ox, base);
-    const adv = g.measureText(ch).width;
+    let adv;
+    if (sp.draw){ adv = DRAW[sp.draw](g, ch, ox, base - px, px); }
+    else { g.fillText(ch, ox, base); adv = g.measureText(ch).width; }
     const d = g.getImageData(0, 0, W, H).data;
     let x0 = W, x1 = -1, y0 = H, y1 = -1;
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (d[(y * W + x) * 4 + 3]){
@@ -69,8 +72,27 @@ function raster(sp, chars){
   }
   const m = g.measureText('Hxg');
   document.getElementById('show').appendChild(sheet);
-  return {id: sp.id, font: sp.font, px, ascent: m.fontBoundingBoxAscent, descent: m.fontBoundingBoxDescent,
+  return {id: sp.id, font: sp.font || ('drawn: ' + sp.draw), px, ascent: m.fontBoundingBoxAscent, descent: m.fontBoundingBoxDescent,
           engine: navigator.userAgent, coverage: '4-bit alpha, one hex digit per pixel', glyphs};
 }
+/* drawn glyphs: (g, ch, x, y, s) draws character ch in an s-px box with its top-left at x, y; returns the advance */
+const DRAW = {
+  /* speaker() of the UI mock, white; S: sound on, M: muted (the X), H: headphones in the same line weight */
+  icons(g, ch, x, y, s){
+    g.fillStyle = '#fff'; g.strokeStyle = '#fff'; g.lineWidth = 2;
+    if (ch === 'H'){
+      g.beginPath(); g.arc(x + s * .5, y + s * .55, s * .42, Math.PI, 0); g.stroke();
+      g.fillRect(x + s * .06, y + s * .55, s * .24, s * .42); g.fillRect(x + s * .7, y + s * .55, s * .24, s * .42);
+      return s;
+    }
+    g.beginPath(); g.moveTo(x, y + s * .35); g.lineTo(x + s * .3, y + s * .35); g.lineTo(x + s * .62, y);
+    g.lineTo(x + s * .62, y + s); g.lineTo(x + s * .3, y + s * .65); g.lineTo(x, y + s * .65); g.closePath(); g.fill();
+    g.beginPath();
+    if (ch === 'M'){ g.moveTo(x + s * .8, y + s * .3); g.lineTo(x + s * 1.15, y + s * .7); g.moveTo(x + s * 1.15, y + s * .3); g.lineTo(x + s * .8, y + s * .7); }
+    else { g.arc(x + s * .62, y + s / 2, s * .3, -0.9, 0.9); g.moveTo(x + s * .62 + s * .55 * Math.cos(-0.9), y + s / 2 + s * .55 * Math.sin(-0.9)); g.arc(x + s * .62, y + s / 2, s * .55, -0.9, 0.9); }
+    g.stroke();
+    return s * 1.25;
+  },
+};
 main().catch(e => log('ERROR ' + e.message));
 </script>

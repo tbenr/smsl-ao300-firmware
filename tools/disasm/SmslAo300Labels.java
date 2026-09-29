@@ -62,6 +62,13 @@ public class SmslAo300Labels extends GhidraScript {
         {0x4C8F, "big_text_load"},         {0x4D3A, "small_text_load"},
         {0x5119, "lcd_clear_column24"},    {0x49A1, "home_draw_eq_tag"},
         {0x41CA, "home_draw_format_tag"},  {0x4A85, "home_draw_input_name"},
+        {0x4F18, "eq_tag_paint"},      // home_draw_eq_tag's only call (0x4A0F): string R3:R2:R1 at 266,10, falls into small_text_at
+        {0x4F20, "small_text_at"},     // string R3:R2:R1 (generic pointer) in small glyphs at R4:R5 x, R6:R7 y
+        {0x0026, "tag_box_clear"},     // black box from x R4:R5, y R6:R7 (the format tag's, from home_draw_format_tag)
+        {0x4B66, "icon_paint"},        // home icon XDATA 6 in colour R2:R3 at R4:R5 x, R6:R7 y
+        {0x3881, "eq_show"},           // R7 = EQ: EQ tag, the preset's name (big, y 75) and its text (small, y 135) on page 1
+        {0x57C6, "eq_step"},           // key_59 without the refresh flags: next EQ, apply, eq_show
+        {0x4BC9, "home_draw_status"},  // the status line for the input (small_text_render, y 135)
         {0x1F7F, "keil_imul"},             {0x2167, "volpage_render"},
         // LCD bus (P1 data, P0.5 WR, P0.7 CS, P0.3 D/C)
         {0x2808, "lcd_init"},          {0x4437, "lcd_set_window"},
@@ -103,43 +110,55 @@ public class SmslAo300Labels extends GhidraScript {
         {0x9450, "blit_test"},         // features/blit-test
         {0x9700, "fast_pixel"},        // features/fast-lcd, replaces lcd_write_pixel
         {0x9716, "fast_clear"},        // features/fast-lcd, replaces lcd_clear_black's loop
-        // features/house-numerals (hn4)
-        {0x991A, "uk_fill"},           // rectangle in one colour, streamed
-        {0x9970, "uk_acc"},            // R6:R7 = accent (theme colour, SMSL orange on White)
-        {0x9981, "hn_name_ptr"},       // volume page: input 1..6 -> name pointer
-        {0x999A, "uk_fp_load"},        // uk_paint: copy the font descriptor
-        {0x99BA, "uk_fetch"},          // uk_paint: next character (code or XDATA string)
-        {0x99E1, "uk_map"},            // uk_paint: character -> glyph index | narrow
-        {0x99FD, "uk_home_x"},         // stock page-1 start x of a text (centring + x 16 rule)
-        {0x9A6A, "uk_paint"},          // text painter: font, string, x, y, ink, background, x clip, scale 1/2
-        {0x9B43, "uk_cell"},           // uk_paint: one glyph cell, streamed
-        {0x9EB2, "hn_draw_volume"},    // replaces volpage_draw_volume 0x5936
-        {0x9EFF, "hv_num"},            // volume page: number (big font at 2x)
-        {0x9F48, "hv_name"},           // volume page: input name
-        {0x9F99, "hv_vol"},            // volume page: VOL
-        {0x9FE3, "hv_div"},            // volume page: divider
-        {0x9FF4, "hv_line"},           // volume page: whole position line
-        {0xA008, "hn_line_seg"},       // columns HN_S0..HN_S1 of the position line
-        {0xA090, "hn_vol_static"},
-        {0xA099, "hn_volpage"},        // page 2 renderer (jump-table entry 0x2143)
-        {0xA0B8, "hn_enter_vol"},      // volume-key sites and hn_clear page 2: start / turn round the entry wipe
-        {0xA0EB, "hn_reverse"},
-        {0xA101, "hn_clear"},          // ui_render_page's clear (0x2106): entry, exit, or cancel + stock clear
-        {0xA16C, "hn_cancel"},         // ui_clear_screen's first instruction: stops a wipe
-        {0xA17B, "hn_hold"},           // 0x4081: holds the periodic home refresh back during a wipe
-        {0xA18E, "hn_name_guard"},     // home_draw_input_name's entry: cancels an exit wipe first
-        {0xA1C9, "hn_name_load"},      // XDATA 0x35 = input name, as 0x4A85 loads it
-        {0xA1EA, "hn_fp_name"},
-        {0xA22D, "hn_fp_status"},
-        {0xA270, "hh_icon"},  {0xA273, "hh_vol"},  {0xA278, "hh_fmt"},  {0xA27B, "hh_eq"},
-        {0xA27E, "hh_bar"},   {0xA28E, "hh_name"}, {0xA294, "hh_stat"}, // exit wipe: home elements
-        {0xA29A, "uk_tasks"},          // replaces main_tasks_on's lcall main_tick_tasks (0x5B2A): one wipe step per tick
-        {0xA19E, "hn_home_now"},       // stop a wipe, black, home_refresh + status line (hn_name_guard)
-        {0xA1B4, "hn_flag_path"},      // 0x3FF8: during a wipe the flag path skips its 0x412F fill
-        {0xA2A8, "hn_step"},           // one wipe step
-        {0xA79D, "hn_home_tail"},      // home_refresh's tail: volume, accent bar
-        {0xA7B0, "hn_align_big"},      // big_text_render on page 1: start x 16
-        {0xA7CA, "hn_align_small"},    // small_text_render on page 1: start x 16
+        // features/house-numerals (hn5)
+        {0xB4C5, "uk_fill"},         // rectangle in one colour, streamed
+        {0xB51B, "uk_acc"},          // R6:R7 = accent (theme colour, SMSL orange on White)
+        {0xB52C, "hn_name_ptr"},     // volume page: input 1..6 -> name pointer
+        {0xB545, "uk_fp_load"},      // uk_paint: copy the font descriptor
+        {0xB565, "uk_fetch"},        // uk_paint: next character (code or XDATA string)
+        {0xB58C, "uk_map"},          // uk_paint: character -> glyph index | narrow
+        {0xB5A8, "uk_home_x"},       // stock page-1 start x of a text (centring + x 16 rule)
+        {0xB615, "uk_paint"},        // text painter: font, string, x, y, ink, background, x clip, scale 1/2
+        {0xB6EE, "uk_cell"},         // uk_paint: one glyph cell, streamed
+        {0xBA5D, "uk_avg"},          // R6:R7 = per-channel average of the RGB565 colours R2:R3, R4:R5
+        {0xBA75, "uk_tfetch"},       // uk_text: next character (code or XDATA string)
+        {0xBAFC, "uk_text"},         // proportional text painter (pfont fonts): align, spacing, x clip; 1-bit or 4-level run-length
+        {0xBFC9, "hn_draw_volume"},  // replaces volpage_draw_volume 0x5936
+        {0xC016, "hv_num"},          // volume page: number (big font at 2x)
+        {0xC05F, "hv_name"},         // volume page: input name
+        {0xC0B0, "hv_vol"},          // volume page: VOL
+        {0xC0FA, "hv_div"},          // volume page: divider
+        {0xC10B, "hv_line"},         // volume page: whole position line
+        {0xC11F, "hn_line_seg"},     // columns HN_S0..HN_S1 of the position line
+        {0xC1A7, "hn_vol_static"},
+        {0xC1B0, "hn_volpage"},      // page 2 renderer (jump-table entry 0x2143)
+        {0xC1CF, "hn_enter_vol"},    // volume-key sites and hn_clear page 2: start / turn round the entry wipe
+        {0xC202, "hn_reverse"},
+        {0xC218, "hn_clear"},        // ui_render_page's clear (0x2106): entry, exit, or cancel + stock clear
+        {0xC273, "hn_cancel"},       // ui_clear_screen's first instruction: stops a wipe
+        {0xC282, "hn_hold"},         // 0x4081: holds the periodic home refresh back during a wipe
+        {0xC295, "hn_name_guard"},   // home_draw_input_name's entry: cancels an exit wipe first
+        {0xC2A5, "hn_home_now"},     // stop a wipe, black, home_refresh + status line (hn_name_guard)
+        {0xC2BB, "hn_flag_path"},    // 0x3FF8: during a wipe the flag path skips its 0x412F fill
+        {0xC2D0, "hn_name_load"},    // XDATA 0x35 = input name, as 0x4A85 loads it
+        {0xC2F1, "hh_icon"},  {0xC2F4, "hh_vol"},  {0xC2F9, "hh_fmt"},  {0xC2FC, "hh_eq"},  {0xC2FF, "hh_bar"},  {0xC30F, "hh_name"}, // exit wipe: home elements
+        {0xC312, "uk_tasks"},        // replaces main_tasks_on's lcall main_tick_tasks (0x5B2A): one wipe step per tick
+        {0xC320, "hn_step"},         // one wipe step
+        {0xC802, "hn_home_tail"},    // home_refresh's tail: volume, accent bar
+        {0xC815, "hn_align_big"},    // big_text_render on page 1: the name at y 75 is hm_name, other texts start at x 16
+        {0xC83C, "hn_align_small"},  // small_text_render on page 1: the status at y 135 is hm_status, other texts start at x 16
+        {0xC863, "hm_name"},         // home: the input name (XDATA 0x35), display face
+        {0xC8BB, "hm_name_meas"},    // hm_name's end column, nothing drawn
+        {0xC908, "hm_status"},       // home: the status line (XDATA 0x50), mono
+        {0xC960, "hm_stat_meas"},    // hm_status's end column, nothing drawn
+        {0xC9AD, "hm_rest"},         // black from TP_END + 1 to R6:R7, rows R5.., R4 rows (not during a wipe)
+        {0xCA0D, "hm_icon"},         // replaces home_draw_output_icon 0x5744: speaker / muted / headphones
+        {0xCB13, "hm_volume"},       // replaces home_draw_volume 0x5916
+        {0xCB8E, "hm_eq"},           // replaces eq_tag_paint 0x4F18: the EQ tag box
+        {0xCB97, "hm_fmt"},          // replaces home_draw_format_tag's lcall small_text_at (0x425D): the format tag box
+        {0xCB9E, "hm_tag"},          // a tag: accent box and text, black up to it
+        {0xCCF5, "hm_tag_copy"},     // R3:R2:R1 string -> HM_TAG, trailing spaces cut
+        {0xCD35, "hm_fmt_clear"},    // replaces home_draw_format_tag's tag_box_clear calls (0x41E8, 0x41FC)
     };
 
     Object[][] codeLabels = {
@@ -160,9 +179,14 @@ public class SmslAo300Labels extends GhidraScript {
         {0x3FF8, "home_refresh_periodic_flags"}, // 0x21.3 / 0x21.1 / 0x20.6 set: clear them, page 1, 0x412F fill (hooked, features/house-numerals: hn_flag_path)
         {0x4A9B, "input_name_table"},       // home_draw_input_name's jump table, inputs 1..8 (7: no load)
         {0x9820, "hn_ease"},                // features/house-numerals: wipe edge x per step (21 words)
-        {0x984A, "hn_font_small"},          // features/house-numerals: font descriptors and character maps
+        {0x984A, "hn_font_small"},          // features/house-numerals: stock font descriptors and character maps (uk_paint)
         {0x9852, "hn_font_big"},
         {0x985A, "hn_map_small"},           {0x98BA, "hn_map_big"},
+        {0x9920, "pf_name"},         // features/house-numerals: disp52, format 2 (uk_text)
+        {0xA57C, "pf_status"},       // features/house-numerals: mono12, format 2 (uk_text)
+        {0xAEBE, "pf_tag"},          // features/house-numerals: mono10, format 2 (uk_text)
+        {0xB139, "pf_hvol"},         // features/house-numerals: num22, format 2 (uk_text)
+        {0xB39B, "pf_icon"},         // features/house-numerals: icons16, format 2 (uk_text)
         {0x33ED, "mute_timer_expired"},     // 0x43:0x44 reaches 0 -> mute_state_set(1) (call at 0x33FB)
         {0x341B, "format_poll_tick"},       // inputs 1..5: 0x4B:0x4C reaches 0 -> reload 10, format_poll, on BT bt_hold_mute_poll
         {0x3E92, "t0_remute_no_lock"},      // Timer0: optical/coax and P4.2 high (no lock) -> setb 0x21.4, 0x43:0x44 = 100
@@ -189,7 +213,9 @@ public class SmslAo300Labels extends GhidraScript {
         // 0x27:0x28, page 1: home_refresh_periodic countdown (10 after a render, 50 after a refresh)
         {0x2B, "g_output"},        {0x2C, "g_filter"},        {0x2F, "g_screen_off_hi"},
         {0x30, "g_screen_off_lo"}, {0x31, "g_volume"},        {0x32, "g_render_req"},
-        {0x39, "g_eq"},
+        {0x39, "g_eq"},            {0x3D, "g_format"},        // g_format: 3 DSD, 4 MQA (by 0x75), 5 DoP, else PCM (home_draw_format_tag)
+        {0x75, "g_format_mqa"},    // with g_format 4: 3 -> "MQA ", 4 or 5 -> "MQA.", else "PCM "
+        // bit 0x22.1: muted (the mute key cpl's it, 0x1052); home_draw_output_icon draws the red icon then
         {0x3F, "g_home_timer_hi"}, {0x40, "g_home_timer_lo"}, {0x43, "g_mute_timer_hi"},
         {0x44, "g_mute_timer_lo"},      // unmute countdown, main-loop ticks; see 0x33ED
         {0x23, "g_settle_timer_hi"}, {0x24, "g_settle_timer_lo"}, // 1000 at power-on, 500 by input_set_hw, 100 after a format reconfig; reloads 100

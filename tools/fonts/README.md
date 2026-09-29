@@ -22,6 +22,10 @@ Builds read only these files, so a build needs no browser. `tools/patch/pfont.py
 into a font for `uk_text`. It cuts the raster down to the characters a theme needs, quantises
 to 1 bit or to 4 levels, and packs the 4-level fonts run-length.
 
+A spec with `"draw"` instead of `"font"` names a drawing routine in `raster.html` (`DRAW`), for
+glyphs that are shapes rather than text. `icons16` holds the mock's speaker (`S`), the muted
+speaker (`M`) and headphones in the same line weight (`H`).
+
 To add a face or size: add a spec, then run
 
     python3 tools/fonts/rasterize.py        # serves http://127.0.0.1:8767/raster.html
