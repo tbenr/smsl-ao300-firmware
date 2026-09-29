@@ -41,17 +41,18 @@ after (as the PRO does) makes no difference. There are no new variables.
 ## Including it in another build
 
 `fix_auto_off.py` holds the fix on its own. `build_patch.py` here is only its standalone
-image. A build that uses `uikit.build_image` adds it like this:
+image. A build includes it through the feature graph (README, "Feature graph"):
 
 ```python
-sys.path.insert(0, os.path.join(ROOT, "features", "fix-auto-off"))
-import fix_auto_off
+INCLUDES = ["fix-auto-off"]
+HOOKS = [...] + [f.HOOK for f in features.fixes(INCLUDES)]   # (0x55B9, 02 5D 42, ljmp, "fx_auto_off")
 ...
-fix_auto_off.emit(a)                  # in assemble(), anywhere in the code area
-HOOKS = [..., fix_auto_off.HOOK]      # (0x55B9, 02 5D 42, ljmp, "fx_auto_off")
+for f in features.fixes(INCLUDES):                           # in assemble(), anywhere in the code
+    f.emit(a)
 ```
 
-That build's tests should then expect the two hook bytes 0x55BA/0x55BB in their image diff.
+`tools/build.py` checks that the hook is installed. That build's tests should then expect
+the two hook bytes 0x55BA/0x55BB in their image diff.
 
 ## Tests (`emu_test.py`)
 

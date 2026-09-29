@@ -7,10 +7,11 @@
     python3 tools/run_tests.py --core          also tools/emu/test_core.py (C core
                                                against the Python reference)
 
-The tests only read the images and write their own build/ renders, so they can run
-at once. Each output is printed whole when its test finishes, then a summary. Exit
-status 1 if any test fails. EMU8051=py in the environment runs them on the Python
-reference emulator instead of the C core.
+First it runs tools/build.py, which builds every feature image in dependency order and
+checks them (--no-build skips that). The tests only read the images and write their own
+build/ renders, so they can run at once. Each output is printed whole when its test
+finishes, then a summary. Exit status 1 if any test fails. EMU8051=py in the environment
+runs them on the Python reference emulator instead of the C core.
 """
 import argparse
 import glob
@@ -33,7 +34,14 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("features", nargs="*", help="feature folders to test (default: all)")
     ap.add_argument("--core", action="store_true", help="also run tools/emu/test_core.py")
+    ap.add_argument("--no-build", action="store_true", help="test the images as they are, without tools/build.py")
     args = ap.parse_args()
+
+    if not args.no_build:                          # every image, bases first, checked
+        p = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "build.py"), "-q"],
+                           cwd=ROOT, capture_output=True, text=True)
+        if p.returncode:
+            sys.exit("tools/build.py failed:\n" + (p.stdout + p.stderr).rstrip())
 
     tests = []
     for path in sorted(glob.glob(os.path.join(ROOT, "features", "*", "emu_test.py"))):

@@ -4,14 +4,10 @@ Stock v1.4 bug, fixed by SMSL in the AO300 PRO V1.2: with Dimmer set to Auto OFF
 post_power_on (0x5585) never loads the screen-off countdown g_screen_off (0x2F:0x30), and
 countdown16_dec (0x5A78) does nothing while it is 0, so the backlight stays on until the first
 key press. The PRO arms it at the end of its post-power-on routine with the key dispatcher's
-own code (0x0BBD): countdown = (dimmer - 1) * 0x01F4, i.e. 500 main ticks = 5 s.
+own code (0x0BBD): countdown = (dimmer - 1) * 0x01F4, i.e. 500 main ticks (about 6 s).
 
-Other builds include the fix in two steps:
-
-    sys.path.insert(0, os.path.join(ROOT, "features", "fix-auto-off"))
-    import fix_auto_off
-    fix_auto_off.emit(a)              # in the assemble step, anywhere in the code area
-    HOOKS.append(fix_auto_off.HOOK)   # uikit.build_image hooks format
+Other builds list "fix-auto-off" in INCLUDES and link HOOK and emit(a) through
+features.fixes(INCLUDES) (tools/patch/features.py; README, "Feature graph").
 """
 import os
 import sys

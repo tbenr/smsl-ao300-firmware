@@ -17,13 +17,14 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(ROOT, "tools", "emu"))
+import features  # noqa: E402
 import uikit  # noqa: E402
 import pfont  # noqa: E402
 import uitest as ut  # noqa: E402
 from asm51 import Asm  # noqa: E402
 from ao300 import CLOCK_HZ  # noqa: E402
 
-BASE_IMAGE = os.path.join(ROOT, "features", "fast-lcd", "build", "flash_fastlcd.bin")
+BASE_IMAGE = features.image("fast-lcd")
 BASE_SHA = "b292a64855975584dda5fe3fb282103bfde77f7f7237ca9945ac4b5442dae859"
 CODE_ADDR = 0x9800
 WHITE_ACCENT = 0xFC43

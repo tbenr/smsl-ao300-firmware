@@ -28,8 +28,10 @@ tools/
   emu/core8051.c, emu/cemu8051.py the same emulator in C, loaded through ctypes and
                                   compiled on first use; what Emu8051() runs, ~100x faster
   emu/test_core.py                differential test: C core against the Python reference
-  run_tests.py                    runs every features/*/emu_test.py and the UI kit's test
-                                  in parallel
+  build.py                        builds every feature image in dependency order and checks
+                                  them; --graph prints the feature tree (see "Feature graph")
+  run_tests.py                    builds, then runs every features/*/emu_test.py and the UI
+                                  kit's test in parallel
   emu/ao300.py                    harness: boot the whole firmware, press remote keys, log
                                   audio-chip writes and pins per 10 ms tick
   emu/panel_video.py              60 fps video of what the glass shows: samples panel memory
@@ -38,6 +40,7 @@ tools/
                                   glyph painters, uk_paint calls, the firmware's strings
   patch/asm51.py                  label-resolving 8051 assembler used by the build scripts
   patch/uikit.py                  shared building blocks for UI themes (see "UI themes")
+  patch/features.py               the feature graph: each feature's BASE and INCLUDES
   patch/uikit_test.py             the kit's own emulator tests, on fast-lcd + the kit
   patch/pfont.py                  proportional fonts for uk_text, packed from tools/fonts/raster
   fonts/                          the UI mock's typefaces as glyph coverage, the font bench
@@ -137,17 +140,62 @@ patches refers to that image.
 The trailing addresses are the key handlers reached only through the dispatcher's
 inline switch table, which the disassembler cannot follow on its own.
 
-Build, test and package the custom firmware:
+Build every feature image (bases first), then test them all:
 
 ```bash
-python3 features/direct-select/build_patch.py
-python3 features/direct-select/emu_test.py
+python3 tools/build.py
+python3 tools/run_tests.py
+```
+
+`python3 tools/build.py house-numerals` builds only that image and the ones it stacks on.
+To package an image into the vendor updater:
+
+```bash
 python3 tools/pe/stc_release.py rebuild original/SMSL_AO300_UPDATE_VER0A5_EN.exe features/direct-select/build/flash_patched.bin features/direct-select/build/SMSL_AO300_UPDATE_VER0A5_EN_directselect.exe
 ```
 
 The rebuilt updater is flashed exactly like the vendor one: connect the serial adapter,
 click the start button, then either power the amp on from cold or press Source on the
 remote while the amp is in standby.
+
+### Feature graph
+
+Each image is a feature stacked on another image, and can link in fixes. Every
+`features/<name>/build_patch.py` declares where it sits:
+
+```python
+BASE = "fast-lcd"                  # the image it stacks on ("stock" for direct-select)
+INCLUDES = []                      # fix features whose code it links into its own image
+BASE_IMAGE = features.image(BASE)  # tools/patch/features.py resolves the path
+BASE_SHA = "b292a648…"             # still pinned: a changed parent must be re-checked
+```
+
+`python3 tools/build.py --graph` prints the tree:
+
+```
+stock  85e8ac50…
+└── direct-select  'v1.4 tbenr'  code 0x9400..0x9442  bb468b29… known
+    ├── fast-lcd  'v1.4 tbenr fast'  code 0x9700..0x977B  b292a648… known
+    │   └── house-numerals  'v1.4 tbenr hn6'  code 0x9800..0xD4D4  7b74e950… known
+    └── fix-auto-off  'v1.4 tbenr aof1'  code 0x9680..0x969D  f9b5d14d… known  fix, hook 0x55B9
+```
+
+A fix is a feature whose folder also holds `<name>.py` (dashes as underscores) exporting
+`HOOK` and `emit(a)`. Its own image is only a standalone build on direct-select. A build
+that lists it in `INCLUDES` links it in two places:
+`HOOKS += [f.HOOK for f in features.fixes(INCLUDES)]`, and `f.emit(a)` for each fix in
+`assemble()`.
+
+`tools/build.py` builds in order and checks every image:
+
+- **Pins.** A feature whose `BASE_SHA` no longer matches its rebuilt parent is reported as
+  a stale pin, and nothing below it is built.
+- **Byte conflicts.** A feature may not change bytes an ancestor already changed; the
+  version pointer is the one exception.
+- **Includes.** Every included fix's hook must jump into the including image's own code.
+- **Known images.** Each sha is looked up in `KNOWN_IMAGES`, and a new one is reported.
+- **Code slots.** Features outside one chain are warned if their code areas share
+  addresses, so the Ghidra labels stay one name per address.
 
 ## Flashing from macOS or Linux
 

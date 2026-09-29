@@ -44,6 +44,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(ROOT, "tools", "patch"))
+import features  # noqa: E402
 from asm51 import Asm, hi8, lo8  # noqa: E402,F401
 import uikit  # noqa: E402
 import pfont  # noqa: E402
@@ -54,7 +55,9 @@ from uikit import (hi, lo, S, st_imm16, ld16, st16, FONTS, SMALL_MAP, BIG_MAP, B
                    BIG_BUF, SMALL_BUF, NAME_Y, STATUS_Y, INPUT_NAMES, P1, STOCK_SITES,
                    VOL_ENTRY_SITES, VOL_ENTRY_ORIG, vol_entry_bytes, VERSION_PTR_ADDR, VERSION_MAX_LEN)
 
-BASE_IMAGE = os.path.join(ROOT, "features", "fast-lcd", "build", "flash_fastlcd.bin")
+BASE = "fast-lcd"                   # image this builds on (tools/patch/features.py)
+INCLUDES = []                       # fix features linked into this image
+BASE_IMAGE = features.image(BASE)
 BASE_SHA = "b292a64855975584dda5fe3fb282103bfde77f7f7237ca9945ac4b5442dae859"
 OUT_IMAGE = os.path.join(HERE, "build", "flash_house_numerals.bin")
 OUT_LISTING = os.path.join(HERE, "house_numerals.asm")
@@ -207,6 +210,7 @@ HOOKS = [STOCK_SITES[site] + (op, target) for site, op, target in (
     ("format_tag_clear", 0x02, "hm_fmt_clear"),
     ("format_tag_clear_changed", 0x12, "hm_fmt_clear"),
 )]
+HOOKS += [f.HOOK for f in features.fixes(INCLUDES)]    # the fixes linked in
 VERSION_TEXT = "v1.4 tbenr hn6"
 
 
@@ -1628,6 +1632,8 @@ def build(a):
 def assemble():
     a = Asm(CODE_ADDR)
     build(a)
+    for f in features.fixes(INCLUDES):
+        f.emit(a)
     code = a.resolve()
     return code, a.labels, a
 

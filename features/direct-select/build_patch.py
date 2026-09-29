@@ -29,9 +29,21 @@ so:  cmd 0x10->USB  0x11->Optical  0x12->Coaxial  0x13->Bluetooth
      0x14->HDMI(ARC)  0x15->AUX IN
 (Confirm the exact order on hardware; change CMD_BASE / mapping below if needed.)
 """
+import hashlib
 import os
 import struct
 import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(HERE)), "tools", "patch"))
+import features  # noqa: E402
+
+# ---- place in the feature graph (tools/patch/features.py) ------------------
+BASE = features.STOCK              # the stock v1.4 image, original/extracted/flash.bin
+INCLUDES = []
+BASE_IMAGE = features.image(BASE)
+BASE_SHA = features.STOCK_SHA
+OUT_IMAGE = os.path.join(HERE, "build", "flash_patched.bin")
 
 # ---- addresses in the stock image -----------------------------------------
 HOOK_ADDR   = 0x5D10   # start of IR-translate routine (we overwrite 3 bytes)
@@ -156,12 +168,13 @@ def build_patch():
 
 
 def main():
-    here = os.path.dirname(os.path.abspath(__file__))
-    root = os.path.dirname(os.path.dirname(here))
-    src = sys.argv[1] if len(sys.argv) > 1 else os.path.join(root, "original", "extracted", "flash.bin")
-    dst = sys.argv[2] if len(sys.argv) > 2 else os.path.join(here, "build", "flash_patched.bin")
+    src = sys.argv[1] if len(sys.argv) > 1 else BASE_IMAGE
+    dst = sys.argv[2] if len(sys.argv) > 2 else OUT_IMAGE
     os.makedirs(os.path.dirname(dst), exist_ok=True)
     img = bytearray(open(src, "rb").read())
+    sha = hashlib.sha256(img).hexdigest()
+    if sha != BASE_SHA:
+        raise SystemExit("base image %s has sha %s, expected %s" % (src, sha, BASE_SHA))
 
     # pad image up to PATCH_ADDR with 0xFF (erased flash)
     if len(img) > PATCH_ADDR:

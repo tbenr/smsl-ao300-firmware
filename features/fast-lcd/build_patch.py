@@ -28,9 +28,12 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(ROOT, "tools", "patch"))
+import features  # noqa: E402
 from asm51 import Asm, rel, ab  # noqa: E402
 
-BASE_IMAGE = os.path.join(ROOT, "features", "direct-select", "build", "flash_patched.bin")
+BASE = "direct-select"              # image this builds on (tools/patch/features.py)
+INCLUDES = []                       # fix features linked into this image
+BASE_IMAGE = features.image(BASE)
 BASE_SHA = "bb468b29ea935150d2c43e00074a68184920329529077898011a0c334a76f43e"
 OUT_IMAGE = os.path.join(HERE, "build", "flash_fastlcd.bin")
 OUT_LISTING = os.path.join(HERE, "fast_lcd.asm")

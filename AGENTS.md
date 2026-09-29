@@ -35,6 +35,14 @@ rules apply to anyone working here, human or agent.
 - All addresses refer to the stock v1.4 image, sha256 `85e8ac50ffcf47ea…`.
 - One folder per feature: `features/<name>/` with `build_patch.py`, an annotated or
   generated `.asm` listing, `emu_test.py`, `README.md`, and outputs in `build/`.
+- Every `build_patch.py` declares its place in the feature graph: `BASE` (the image it
+  stacks on, "stock" for direct-select), `INCLUDES` (fixes it links in) and
+  `BASE_IMAGE = features.image(BASE)` (`tools/patch/features.py`). Build with
+  `tools/build.py`. It builds bases first and fails on stale pins, on a feature re-patching
+  bytes an ancestor changed, and on an included fix whose hook isn't installed.
+- Fixes for stock bugs live in `features/fix-<name>/`. They export `HOOK` and `emit(a)` from
+  `<name>.py` (dashes as underscores), so other builds can include them. Their own
+  `build_patch.py` is a standalone image on direct-select.
 - `build_patch.py` checks the base image's sha256 and asserts the original bytes at every
   hook before it changes them. Hooks use as few bytes as possible (an LJMP or a
   repointed branch). New code is appended after the current end of the patch area and
