@@ -194,7 +194,8 @@ the stock UI through the fast pixel path. Longer listening tests are still to co
 Tried on 2026-09-29 and looks OK: `features/house-numerals/build/flash_house_numerals.bin`
 (hn4.1, `v1.4 tbenr hn4.1`), the House Numerals home and volume page with the non-blocking
 eased wipe. Longer use is still to come. Its successor hn5 (`v1.4 tbenr hn5`, the mock's
-home screen in the mock's typefaces) is emulator-verified and not yet tried on the amp.
+home screen in the mock's typefaces) was tried on 2026-09-29: it looks great and the
+anti-aliased text works on the panel, but the tags, status line and volume are too small.
 
 ## What the custom firmware adds
 

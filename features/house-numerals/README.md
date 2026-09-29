@@ -29,7 +29,9 @@ Earlier images:
 
 ## Status
 
-hn5: emulator-verified (all tests pass), not yet tried on the amp.
+hn5: emulator-verified (all tests pass). Tried on the amp on 2026-09-29: looks great, and the
+anti-aliased text works well on the panel, but the tags, the status line (sample rate) and the
+volume are too small at the panel's size. A redesign of the sizes is next.
 
 Tried on the amp on 2026-09-29: hn4.1 (`v1.4 tbenr hn4.1`, `5eddb6df…`) looks OK. Longer use
 is still to come.
