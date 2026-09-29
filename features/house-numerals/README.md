@@ -2,9 +2,14 @@
 
 A reduced build of study 3 ("House Numerals", after SMSL's SU and DO series screens) from
 `features/ui-theme/ui_themes.html`. Built on top of fast-lcd, with fix-auto-off included. The RESET page shows
-`v1.4 tbenr hn6.1`.
+`v1.4 tbenr hn7`.
 
-This is image hn6.1 (sha256 `8f0ab9b2…`): hn6 with `features/fix-auto-off` linked in
+This is image hn7 (sha256 `41ce9807…`). It is hn6.1 with the sizes redone in `sizing.html`: icon 22 px, volume 33, tags 16 in 22-px boxes, name 54, status line 28,
+bar at y 156. The name and the wider status line no longer share a step of the wipe back home.
+Together they took 8.4 ms, over the 8 ms budget per 10 ms tick, so the status line now comes
+one step after the name (the last step still draws whatever is left).
+
+hn6.1 (`v1.4 tbenr hn6.1`, sha256 `8f0ab9b2…`) is hn6 with `features/fix-auto-off` linked in
 (`INCLUDES`), so with Dimmer on Auto OFF the display also goes dark after a cold power-up
 (5.1 s after the power-on routine in the emulator). Nothing else changed.
 
@@ -36,6 +41,9 @@ Earlier images:
 
 ## Status
 
+hn7: emulator-verified (all tests pass, including "fix-auto-off in house-numerals"), not yet
+tried on the amp.
+
 hn6.1: emulator-verified (all tests pass, including "fix-auto-off in house-numerals"), not
 yet tried on the amp.
 
@@ -52,12 +60,13 @@ is still to come.
 
 | Element | Build |
 |---|---|
-| Home: icon | the mock's speaker at 23 px, 12,7, white; red with an X when muted (bit 0x22.1); headphones on the headphone output |
-| Home: volume | Barlow Condensed 36 px, white, at x 47, baseline 29, no leading zero |
-| Home: tags | IBM Plex Mono 13 px in the accent, in 1-px accent boxes 10 px wider than the text, rows 9..29: the EQ box 276..309, the format box ending at 269 |
-| Home: input name | Big Shoulders Display 52 px, white, at x 16, baseline 104, 1 px letter spacing |
-| Home: status line | IBM Plex Mono 20 px, grey #8a9096, at x 18, baseline 140, 1 px letter spacing |
-| Home: accent bar | 28 x 3 at 18,150 |
+| Home: icon | the mock's speaker at 22 px, 12,10, white; red with an X when muted (bit 0x22.1); headphones on the headphone output |
+| Home: volume | Barlow Condensed 33 px, white, at x 46, baseline 31, no leading zero |
+| Home: tags | IBM Plex Mono 16 px in the accent, in 1-px accent boxes 10 px wider than the text, rows 10..31: the EQ box 270..309, the format box ending at 263 |
+| Home: input name | Big Shoulders Display 54 px, white, at x 16, baseline 101, 1 px letter spacing |
+| Home: status line | IBM Plex Mono 28 px, grey #8a9096, at x 18, baseline 147, 1 px letter spacing |
+| Home: accent bar | 28 x 3 at 18,156 |
+| (hn6) | speaker 23 px, volume 36, tags 13 in 21-px boxes, name 52 at baseline 104, status 20 at baseline 140, bar at y 150 |
 | (hn5) | speaker 16 px, volume 22, tags 10 in 17-px boxes, status 12 at baseline 132, bar at y 144 |
 | Volume page: name | small font, white, at 16,30 |
 | Volume page: divider | 1 x 104 at 140,14, colour 0x2104 |

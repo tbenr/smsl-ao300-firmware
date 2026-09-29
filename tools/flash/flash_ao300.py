@@ -68,6 +68,7 @@ KNOWN_IMAGES = {
     "510fd1385bc7f56271b40820a6e1f71e689c87eeb04b9017646d265e8e79abc2": "fast-lcd + House Numerals v5 (the mock's home screen in its own typefaces), 'v1.4 tbenr hn5' (features/house-numerals/build/flash_house_numerals.bin)",
     "7b74e95069b9dfac5affae2d08122158502fdd771ba8abff0ce5b3f3f6139d0a": "fast-lcd + House Numerals v6 (hn5 with larger volume, tags and status line from layout.json), 'v1.4 tbenr hn6' (features/house-numerals/build/flash_house_numerals.bin)",
     "8f0ab9b208ebe95519c31319e9db08501c7f910aa6766746031e35bfae67df7d": "fast-lcd + House Numerals v6.1 (hn6 + fix-auto-off: Dimmer Auto OFF armed after power-on), 'v1.4 tbenr hn6.1' (features/house-numerals/build/flash_house_numerals.bin)",
+    "41ce98074fcedf7f18497b856c26aea4d55f92660584c38f70273fb882250015": "fast-lcd + House Numerals v7 (hn6.1 with new sizes: status 28, name 54, tags 16; name and status in separate exit steps), 'v1.4 tbenr hn7' (features/house-numerals/build/flash_house_numerals.bin)",
     "f9b5d14d39a2437e5a7b92089101eb9c71e166df5fb37960abb370ebf420eb01": "direct-select + Auto OFF armed after power-on (AO300 PRO V1.2 fix), 'v1.4 tbenr aof1' (features/fix-auto-off/build/flash_fixautooff.bin)",
 }
 

@@ -582,6 +582,9 @@ def test_step():
             x = 318 - EASE[k]
             rev = {b for b, (x0, x1, y0, y1) in boxes.items()
                    if k == 20 or (x1 < x and (b != bp.HF_STAT or k >= 11))}
+            drawn = set().union(*order) if order else set()
+            if k < 20 and {bp.HF_NAME, bp.HF_STAT} <= rev - drawn:
+                rev.discard(bp.HF_STAT)       # not in the name's step: the status line waits one
             if e.xram[bp.HN_HF] != sum(rev):
                 bad.append((k, "flags", bin(e.xram[bp.HN_HF]), bin(sum(rev))))
             new = [b for b in rev if not any(b in o for o in order)]
@@ -636,8 +639,22 @@ def test_step():
             run_steps(e, 1)
             xs.append(e.xram[bp.HN_X] << 8 | e.xram[bp.HN_X + 1])
         ok = e.xram[bp.HN_MODE] == 0 and xs == [318 - EASE[k] for k in range(20 - turn + 1, 21)]
-        check("entry turned round after step %2d (x %3d): exit from there, %d steps, home as the stock refresh"
-              % (turn, x0, turn), ok and screen(e) == screen(href), str(xs[:3]))
+        s, h = screen(e), screen(href)
+        if e.xram[bp.HN_SBUF]:
+            same, note = s == h, ""
+        else:
+            # the exit ended before the stock refresh loaded the status line (10 ticks in): all but the
+            # status line is home already, and the refresh's first run then draws the whole home
+            sx0, sx1, sy0, sy1 = home_boxes()[bp.HF_STAT]
+            same = all(s[xx][yy] == h[xx][yy] for xx in range(W) for yy in range(H)
+                       if not (sx0 <= xx <= sx1 and sy0 <= yy <= sy1))
+            home_setup(e)
+            e.call(bp.HOME_REFRESH)
+            e.setR(6, 0); e.setR(7, bp.STATUS_Y)
+            e.call(0x3A53)
+            same, note = same and screen(e) == h, " (status line at the refresh, tick 10)"
+        check("entry turned round after step %2d (x %3d): exit from there, %d steps, home as the stock refresh%s"
+              % (turn, x0, turn, note), ok and same, str(xs[:3]))
     for turn in (1, 6, 12, 19):
         e = volpage_render()
         home_setup(e)

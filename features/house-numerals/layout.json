@@ -1,55 +1,55 @@
 {
   "_": "House Numerals home layout, written by sizing.html (tools/fonts/rasterize.py serves it); build_patch.py reads it.",
   "controls": {
-    "icon": 23,
-    "vol": 36,
-    "top": 29,
-    "tag": 13,
-    "tagH": 21,
-    "name": 52,
-    "nameY": 104,
-    "stat": 20,
-    "statY": 140,
+    "icon": 22,
+    "vol": 33,
+    "top": 31,
+    "tag": 16,
+    "tagH": 22,
+    "name": 54,
+    "nameY": 101,
+    "stat": 28,
+    "statY": 147,
     "statSp": 1,
-    "barY": 150,
+    "barY": 156,
     "tone": "grey"
   },
   "home": {
     "icon": {
-      "font": "icons23",
+      "font": "icons22",
       "x": 12,
-      "baseline": 30
+      "baseline": 32
     },
     "volume": {
-      "font": "num36",
-      "x": 47,
-      "baseline": 29
+      "font": "num33",
+      "x": 46,
+      "baseline": 31
     },
     "tags": {
-      "font": "mono13",
-      "top": 9,
-      "height": 21,
-      "baseline": 24,
+      "font": "mono16",
+      "top": 10,
+      "height": 22,
+      "baseline": 27,
       "right": 310,
       "gap": 6,
       "pad": 5
     },
     "name": {
-      "font": "disp52",
+      "font": "disp54",
       "x": 16,
-      "baseline": 104,
+      "baseline": 101,
       "spacing": 1
     },
     "status": {
-      "font": "mono20",
+      "font": "mono28",
       "x": 18,
-      "baseline": 140,
+      "baseline": 147,
       "spacing": 1,
       "colour": "#8a9096"
     },
     "bar": {
       "x": 18,
-      "y": 150,
+      "y": 156,
       "width": 28,
       "height": 3
     }
