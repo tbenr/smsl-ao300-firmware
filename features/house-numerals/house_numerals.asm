@@ -16,11 +16,12 @@
 ; 0x425D: 12 4f 20 -> 12 d3 17  (hm_fmt)
 ; 0x41E8: 02 00 26 -> 02 d4 b5  (hm_fmt_clear)
 ; 0x41FC: 12 00 26 -> 12 d4 b5  (hm_fmt_clear)
+; 0x55B9: 02 5d 42 -> 02 d4 c6  (fx_auto_off)
 ; 0x0D33: 12 5d 42 7b ff -> 12 c9 4f 80 11  (lcall hn_enter_vol ; sjmp 0x0D49)
 ; 0x0DB3: 12 5d 42 7b ff -> 12 c9 4f 80 11  (lcall hn_enter_vol ; sjmp 0x0DC9)
 ; 0x0E5A: 12 5d 42 7b ff -> 12 c9 4f 80 11  (lcall hn_enter_vol ; sjmp 0x0E70)
 ; 0x0F02: 12 5d 42 7b ff -> 12 c9 4f 80 11  (lcall hn_enter_vol ; sjmp 0x0F18)
-; version string 'v1.4 tbenr hn6' at 0xD4C6, pointer 0x22CA repointed
+; version string 'v1.4 tbenr hn6.1' at 0xD4D4, pointer 0x22CA repointed
 
             ; input-name pointers for inputs 1..6 (volume page), then the VOL label
 names:
@@ -5958,3 +5959,14 @@ hm_fmt_clear:
   D4BF: 7e 00                    mov R6,#0x00
   D4C1: 7f 00                    mov R7,#0x00
   D4C3: 02 bc 45                 ljmp uk_fill
+            ; fx_auto_off: replaces post_power_on's tail `ljmp ui_clear_screen` (0x55B9). With Dimmer on
+            ; Auto OFF, arm the screen-off countdown as a key press would, then take the stock tail call.
+            ; Arming before the jump keeps the stack depth as stock; the countdown is only read by the
+            ; main loop (0x33DB), so the order against ui_clear_screen does not matter.
+fx_auto_off:
+  D4C6: e5 29                    mov A,0x29                  ; g_dimmer_mode: 1 Always ON, 2 Auto OFF
+  D4C8: b4 02 06                 cjne A,#0x02,fx_ao_done
+  D4CB: 75 2f 01                 mov 0x2F,#0x01            ; g_screen_off_hi
+  D4CE: 75 30 f4                 mov 0x30,#0xF4            ; g_screen_off_lo
+fx_ao_done:
+  D4D1: 02 5d 42                 ljmp 0x5D42                 ; ui_clear_screen, the stock tail call

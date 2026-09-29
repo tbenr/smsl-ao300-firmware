@@ -1,10 +1,14 @@
 # House Numerals
 
 A reduced build of study 3 ("House Numerals", after SMSL's SU and DO series screens) from
-`features/ui-theme/ui_themes.html`. Built on top of fast-lcd. The RESET page shows
-`v1.4 tbenr hn6`.
+`features/ui-theme/ui_themes.html`. Built on top of fast-lcd, with fix-auto-off included. The RESET page shows
+`v1.4 tbenr hn6.1`.
 
-This is image hn6 (sha256 `7b74e950…`): hn5 with the larger sizes picked on the amp's feedback,
+This is image hn6.1 (sha256 `8f0ab9b2…`): hn6 with `features/fix-auto-off` linked in
+(`INCLUDES`), so with Dimmer on Auto OFF the display also goes dark after a cold power-up
+(5.1 s after the power-on routine in the emulator). Nothing else changed.
+
+hn6 (`v1.4 tbenr hn6`, sha256 `7b74e950…`) is hn5 with the larger sizes picked on the amp's feedback,
 the home layout now read from `layout.json`, which `sizing.html` writes (see "Layout" below).
 
 hn5 (`v1.4 tbenr hn5`, sha256 `510fd138…`) made the home screen the mock's, drawn in the mock's
@@ -31,6 +35,9 @@ Earlier images:
 - Flashed so far: the first image (`v1.4 tbenr hn`, `deada16a…`, 47 ms wipe) and hn4.1.
 
 ## Status
+
+hn6.1: emulator-verified (all tests pass, including "fix-auto-off in house-numerals"), not
+yet tried on the amp.
 
 hn6: emulator-verified (all tests pass), not yet tried on the amp.
 

@@ -7,7 +7,7 @@ plus the fix; the RESET page shows `v1.4 tbenr aof1`.
 
 ## Status
 
-Built and emulator-tested. Not yet tried on the amp.
+Built and emulator-tested. Not yet tried on the amp. Included in house-numerals since hn6.1.
 
 ## The bug
 

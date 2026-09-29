@@ -171,14 +171,13 @@ BASE_SHA = "b292a648…"             # still pinned: a changed parent must be re
 ```
 
 `python3 tools/build.py --graph` prints the tree. `──` is BASE (builds on), and `+` is
-INCLUDES (a fix linked into that image). This is how it looks once house-numerals
-includes fix-auto-off:
+INCLUDES (a fix linked into that image):
 
 ```
 stock                         85e8ac50…
 └── direct-select             'v1.4 tbenr'        0x9400..0x9442  bb468b29… known
     ├── fast-lcd              'v1.4 tbenr fast'   0x9700..0x977B  b292a648… known
-    │   └── house-numerals    'v1.4 tbenr hn6'    0x9800..0xD4E2  ab2eda5c… NEW
+    │   └── house-numerals    'v1.4 tbenr hn6.1'  0x9800..0xD4E4  8f0ab9b2… known
     │         + fix-auto-off  fix linked into house-numerals
     └── fix-auto-off          'v1.4 tbenr aof1'   0x9680..0x969D  f9b5d14d… known  [fix, hook 0x55B9; included by house-numerals]
 ```
@@ -269,7 +268,10 @@ eased wipe. Longer use is still to come. Its successor hn5 (`v1.4 tbenr hn5`, th
 home screen in the mock's typefaces) was tried on 2026-09-29: it looks great and the
 anti-aliased text works on the panel, but the tags, status line and volume are too small.
 hn6 (`v1.4 tbenr hn6`) has them larger, sized in `features/house-numerals/sizing.html`; it is
-emulator-verified and not yet tried on the amp.
+emulator-verified and not yet tried on the amp. hn6.1 (`v1.4 tbenr hn6.1`) is hn6 with
+fix-auto-off included, so Dimmer Auto OFF also times out after a cold power-up. It is
+emulator-verified, including the fix's integration test in that image, and not yet tried on
+the amp.
 
 Built and emulator-tested, not yet tried on the amp: `features/fix-auto-off/build/flash_fixautooff.bin`
 (`v1.4 tbenr aof1`), direct-select plus the PRO's Auto OFF power-on fix.
@@ -511,7 +513,7 @@ Measured from the images; the code/EEPROM split is the chip's own setting (0xF40
 
 | Region | Size | Used | Free |
 |---|---|---|---|
-| Code flash, 0x0000..0xF3FF | 62464 bytes | 54485 bytes (features/house-numerals hn6, 9 KB of it fonts) | ~7.8 KB |
+| Code flash, 0x0000..0xF3FF | 62464 bytes | 54501 bytes (features/house-numerals hn6.1, 9 KB of it fonts) | ~7.8 KB |
 | EEPROM area, 0xF400..0xFDFF | 2560 bytes, 5 sectors of 512 | sectors at offsets 0x0000, 0x0200, 0x0400 | 2 sectors, 1 KB |
 | Internal direct RAM, 0x00..0x7F | 128 bytes | all (registers, bit flags, variables up to 0x7F) | none |
 | Internal indirect RAM, 0x80..0xFF | 128 bytes | stack from 0x88 (`mov SP,#0x88` at 0x44A5) | stack headroom only |
