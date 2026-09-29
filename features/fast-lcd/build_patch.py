@@ -2,7 +2,7 @@
 """Build the "fast LCD" image for the SMSL AO300 (on top of direct-select).
 
 The stock UI keeps working as it is, but its two lowest-level pixel paths are
-replaced with the tuned loop that features/blit-test verified on the panel:
+replaced with the tuned loop that the blit-test build verified on the panel (README, Bus timing):
 
   lcd_write_pixel 0x5C7C   stock: two calls of lcd_write_data 0x567A, each with its own
                            CS pulse and a delay call (about 55 clocks a pixel).
@@ -35,8 +35,8 @@ BASE_SHA = "bb468b29ea935150d2c43e00074a68184920329529077898011a0c334a76f43e"
 OUT_IMAGE = os.path.join(HERE, "build", "flash_fastlcd.bin")
 OUT_LISTING = os.path.join(HERE, "fast_lcd.asm")
 
-# Placed after blit-test's code (0x9450..0x9632) so the two could share an image later
-# and the Ghidra labels of each feature stay distinct.
+# Placed after the old blit-test's code (0x9450..0x9632), so the Ghidra labels of each
+# feature stayed distinct.
 CODE_ADDR = 0x9700
 
 PIXEL = 0x5C7C

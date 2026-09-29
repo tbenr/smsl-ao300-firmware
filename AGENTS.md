@@ -64,8 +64,8 @@ rules apply to anyone working here, human or agent.
   - an image diff limited to the bytes the patch is meant to change.
 - Anything in the key path or the main loop, or anything that changes the page or the
   timers, also needs a full-firmware scenario. Boot from reset on `Amp` (`tools/emu/ao300.py`:
-  the real Timer0 and Timer3 ISRs), then run the main loop (see `boot_scenario` in
-  `features/blit-test/emu_test.py`).
+  the real Timer0 and Timer3 ISRs), then run the main loop (see `Run` and
+  `scenario_auto_off` in `features/fix-auto-off/emu_test.py`).
   Hook-only tests once missed `read_key`'s tail at 0x3DD6, which turns keys on page 2
   into "go home".
 - Run the tests (`python3 tools/run_tests.py` runs them all in parallel) and report

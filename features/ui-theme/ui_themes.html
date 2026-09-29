@@ -155,7 +155,7 @@ footer p{margin:0 0 8px}
 <div id="families"></div>
 
 <footer>
-  <p>Why only wipes and reveals: there is no framebuffer and the stock driver needs about 3 µs a pixel. A wipe, sweep, iris or blind paints each pixel once, so a whole transition costs one screen: about 163 ms with the stock driver and about 44 ms with the fast pixel path verified in <code>features/blit-test</code> and used by <code>features/fast-lcd</code>. A crossfade or slide repaints the full screen every frame, which this panel cannot do smoothly. The one exception here is Phosphor Panel, which only fades the lit areas.</p>
+  <p>Why only wipes and reveals: there is no framebuffer and the stock driver needs about 3 µs a pixel. A wipe, sweep, iris or blind paints each pixel once, so a whole transition costs one screen: about 163 ms with the stock driver and about 44 ms with the fast pixel path used by <code>features/fast-lcd</code>. A crossfade or slide repaints the full screen every frame, which this panel cannot do smoothly. The one exception here is Phosphor Panel, which only fades the lit areas.</p>
   <p>dB values are relative to step 60, taken from the stock volume table at 0x9289. Pixel counts and flash sizes are estimates. The Bluetooth home label and the timer tick length have not been traced in the code; 2 s is an assumed value for the 200 ticks.</p>
   <p>Keys: ↑ ↓ change volume, M mutes, when no control has focus.</p>
 </footer>

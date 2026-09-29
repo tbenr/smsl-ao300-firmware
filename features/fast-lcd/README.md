@@ -1,7 +1,7 @@
 # Fast LCD
 
-The stock UI, unchanged, drawn through the tuned pixel path that `features/blit-test`
-verified on the panel. Built on top of direct-select. The RESET page shows
+The stock UI, unchanged, drawn through the tuned pixel path that the blit-test build
+verified on the panel (see Bus timing). Built on top of direct-select. The RESET page shows
 `v1.4 tbenr fast`.
 
 ## Status
@@ -21,8 +21,8 @@ commands, windows, and the LCD init sequence. Both replacements leave every regi
 as the stock routines do, and the tests check this.
 
 Two 3-byte hooks: `ljmp` at 0x5C7C and at 0x5202 (the clear's loop, after its window
-setup). 108 bytes of code at 0x9700, after blit-test's area, so the two features
-could later share an image.
+setup). 108 bytes of code at 0x9700 (placed after the old blit-test's area,
+0x9450..0x9632).
 
 ## Emulator results
 
@@ -55,7 +55,7 @@ What the test checks:
 ## Risks
 
 - **Panel bus timing: low.** The pixel path uses the 3-clock byte writes that
-  blit-test proved on the panel. Commands and the LCD init are unchanged.
+  blit-test proved on the panel (see Bus timing). Commands and the LCD init are unchanged.
 - **Code that relied on slow drawing: checked.** On an input switch the stock firmware
   mutes the NJW1194 and switches the input before it draws, at 0 ms and 5.3 ms in both
   images. It then repeats the mute every tick until its tick-based timer releases it.
@@ -79,6 +79,38 @@ What the test checks:
   it unchanged.
 - **Recovery: unchanged.** The bootloader entry, the standby handler and the reset
   vector are untouched.
+
+## Bus timing
+
+The panel is an ST7789-class controller on an 8-bit 8080 bus: data on P1, WR on P0.5
+(latched on the rising edge), CS on P0.7, D/C on P0.3. The stock byte routine 0x567A
+toggles CS and calls a delay (0x001E) for every byte. The tuned loop sets D/C and CS once
+per block and then writes only P1 and a WR pulse. At 24 MHz one clock is 41.7 ns, and
+`mov P1` / `clr WR` / `setb WR` takes 3 clocks (STC8 table: bit operations and MOVs are
+1 clock).
+
+| 8080 write parameter | ST7789 minimum | Tuned loop |
+|---|---|---|
+| Write cycle | 66 ns | 125 ns |
+| WR low | 15 ns | 42 ns |
+| WR high | 15 ns | ≥ 42 ns |
+| Data setup before WR rises | 10 ns | ≥ 83 ns |
+| Data hold after WR rises | 10 ns | ≥ 42 ns |
+
+| Path | Clocks/px | Full screen |
+|---|---|---|
+| Stock, two 0x567A calls per pixel (loop at 0x5180) | ≈67 | 147 ms (measured) |
+| Fill, unrolled ×8 | 6.4 | ≈15 ms (measured) |
+| Same-byte fill (black, white) | 4.4 | ≈10 ms |
+| 1-bit glyph expand | ≈15 | ≈34 ms |
+
+"Measured" means on the amp, with the blit-test build (`features/blit-test`, removed on
+2026-09-29, last present at commit c28c4dc). On the home screen, remote Vol+ ran 10
+full-screen fills through the tuned loop and Vol− ran 10 through the stock clear 0x51EE.
+Each run then drew 8 colour bars through the same path and showed the milliseconds per
+fill: 14–15 tuned against 147 stock, as the emulator predicted (2026-09-28). Neither path
+dropped or shifted a byte, which would show as a colour change partway down a bar, so the
+stock per-byte delay is not needed on this board. If a later panel ever shows errors, add a NOP between `clr` and `setb` (+42 ns).
 
 ## Files
 

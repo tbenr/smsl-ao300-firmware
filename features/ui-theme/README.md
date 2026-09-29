@@ -21,9 +21,8 @@ access only for its web fonts. It contains:
 - controls for volume, mute, input, signal, the COLOR tint, a 0–60 or dB readout, and a
   frame rate throttled to the stock LCD driver or the fast pixel path.
 
-The fast pixel path the themes rely on is built. `features/blit-test` verified it on the
-amp, and its README has the bus timing. `features/fast-lcd` routes the stock UI
-through it.
+The fast pixel path the themes rely on is built. `features/fast-lcd` routes the stock UI
+through it, and its README has the bus timing the blit-test build verified on the amp.
 
 Constraints the designs follow:
 

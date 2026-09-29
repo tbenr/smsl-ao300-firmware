@@ -58,7 +58,7 @@ KNOWN_IMAGES = {
     # sha256 -> description (add new builds here)
     "85e8ac50ffcf47ea159a976edbcd398e81345c0ceb3b1542e97e80a800adb0cc": "stock v1.4 (original/extracted/flash.bin)",
     "bb468b29ea935150d2c43e00074a68184920329529077898011a0c334a76f43e": "direct-select + 'v1.4 tbenr' (features/direct-select/build/flash_patched.bin)",
-    "eae8f6eda5f0cf4b07dc797b3a311706aca4195666b392a8b68002418083e8d0": "direct-select + tuned-blit test on Vol+/Vol-, 5 s hold fixed, 'v1.4 tbenr blit' (features/blit-test/build/flash_blittest.bin)",
+    "eae8f6eda5f0cf4b07dc797b3a311706aca4195666b392a8b68002418083e8d0": "direct-select + tuned-blit test on Vol+/Vol-, 5 s hold fixed, 'v1.4 tbenr blit' (features/blit-test, removed on 2026-09-29, last present at commit c28c4dc)",
     "b292a64855975584dda5fe3fb282103bfde77f7f7237ca9945ac4b5442dae859": "direct-select + fast LCD paths, 'v1.4 tbenr fast' (features/fast-lcd/build/flash_fastlcd.bin)",
     "deada16ae67023e7fd9bb5c9668dc5a77f35b5738a19350ac138cd06470f86f1": "fast-lcd + House Numerals home and volume page, 'v1.4 tbenr hn' (features/house-numerals/build/flash_house_numerals.bin)",
     "2819e0b0f935f93012fd88d9799b6efcdd253c04269375a0d1acbb52965d787f": "fast-lcd + House Numerals v2 (200 ms wipe after the volume write, none while the unmute countdown runs), 'v1.4 tbenr hn2' (features/house-numerals/build/flash_house_numerals.bin)",

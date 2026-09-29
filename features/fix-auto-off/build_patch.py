@@ -19,7 +19,7 @@ BASE_IMAGE = os.path.join(ROOT, "features", "direct-select", "build", "flash_pat
 BASE_SHA = "bb468b29ea935150d2c43e00074a68184920329529077898011a0c334a76f43e"
 OUT_IMAGE = os.path.join(HERE, "build", "flash_fixautooff.bin")
 OUT_LISTING = os.path.join(HERE, "fix_auto_off.asm")
-CODE_ADDR = 0x9680                  # after direct-select; free in every image (blit-test ends 0x9632, fast-lcd 0x9700)
+CODE_ADDR = 0x9680                  # after direct-select; free in every image (fast-lcd starts at 0x9700)
 HOOKS = [fix_auto_off.HOOK]
 VERSION_TEXT = "v1.4 tbenr aof1"
 

@@ -55,9 +55,6 @@ features/
   ui-theme/                       design stage: visual themes for the home and volume
                                   screens, not built yet
     ui_themes.html                interactive theme designs and the stock screen map
-  blit-test/                      test build for the tuned blit (remote Vol+/Vol- on home), on top
-                                  of direct-select; see its README
-    build_patch.py, emu_test.py   build build/flash_blittest.bin, emulate it, render PNGs
   fast-lcd/                       the stock UI through the tuned pixel path, on top of
                                   direct-select; emulator-verified, see its README
     build_patch.py, emu_test.py   build build/flash_fastlcd.bin, lockstep UI tour vs stock
@@ -148,13 +145,6 @@ python3 features/direct-select/emu_test.py
 python3 tools/pe/stc_release.py rebuild original/SMSL_AO300_UPDATE_VER0A5_EN.exe features/direct-select/build/flash_patched.bin features/direct-select/build/SMSL_AO300_UPDATE_VER0A5_EN_directselect.exe
 ```
 
-The tuned-blit test build goes on top of the direct-select image:
-
-```bash
-python3 features/blit-test/build_patch.py
-python3 features/blit-test/emu_test.py
-```
-
 The rebuilt updater is flashed exactly like the vendor one: connect the serial adapter,
 click the start button, then either power the amp on from cold or press Source on the
 remote while the amp is in standby.
@@ -194,9 +184,11 @@ the RESET page shows `v1.4 tbenr`. The rebuilt vendor updater was also confirmed
 start and validate the same image on Windows.
 
 Also verified on 2026-09-28, flashed from Linux (`/dev/ttyUSB0`): the tuned-blit test
-build `features/blit-test/build/flash_blittest.bin`. The colour bars are correct through
-both paths, the full-screen fill times match the emulator's STC8 prediction (about 15 ms
-tuned against 147 ms stock), and the result holds for 5 s.
+build (`features/blit-test`). The colour bars are correct through both paths, the
+full-screen fill times match the emulator's STC8 prediction (about 15 ms tuned against
+147 ms stock), and the result holds for 5 s. fast-lcd superseded it, and the folder was
+removed on 2026-09-29 (last present at commit c28c4dc). fast-lcd's README keeps the bus
+timing.
 
 Flashed on 2026-09-28 and working so far: `features/fast-lcd/build/flash_fastlcd.bin`,
 the stock UI through the fast pixel path. Longer listening tests are still to come.
@@ -323,10 +315,9 @@ previews only.
 - the only bytes changed inside the stock image range are the three-byte hook at 0x5D10
   and the two pointer bytes at 0x22CB and 0x22CD.
 
-`features/blit-test/emu_test.py` runs the test build in the full emulator
-(`tools/emu/emu8051.py`). It executes the stock window, pixel and digit routines, with
-clocks counted from the STC8 instruction table. The LCD bus is decoded into an ST7789
-model and saved as PNG.
+The other feature tests run their images in the full emulator (`tools/emu/emu8051.py`).
+It executes the stock routines with clocks counted from the STC8 instruction table. The
+LCD bus is decoded into an ST7789 model and saved as PNG.
 
 `python3 tools/run_tests.py` runs all the feature tests and the UI kit's test at once, on
 the C core, in about 2 minutes, most of it the house-numerals 256-command sweep (before

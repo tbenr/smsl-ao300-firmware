@@ -585,7 +585,7 @@ volume page. Every stock byte is asserted by `build_patch.py`.
 ## Risks
 
 - **Panel timing: same as fast-lcd.** `uk_fill` and `uk_paint` use fast-lcd's byte timing (the
-  WR pulse `features/blit-test` proved on the panel).
+  WR pulse the blit-test build proved on the panel; see fast-lcd's README, Bus timing).
 - **The main loop now runs during the wipes.** A step is at most 5.4 ms, after the tick's own
   work. The volume keys, format poll, unmute and re-mute run as on fast-lcd (tested
   against it, including the INT1 case the hn3 review raised).
@@ -628,7 +628,7 @@ From hn4.1, the wipes:
 - On Bluetooth, optical without signal, headphones, right after power-on or an input
   switch: the same wipes; the unmute comes at the same moment as without a key.
 - Digits sharp at 2x, no torn columns or colour shifts (a dropped bus byte shows as a
-  colour shift, see `features/blit-test`).
+  colour shift, see fast-lcd's README, Bus timing).
 - Accent: SMSL orange on the White theme, the theme colour otherwise.
 
 ## How to go back
