@@ -27,6 +27,9 @@ sys.path.insert(0, HERE)
 from emu8051 import Emu8051  # noqa: E402
 from ao300 import Amp, CLOCK_HZ, TICK, NEC_POWER, NEC_VOL_UP  # noqa: E402
 import build_patch as bp     # noqa: E402
+import features              # noqa: E402  (tools/patch, on the path through build_patch)
+
+INTEGRATION = True           # `emu_test.py --in <feature>`: the fix's promises in that image
 import fix_auto_off as fx    # noqa: E402
 
 TEST_IMG = bp.OUT_IMAGE
@@ -235,14 +238,52 @@ def scenario_always_on():
     check("countdown never armed", (f.amp.e.iram[0x2F], f.amp.e.iram[0x30]) == (0, 0))
 
 
+def integration(img_path, label):
+    """What the fix promises in any image that contains it, on that image alone (run_tests.py runs
+    this as "fix-auto-off in <feature>" for every image that includes the fix)."""
+    print("\nIntegration, %s: Auto OFF armed at power-on, Always ON untouched" % label)
+    r = Run(img_path, 2)
+    r.amp.press(NEC_POWER)
+    r.amp.wait(15.0)
+    check("powered on, post_power_on ran once", r.amp.powered and len(r.power_ons) == 1)
+    t_on = r.power_ons[0] if r.power_ons else 0.0
+    off = [t for t, v in r.backlight(t_on) if v == "0"]
+    check("Auto OFF: backlight off 5-7.5 s after power-on, with no key",
+          len(off) == 1 and 5.0 <= off[0] - t_on <= 7.5 and not r.lit(),
+          "(%.2f s)" % (off[0] - t_on) if off else "(still on)")
+    t_key = r.amp.t
+    r.amp.press(NEC_VOL_UP)
+    r.amp.wait(10.0)
+    of = [t for t, v in r.backlight(t_key) if v == "0"]
+    check("a key press times out the same way (within 1 s)",
+          of and off and abs((of[-1] - t_key) - (off[0] - t_on)) < 1.0 and not r.lit(),
+          "(%.2f s)" % (of[-1] - t_key) if of else "")
+    r = Run(img_path, 1)
+    r.amp.press(NEC_POWER)
+    r.amp.wait(12.0)
+    r.amp.press(NEC_VOL_UP)
+    r.amp.wait(9.0)
+    check("Always ON: backlight stays on, countdown never armed",
+          r.lit() and not [v for _, v in r.backlight(r.power_ons[0] if r.power_ons else 0.0) if v == "0"]
+          and (r.amp.e.iram[0x2F], r.amp.e.iram[0x30]) == (0, 0))
+
+
+def finish():
+    print("\n" + ("ALL PASS" if not fails else "FAILURES: %s" % ", ".join(fails)))
+    sys.exit(1 if fails else 0)
+
+
 def main():
+    if len(sys.argv) == 3 and sys.argv[1] == "--in":        # run_tests.py: this fix inside another image
+        integration(features.image(sys.argv[2]), sys.argv[2])
+        finish()
     image_diff()
     hook_test()
     sweep()
     scenario_auto_off()
     scenario_always_on()
-    print("\n" + ("ALL PASS" if not fails else "FAILURES: %s" % ", ".join(fails)))
-    sys.exit(1 if fails else 0)
+    integration(TEST_IMG, "the standalone image")
+    finish()
 
 
 if __name__ == "__main__":

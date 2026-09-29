@@ -40,6 +40,15 @@ rules apply to anyone working here, human or agent.
   `BASE_IMAGE = features.image(BASE)` (`tools/patch/features.py`). Build with
   `tools/build.py`. It builds bases first and fails on stale pins, on a feature re-patching
   bytes an ancestor changed, and on an included fix whose hook isn't installed.
+- Every feature and fix declares the XDATA its code uses (`XDATA = [...]`, empty if none);
+  `tools/build.py` rejects overlaps and use outside the declaration.
+- Including a fix: review what `tools/build.py` reports about the fix's assumptions (stock
+  code it reaches that another layer changed, RAM another layer writes), then record it in
+  `REVIEWED` with the printed hash and one line on why it is fine. Never paste a hash
+  without looking.
+- A feature whose behaviour must survive in images built on it or including it gives its
+  `emu_test.py` an integration mode (`INTEGRATION = True`, `--in <feature>`). It checks only
+  what must stay true there, not this layer's exact bytes.
 - Fixes for stock bugs live in `features/fix-<name>/`. They export `HOOK` and `emit(a)` from
   `<name>.py` (dashes as underscores), so other builds can include them. Their own
   `build_patch.py` is a standalone image on direct-select.

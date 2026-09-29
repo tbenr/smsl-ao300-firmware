@@ -108,6 +108,8 @@ HM_TL = 0x01A6                      # hm_tag: the tag's area starts at this colu
 # uk_fill's work area (HN_N, HN_C) and uk_paint's parameter block and work area (FP..FP_OFF)
 # belong to the kit, placed where hn4.1 had them
 KIT = uikit.Kit(fill_ws=HN_N, fp_base=0x0130, tp_base=TP_BASE)
+# XDATA this image's own code uses: the variables above and the kit's blocks (tools/build.py checks it)
+XDATA = [(0x0100, HM_TL + 1, "house-numerals variables, uikit fill/FP/TP blocks")]
 (FP, FP_FONT, FP_STR, FP_SPC, FP_X, FP_Y, FP_INK, FP_BG, FP_CX0, FP_CX1, FP_SCALE, FP_W, FP_BPC, FP_BPG,
  FP_DATA, FP_MAP, FP_NADV, FP_CUR, FP_END, FP_CW, FP_ADV, FP_GLY, FP_VX0, FP_VX1, FP_OFF) = KIT.fp_layout()
 assert FP + uikit.Kit.FP_SIZE - 1 < TP_BASE

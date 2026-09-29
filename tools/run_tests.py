@@ -8,7 +8,9 @@
                                                against the Python reference)
 
 First it runs tools/build.py, which builds every feature image in dependency order and
-checks them (--no-build skips that). The tests only read the images and write their own
+checks them (--no-build skips that). Then, besides each feature's own test, it runs the
+integration tests: a feature whose emu_test.py sets INTEGRATION = True is run again with
+--in <image> on every image that contains it ("direct-select in house-numerals"). The tests only read the images and write their own
 build/ renders, so they can run at once. Each output is printed whole when its test
 finishes, then a summary. Exit status 1 if any test fails. EMU8051=py in the environment
 runs them on the Python reference emulator instead of the C core.
@@ -48,9 +50,21 @@ def main():
         name = os.path.basename(os.path.dirname(path))
         if not args.features or name in args.features:
             tests.append((name, [sys.executable, path]))
+    # integration: a feature whose test says INTEGRATION = True must keep passing, through
+    # `emu_test.py --in <image>`, in every image that contains it (built on it, or including it)
+    sys.path.insert(0, os.path.join(ROOT, "tools", "patch"))
+    import features
+    for f in features.names():
+        path = os.path.join(ROOT, "features", f, "emu_test.py")
+        if not os.path.isfile(path) or "\nINTEGRATION = True" not in open(path).read():
+            continue
+        for image in features.names():
+            if image != f and f in features.contains(image) and (
+                    not args.features or f in args.features or image in args.features):
+                tests.append(("%s in %s" % (f, image), [sys.executable, path, "--in", image]))
     if not args.features or "uikit" in args.features:     # the shared UI kit's own tests
         tests.append(("uikit", [sys.executable, os.path.join(ROOT, "tools", "patch", "uikit_test.py")]))
-    missing = set(args.features) - {n for n, _ in tests}
+    missing = set(args.features) - {n for n, _ in tests} - {w for n, _ in tests for w in n.split(" in ")}
     if missing:
         sys.exit("no emu_test.py in features/%s" % ", features/".join(sorted(missing)))
     if args.core:
@@ -77,7 +91,7 @@ def main():
     print("Summary (%.1f s wall)" % (time.time() - t0))
     for name, _ in tests:
         code, secs = results[name]
-        print("  %-16s %s  %6.1f s" % (name, "PASS" if code == 0 else "FAIL", secs))
+        print("  %-36s %s  %6.1f s" % (name, "PASS" if code == 0 else "FAIL", secs))
     sys.exit(0 if all(c == 0 for c, _ in results.values()) else 1)
 
 

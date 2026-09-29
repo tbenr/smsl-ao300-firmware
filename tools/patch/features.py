@@ -115,3 +115,33 @@ def order(targets=None):
 
 def children(name):
     return [n for n in names() if base(n) == name]
+
+
+def contains(image_name):
+    """Every feature whose code is in an image: its chain (without stock) and every fix they include."""
+    out = []
+    for n in chain_features(image_name):
+        out.append(n)
+        for fx in includes(n):
+            if fx not in out:
+                out.append(fx)
+    return out
+
+
+def chain_features(name):
+    """chain(name) without stock: the image and the images it stacks on."""
+    return [n for n in chain(name) if n != STOCK]
+
+
+def xdata(name):
+    """XDATA a feature declares for its own code: [(start, end, what)], end exclusive."""
+    return list(getattr(fix(name) if is_fix(name) else load(name), "XDATA", []))
+
+
+def own_code(name):
+    """(Asm, labels) of a feature's own code, from its build's assemble(); None if it has none."""
+    m = load(name)
+    if not hasattr(m, "assemble"):
+        return None
+    _, labels, a = m.assemble()
+    return a, labels

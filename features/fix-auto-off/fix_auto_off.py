@@ -18,6 +18,7 @@ from uikit import S  # noqa: E402
 
 # post_power_on's tail call `ljmp ui_clear_screen` becomes `ljmp fx_auto_off`
 HOOK = (0x55B9, bytes([0x02, 0x5D, 0x42]), 0x02, "fx_auto_off")
+XDATA = []                            # XDATA the fix uses: none (stock RAM 0x29, 0x2F:0x30 only)
 SCREEN_OFF_TICKS = 0x01F4             # as the key dispatcher arms it for dimmer 2 (0x0BD5)
 
 

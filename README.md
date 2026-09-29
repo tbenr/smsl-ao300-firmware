@@ -204,6 +204,35 @@ that lists it in `INCLUDES` links it in two places:
 - **Known images.** Each sha is looked up in `KNOWN_IMAGES`, and a new one is reported.
 - **Code slots.** Features outside one chain are warned if their code areas share
   addresses, so the Ghidra labels stay one name per address.
+- **XDATA.** Each feature, and each fix, declares the XDATA its code uses:
+  `XDATA = [(0x0100, 0x01A7, "what")]`. Declarations of everything in one image must not
+  overlap. A build's own code may only load DPTR with XDATA addresses that it and its fixes
+  declared (0x0100..0x07FF; page 0 belongs to the stock firmware).
+- **Assumptions of included fixes.** A fix was tested on its own base. In another image it
+  may depend on code or RAM that another layer changed, which the byte checks can't see.
+  For every fix in an image, `build.py` takes the stock code the fix jumps into and
+  everything reachable from it, and finds bytes of it that another layer changed. It also
+  finds RAM the fix uses that another layer's code writes. Each such pair needs an entry in
+  the including build, for example:
+
+  ```python
+  REVIEWED = {("fix-auto-off", "fast-lcd"): ("88012b65", "same pixels, faster")}
+  ```
+
+  `build.py` prints the hash to paste. The hash covers the flagged bytes, so the
+  question comes back when they change. Reviews are inherited by images built on top.
+  Code is read from the assembler's record of instructions, never by decoding data.
+  Decoding house-numerals' font tables as code shows bit instructions on RAM 0x29 that
+  aren't there.
+
+Integration tests check that a layer keeps working in the final image. A feature whose
+`emu_test.py` sets `INTEGRATION = True` also accepts `--in <feature>`. With it, the test
+checks, in that feature's image, what must stay true wherever it is built on or included.
+`run_tests.py` runs it for every image that contains the feature, as jobs such as
+"direct-select in house-numerals" and "fix-auto-off in house-numerals":
+
+- direct-select: the six direct commands and the stock translation of the other 250.
+- fix-auto-off: Auto OFF times out after power-on as after a key; Always ON is untouched.
 
 ## Flashing from macOS or Linux
 
@@ -375,7 +404,8 @@ The other feature tests run their images in the full emulator (`tools/emu/emu805
 It executes the stock routines with clocks counted from the STC8 instruction table. The
 LCD bus is decoded into an ST7789 model and saved as PNG.
 
-`python3 tools/run_tests.py` runs all the feature tests and the UI kit's test at once, on
+`python3 tools/run_tests.py` builds every image (`tools/build.py`), then runs all the feature
+tests, the integration tests (see "Feature graph") and the UI kit's test at once, on
 the C core, in about 2 minutes, most of it the house-numerals 256-command sweep (before
 house-numerals the run took about 5 s; the Python reference, `EMU8051=py`, took about 8
 minutes). `python3 tools/run_tests.py uikit` runs only the kit's test (about 3 s). After changing

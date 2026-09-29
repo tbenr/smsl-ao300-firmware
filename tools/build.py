@@ -12,6 +12,12 @@ Each features/<name>/build_patch.py declares BASE (the image it stacks on) and I
   * the bytes it changes in its base must not overlap bytes an ancestor changed (two features
     hooking the same site), apart from the version pointer every image repoints;
   * every fix in INCLUDES must have its hook installed, jumping into this image's own code;
+  * XDATA: the ranges declared (XDATA = [...]) by everything in the image must not overlap,
+    and the image's own code may only point DPTR into what it and its fixes declare;
+  * assumptions: for every fix in the image, stock code it jumps into (and everything that
+    code reaches) must not have been changed by another layer, nor its RAM written by another
+    layer's code, unless REVIEWED records that someone checked it. A review is pinned to a
+    hash of what it covered, so it is asked again when that changes;
   * code areas of features that are not in one chain should not overlap either, so each
     address keeps one name in tools/disasm/SmslAo300Labels.java (warning only).
 
@@ -27,6 +33,8 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools", "patch"))
 import features as fg  # noqa: E402
+import refs  # noqa: E402
+from asm51 import Asm  # noqa: E402
 
 
 def known_images():
@@ -74,6 +82,125 @@ def changed(name):
     return {i for i in range(len(a)) if a[i] != b[i]} - set(fg.VERSION_PTR_BYTES)
 
 
+def code_ranges(name):
+    """Instruction ranges of a feature's own code in its image: from its assembler when the build
+    has assemble(), else by recursive descent from its hooks (never by decoding data)."""
+    own = fg.own_code(name)
+    if own:
+        return own[0].code_ranges()
+    img, base_img = read(name), read(fg.base(name))
+    entries = set()
+    for addr in changed(name):
+        for at in (addr - 1, addr):
+            if img[at] in (0x02, 0x12):
+                t = (img[at + 1] << 8) | img[at + 2]
+                if len(base_img) <= t < len(img):
+                    entries.add(t)
+    seen, _ = refs.d51.disasm(img, sorted(entries))
+    return [(pc, pc + ln) for pc, (ln, _, _) in sorted(seen.items()) if len(base_img) <= pc < len(img)]
+
+
+def own_refs(name, skip=()):
+    """What a feature's own code touches, leaving out the address ranges in skip."""
+    img, r = read(name), refs.Refs()
+    for s, e in code_ranges(name):
+        if not any(a <= s < b for a, b in skip):
+            r.scan(img, s, e)
+    return r
+
+
+def fix_code(fx):
+    """A fix assembled on its own: (refs of it, its length, the labels it defines)."""
+    org = 0x8000
+    a = Asm(org)
+    fg.fix(fx).emit(a)
+    code = a.resolve()
+    img = bytes(org) + code
+    r = refs.Refs()
+    for s, e in a.code_ranges():
+        r.scan(img, s, e)
+    r.code = {t for t in r.code if not org <= t < org + len(code)}      # its own branches
+    return r, len(code), set(a.labels)
+
+
+def fix_region(name, fx):
+    """Where an included fix's code sits in an image: [start, end)."""
+    own = fg.own_code(name)
+    _, length, labels = fix_code(fx)
+    start = own[1][fg.fix(fx).HOOK[3]]
+    return start, start + length
+
+
+def check_xdata(name):
+    """Declared XDATA of everything in the image must not overlap; the image's own code must stay in
+    what it and its fixes declare."""
+    errors = []
+    owners = []
+    for n in fg.chain_features(name):
+        owners += [(n, a, b, w) for a, b, w in fg.xdata(n)]
+        for fx in fg.includes(n):
+            owners += [("%s (in %s)" % (fx, n), a, b, w) for a, b, w in fg.xdata(fx)]
+    for i, (n1, a1, b1, _) in enumerate(owners):
+        for n2, a2, b2, _ in owners[i + 1:]:
+            if max(a1, a2) < min(b1, b2):
+                errors.append("XDATA 0x%04X..0x%04X is declared by both %s and %s"
+                              % (max(a1, a2), min(b1, b2) - 1, n1, n2))
+    allowed = [(a, b) for a, b, _ in fg.xdata(name)]
+    for fx in fg.includes(name):
+        allowed += [(a, b) for a, b, _ in fg.xdata(fx)]
+    used = own_refs(name).xdata
+    bad = [x for x in used if not any(a <= x < b for a, b in allowed)]
+    if bad:
+        errors.append("its code uses %d XDATA addresses in 0x%04X..0x%04X (first at code 0x%04X) outside "
+                      "the XDATA declared for %s" % (len(bad), min(bad), max(bad), min(used[x][0] for x in bad), name))
+    return errors
+
+
+def reviewed(name):
+    """REVIEWED entries of an image and the images it stacks on: {(fix, feature): (hash, note)}."""
+    out = {}
+    for n in reversed(fg.chain_features(name)):
+        out.update(getattr(fg.load(n), "REVIEWED", {}))
+    return out
+
+
+def assumptions(name):
+    """For every fix in the image: stock code it relies on, or RAM it uses, that another feature in
+    the image changed. {(fix, feature): (hash, [finding lines])}."""
+    img = read(name)
+    stock = read(fg.STOCK)
+    found = {}
+    for n in fg.chain_features(name):
+        for fx in fg.includes(n):
+            r, _, _ = fix_code(fx)
+            hook = fg.fix(fx).HOOK
+            reach = set()
+            for t in sorted(r.code):
+                if t < len(stock):
+                    reach |= refs.reach(stock, t)
+            for other in fg.contains(name):
+                if other in fg.chain(fx) or fg.is_fix(other):
+                    continue
+                lines, key = [], []
+                code_hits = changed(other) & reach
+                if other == n:
+                    code_hits -= set(range(hook[0], hook[0] + 3))
+                if code_hits:
+                    lines.append("relies on stock code that %s changed: %s (reached from %s)"
+                                 % (other, ranges(code_hits), ", ".join("0x%04X" % t for t in sorted(r.code))))
+                    key += [(a, img[a]) for a in sorted(code_hits)]
+                skip = [fix_region(other, g) for g in fg.includes(other)]
+                w = own_refs(other, skip).writes()
+                ram_hits = sorted(set(r.ram) & w)
+                if ram_hits:
+                    lines.append("uses RAM that %s's code writes: %s"
+                                 % (other, ", ".join("0x%02X" % x for x in ram_hits)))
+                    key += [("ram", x) for x in ram_hits]
+                if lines:
+                    found[(fx, other)] = (sha(repr(key).encode())[:8], lines)
+    return found
+
+
 def check(name, known):
     """Problems (errors) with a built image, and notes about it."""
     errors, notes = [], []
@@ -88,6 +215,20 @@ def check(name, known):
         both = mine & changed(anc)
         if both:
             errors.append("re-patches bytes %s already changed: %s" % (anc, ranges(both)))
+    errors += check_xdata(name)
+    done = reviewed(name)
+    found = assumptions(name)
+    for key in getattr(fg.load(name), "REVIEWED", {}):
+        if key not in found:
+            notes.append("REVIEWED %s vs %s matches nothing any more: remove it" % key)
+    for (fx, other), (h, lines) in sorted(found.items()):
+        entry = done.get((fx, other))
+        if entry and entry[0] == h:
+            notes.append("%s vs %s reviewed" % (fx, other))
+            continue
+        errors.append("%s %s" % (fx, lines[0]) + "".join("\n      and " + ln for ln in lines[1:]))
+        errors.append("  %s it, then add to REVIEWED in %s:  (\"%s\", \"%s\"): (\"%s\", \"<why it is fine>\"),"
+                      % ("these changed since the review; re-check" if entry else "check", name, fx, other, h))
     for fx in fg.includes(name):
         addr, orig, op, _ = fg.fix(fx).HOOK
         target = (img[addr + 1] << 8) | img[addr + 2]
@@ -187,7 +328,7 @@ def main():
         built.append(name)
         errors, notes = check(name, known)
         problems += len(errors)
-        say("%-16s %s  %s" % (name, "ok     " if not errors else "PROBLEM", "; ".join(notes)))
+        (print if errors else say)("%-16s %s  %s" % (name, "ok     " if not errors else "PROBLEM", "; ".join(notes)))
         for e in errors:
             print("    " + e)
     for w in overlaps(built):

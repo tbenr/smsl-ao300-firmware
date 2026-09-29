@@ -13,9 +13,17 @@ import os
 _default = os.path.join(os.path.dirname(os.path.abspath(__file__)), "build", "flash_patched.bin")
 _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _stock = os.path.join(_root, "original", "extracted", "flash.bin")
-IMG = bytearray(open(sys.argv[1] if len(sys.argv) > 1 else _default, "rb").read())
+INTEGRATION = True    # `emu_test.py --in <feature>`: direct-select's behaviour inside that image
+IN = sys.argv[2] if len(sys.argv) == 3 and sys.argv[1] == "--in" else None
+if IN:
+    sys.path.insert(0, os.path.join(_root, "tools", "patch"))
+    import features
+    print("Integration: direct-select inside %s" % IN)
+    IMG = bytearray(open(features.image(IN), "rb").read())
+else:
+    IMG = bytearray(open(sys.argv[1] if len(sys.argv) > 1 else _default, "rb").read())
 CODE = bytes(IMG) + b"\xff" * (0x10000 - len(IMG))
-STOCK = bytes(open(sys.argv[2] if len(sys.argv) > 2 else _stock, "rb").read())
+STOCK = bytes(open(sys.argv[2] if len(sys.argv) > 2 and not IN else _stock, "rb").read())
 STOCK += b"\xff" * (0x10000 - len(STOCK))
 
 
@@ -176,9 +184,14 @@ print("version pointer 0x22CA -> 0x%04X %r  %s" % (ptr, text, "OK" if vok else "
 stock_len = len(STOCK.rstrip(b"\xff"))
 changed = sorted(i for i in range(stock_len) if STOCK[i] != CODE[i])
 expected = [0x22CB, 0x22CD, 0x5D10, 0x5D11, 0x5D12]
-dok = changed == expected
+if IN:      # images built on direct-select change more; its own hook must still be there
+    own = open(_default, "rb").read()
+    dok = CODE[0x5D10:0x5D13] == own[0x5D10:0x5D13] and CODE[0x9400:0x9438] == own[0x9400:0x9438]
+    print("hook 0x5D10 and the code at 0x9400 as direct-select built them  %s" % ("OK" if dok else "*** FAIL ***"))
+else:
+    dok = changed == expected
+    print("bytes changed in stock range: %s  %s" % ([hex(i) for i in changed], "OK" if dok else "*** FAIL ***"))
 allok &= dok
-print("bytes changed in stock range: %s  %s" % ([hex(i) for i in changed], "OK" if dok else "*** FAIL ***"))
 
 print("\nALL PASS" if allok else "\nFAILURES PRESENT")
 sys.exit(0 if allok else 1)

@@ -41,6 +41,7 @@ import features  # noqa: E402
 # ---- place in the feature graph (tools/patch/features.py) ------------------
 BASE = features.STOCK              # the stock v1.4 image, original/extracted/flash.bin
 INCLUDES = []
+XDATA = []                          # XDATA its code uses (none)
 BASE_IMAGE = features.image(BASE)
 BASE_SHA = features.STOCK_SHA
 OUT_IMAGE = os.path.join(HERE, "build", "flash_patched.bin")

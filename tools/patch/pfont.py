@@ -165,8 +165,8 @@ class PFont:
         a.L(self.name)
         a.data("db %d,%d,%d,%d,%d" % (self.H, self.bpc, self.bpp, self.first, n),
                [self.H, self.bpc, self.bpp, self.first, n])
-        a.i("dw %s_map" % self.name, hi8(self.name + "_map"), lo8(self.name + "_map"))
-        a.i("dw %s_tab" % self.name, hi8(self.name + "_tab"), lo8(self.name + "_tab"))
+        a.i("dw %s_map" % self.name, hi8(self.name + "_map"), lo8(self.name + "_map"), data=True)
+        a.i("dw %s_tab" % self.name, hi8(self.name + "_tab"), lo8(self.name + "_tab"), data=True)
         a.L(self.name + "_map")
         row = [self.order.index(chr(c)) if chr(c) in self.glyphs else 0xFF for c in range(self.first, self.last + 1)]
         for k in range(0, n, 16):
@@ -176,7 +176,7 @@ class PFont:
             adv, off, w, _ = self.glyphs[c]
             lab = "%s_g%d" % (self.name, i)
             a.data("db %d,%d,%d ; %r" % (adv, off, w, c), [adv, off, w])
-            a.i("dw %s" % lab, hi8(lab), lo8(lab))
+            a.i("dw %s" % lab, hi8(lab), lo8(lab), data=True)
         for i, c in enumerate(self.order):
             a.L("%s_g%d" % (self.name, i))
             data = self.glyph_bytes(c)

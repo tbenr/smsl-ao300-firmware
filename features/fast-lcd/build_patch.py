@@ -33,6 +33,7 @@ from asm51 import Asm, rel, ab  # noqa: E402
 
 BASE = "direct-select"              # image this builds on (tools/patch/features.py)
 INCLUDES = []                       # fix features linked into this image
+XDATA = []                          # XDATA its code uses (none)
 BASE_IMAGE = features.image(BASE)
 BASE_SHA = "bb468b29ea935150d2c43e00074a68184920329529077898011a0c334a76f43e"
 OUT_IMAGE = os.path.join(HERE, "build", "flash_fastlcd.bin")
@@ -93,6 +94,12 @@ def build(a):
     a.i("ret", 0x22)
 
 
+def assemble():
+    a = Asm(CODE_ADDR)
+    build(a)
+    return a.resolve(), a.labels, a
+
+
 def main():
     src = sys.argv[1] if len(sys.argv) > 1 else BASE_IMAGE
     img = bytearray(open(src, "rb").read())
@@ -104,9 +111,7 @@ def main():
     assert img[0x51EE:CLEAR_LOOP] == CLEAR_WINDOW, "lcd_clear_black window setup not as expected"
     assert len(img) <= CODE_ADDR
 
-    a = Asm(CODE_ADDR)
-    build(a)
-    code = a.resolve()
+    code, _, a = assemble()
     img += b"\xFF" * (CODE_ADDR - len(img))
     img += code
 

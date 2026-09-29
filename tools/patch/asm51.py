@@ -37,7 +37,8 @@ class Asm:
     def comment(self, text):
         self.lines.append(("comment", text))
 
-    def i(self, text, *parts):
+    def i(self, text, *parts, data=False):
+        """An instruction (or, with data=True, table bytes that may need fixups, e.g. dw label)."""
         start = self.pc
         rels = []
         for p in parts:
@@ -57,12 +58,16 @@ class Asm:
         end = self.pc
         for pos, target in rels:
             self.fix.append(("rel", pos, target, end))
-        self.lines.append(("ins", start, end, text))
+        self.lines.append(("data" if data else "ins", start, end, text))
 
     def data(self, text, bs):
         start = self.pc
         self.buf += bytes(bs)
-        self.lines.append(("ins", start, self.pc, text))
+        self.lines.append(("data", start, self.pc, text))
+
+    def code_ranges(self):
+        """(start, end) of every instruction, not data: what an analysis may decode."""
+        return [(ln[1], ln[2]) for ln in self.lines if ln[0] == "ins"]
 
     def resolve(self):
         for kind, pos, target, end in self.fix:
