@@ -20,12 +20,12 @@ BASE = "direct-select"              # image this builds on (tools/patch/features
 INCLUDES = []                       # fix features linked into this image
 XDATA = fix_auto_off.XDATA           # this image's own code is the fix
 BASE_IMAGE = features.image(BASE)
-BASE_SHA = "bb468b29ea935150d2c43e00074a68184920329529077898011a0c334a76f43e"
+BASE_SHA = "9b7e8b930d0b9f038d1996445e888ae08db4e928e2ec6755acb2564113912046"
 OUT_IMAGE = os.path.join(HERE, "build", "flash_fixautooff.bin")
 OUT_LISTING = os.path.join(HERE, "fix_auto_off.asm")
 CODE_ADDR = 0x9680                  # after direct-select; free in every image (fast-lcd starts at 0x9700)
 HOOKS = [fix_auto_off.HOOK]
-VERSION_TEXT = "v1.4 tbenr aof1"
+VERSION_TEXT = "v1.4 tbenr aof2"
 
 
 def assemble():

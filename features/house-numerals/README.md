@@ -2,9 +2,11 @@
 
 A reduced build of study 3 ("House Numerals", after SMSL's SU and DO series screens) from
 `features/ui-theme/ui_themes.html`. Built on top of fast-lcd, with fix-auto-off included. The RESET page shows
-`v1.4 tbenr hn10`.
+`v1.4 tbenr hn11`.
 
-This is image hn10 (sha256 `45c22bf1…`). It is hn9 with the mock's easing on both wipes:
+This is image hn11 (sha256 `6050a846…`): hn10 rebuilt on direct-select v2, which ignores a direct
+command for the input already selected. Nothing in this layer changed. hn10 (`45c22bf1…`) is hn9
+with the mock's easing on both wipes:
 - **Cubic ease, 32 ticks each way.** The edge follows the mock's
   `ease = t < .5 ? 4t³ : 1 − (−2t + 2)³ / 2`: x = round(318 (1 − ease(k / 32))) on the way in,
   318 − x on the way out, one table for both (hn9: a cosine ease over 20 ticks). 32 ticks is the
@@ -88,6 +90,10 @@ Earlier images:
 - Flashed so far: the first image (`v1.4 tbenr hn`, `deada16a…`, 47 ms wipe) and hn4.1.
 
 ## Status
+
+hn11: emulator-verified (all tests pass, including "direct-select in house-numerals" and
+"fix-auto-off in house-numerals"). Tried on the amp on 2026-09-30: works, a direct command
+for the current input no longer interrupts the audio.
 
 hn10: emulator-verified (all tests pass, including "fix-auto-off in house-numerals"). Tried on
 the amp on 2026-09-30: looks good.

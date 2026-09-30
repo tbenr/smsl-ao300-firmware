@@ -11,7 +11,9 @@
 ;   0x14 -> input 5  HDMI (ARC)
 ;   0x15 -> input 6  AUX IN
 ; They act only when the amp is on (g_power_on != 0) and on the home screen
-; (g_ui_page == 1). Otherwise they are swallowed. Commands 0x00..0x0E go through
+; (g_ui_page == 1). Otherwise they are swallowed. A command for the input that is
+; already selected (target == g_input) is swallowed too: re-applying the same input
+; re-initialises the source and interrupts the audio. Commands 0x00..0x0E go through
 ; the stock table lookup unchanged. Every other command returns "no key", which is
 ; what stock did for them by reading erased flash above the table. That explicit
 ; check matters because this routine sits inside the span the table read could
@@ -20,7 +22,7 @@
 ;
 ; Also in this build: the RESET-page version string. Stock loads a code pointer to
 ; "v1.4" (0x8EB3) at 0x22CA as  MOV R2,#0x8E / MOV R1,#0xB3. The build repoints it
-; to a new NUL-terminated string placed right after this routine (0x9438).
+; to a new NUL-terminated string placed right after this routine (0x943D).
 ;
 ; RAM globals:  g_ir_cmd=0x6A  g_input=0x47  g_power_on=0x4F  g_ui_page=0x45
 ;               g_osd_timer_lo=0x27  g_osd_timer_hi=0x28  g_ir_key2=0x6F
@@ -31,30 +33,33 @@ ir_direct_select:
 9400  E5 6A       MOV   A, g_ir_cmd        ; raw NEC command byte
 9402  C3          CLR   C
 9403  94 10       SUBB  A, #0x10           ; A = cmd - 0x10 ; C=1 if cmd < 0x10
-9405  40 23       JC    not_select         ; below range -> stock path
+9405  40 28       JC    not_select         ; below range -> stock path
 9407  B4 06 00    CJNE  A, #6, $+3         ; never branches; sets C=1 if A < 6
-940A  50 1E       JNC   not_select         ; A >= 6 (cmd > 0x15) -> stock path
+940A  50 23       JNC   not_select         ; A >= 6 (cmd > 0x15) -> stock path
 940C  FF          MOV   R7, A              ; R7 = index 0..5
 940D  E5 4F       MOV   A, g_power_on
-940F  60 13       JZ    eat                ; standby -> ignore
+940F  60 18       JZ    eat                ; standby -> ignore
 9411  E5 45       MOV   A, g_ui_page
 9413  64 01       XRL   A, #1              ; zero iff page == 1 (home)
-9415  70 0D       JNZ   eat                ; in a menu -> ignore
+9415  70 12       JNZ   eat                ; in a menu -> ignore
 9417  EF          MOV   A, R7
 9418  04          INC   A                  ; input number 1..6
-9419  F5 47       MOV   g_input, A
-941B  75 27 00    MOV   g_osd_timer_lo, #0 ; show the input name, as a real press does
-941E  75 28 C8    MOV   g_osd_timer_hi, #0xC8
-9421  12 56 40    LCALL input_apply        ; stock: switch hardware + refresh display
+9419  B5 47 02    CJNE  A, g_input, apply  ; not the current input -> switch
+941C  80 0B       SJMP  eat                ; already selected -> ignore (no re-init, no OSD)
+apply:
+941E  F5 47       MOV   g_input, A
+9420  75 27 00    MOV   g_osd_timer_lo, #0 ; show the input name, as a real press does
+9423  75 28 C8    MOV   g_osd_timer_hi, #0xC8
+9426  12 56 40    LCALL input_apply        ; stock: switch hardware + refresh display
 eat:
-9424  7F FF       MOV   R7, #0xFF          ; return "no key" to read_key
-9426  E4          CLR   A
-9427  F5 6F       MOV   g_ir_key2, A       ; stock side effect of ir_cmd_to_key
-9429  22          RET
+9429  7F FF       MOV   R7, #0xFF          ; return "no key" to read_key
+942B  E4          CLR   A
+942C  F5 6F       MOV   g_ir_key2, A       ; stock side effect of ir_cmd_to_key
+942E  22          RET
 not_select:
-942A  E5 6A       MOV   A, g_ir_cmd        ; replay the displaced stock instructions
-942C  B4 0F 00    CJNE  A, #15, $+3        ; never branches; sets C=1 if cmd < 15
-942F  50 F3       JNC   eat                ; cmd >= 15: not in the table -> "no key"
-9431  90 93 98    MOV   DPTR, #ir_cmd_to_key_table
-9434  93          MOVC  A, @A+DPTR         ; A = table[cmd]
-9435  02 5D 17    LJMP  ir_cmd_to_key_tail ; finish in stock code, returns to caller
+942F  E5 6A       MOV   A, g_ir_cmd        ; replay the displaced stock instructions
+9431  B4 0F 00    CJNE  A, #15, $+3        ; never branches; sets C=1 if cmd < 15
+9434  50 F3       JNC   eat                ; cmd >= 15: not in the table -> "no key"
+9436  90 93 98    MOV   DPTR, #ir_cmd_to_key_table
+9439  93          MOVC  A, @A+DPTR         ; A = table[cmd]
+943A  02 5D 17    LJMP  ir_cmd_to_key_tail ; finish in stock code, returns to caller

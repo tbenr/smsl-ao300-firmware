@@ -22,7 +22,7 @@
 ; 0x0DB3: 12 5d 42 7b ff -> 12 e2 23 80 11  (lcall hn_enter_vol ; sjmp 0x0DC9)
 ; 0x0E5A: 12 5d 42 7b ff -> 12 e2 23 80 11  (lcall hn_enter_vol ; sjmp 0x0E70)
 ; 0x0F02: 12 5d 42 7b ff -> 12 e2 23 80 11  (lcall hn_enter_vol ; sjmp 0x0F18)
-; version string 'v1.4 tbenr hn10' at 0xEF41, pointer 0x22CA repointed
+; version string 'v1.4 tbenr hn11' at 0xEF41, pointer 0x22CA repointed
 
             ; input-name pointers for inputs 1..6 (volume page), then the VOL label
 names:

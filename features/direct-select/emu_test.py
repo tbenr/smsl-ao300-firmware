@@ -77,12 +77,16 @@ class CPU:
                 self.DPTR = (self.code[pc + 1] << 8) | self.code[pc + 2]; pc += 3
             elif op == 0x93:  # movc A,@A+DPTR
                 self.A = self.code[(self.DPTR + self.A) & 0xFFFF]; pc += 1
-            elif op == 0xB4:  # cjne A,#i,rel
-                i = self.code[pc + 1]; rel = self.code[pc + 2]
+            elif op in (0xB4, 0xB5):  # cjne A,#i,rel / cjne A,dir,rel
+                i = self.code[pc + 1] if op == 0xB4 else self.ram[self.code[pc + 1]]
+                rel = self.code[pc + 2]
                 self.C = 1 if self.A < i else 0
                 pc += 3
                 if self.A != i:
                     pc = (pc + ((rel ^ 0x80) - 0x80)) & 0xFFFF
+            elif op == 0x80:  # sjmp rel
+                rel = self.code[pc + 1]; pc += 2
+                pc = (pc + ((rel ^ 0x80) - 0x80)) & 0xFFFF
             elif op in (0x40, 0x50, 0x60, 0x70):  # jc/jnc/jz/jnz rel
                 rel = self.code[pc + 1]; pc += 2
                 take = {0x40: self.C == 1, 0x50: self.C == 0,
@@ -107,12 +111,12 @@ class CPU:
         raise RuntimeError("runaway")
 
 
-def scenario(name, cmd, power, page, expect_input, expect_apply, expect_key):
+def scenario(name, cmd, power, page, expect_input, expect_apply, expect_key, current=0x99):
     c = CPU(CODE)
     c.ram[0x6A] = cmd
     c.ram[0x4F] = power
     c.ram[0x45] = page
-    c.ram[0x47] = 0x99          # sentinel: unchanged unless patch writes it
+    c.ram[0x47] = current       # sentinel 0x99: unchanged unless patch writes it
     c.run(0x5D10)
     got_input = c.ram[0x47]
     got_apply = c.applied
@@ -131,6 +135,15 @@ allok = True
 for k in range(6):
     allok &= scenario("select input %d" % (k + 1), 0x10 + k, 1, 1,
                       expect_input=k + 1, expect_apply=k + 1, expect_key=0xFF)
+# the input already selected: ignored, no re-initialisation of the source
+for k in range(6):
+    allok &= scenario("select input %d while on input %d" % (k + 1, k + 1), 0x10 + k, 1, 1,
+                      expect_input=k + 1, expect_apply=None, expect_key=0xFF, current=k + 1)
+# a different input from a real current input (not the sentinel) still switches
+allok &= scenario("select input 3 while on input 2", 0x12, 1, 1,
+                  expect_input=3, expect_apply=3, expect_key=0xFF, current=2)
+allok &= scenario("select input 1 while on input 6", 0x10, 1, 1,
+                  expect_input=1, expect_apply=1, expect_key=0xFF, current=6)
 # standby: ignored
 allok &= scenario("select while standby", 0x10, 0, 1,
                   expect_input=0x99, expect_apply=None, expect_key=0xFF)
@@ -186,7 +199,7 @@ changed = sorted(i for i in range(stock_len) if STOCK[i] != CODE[i])
 expected = [0x22CB, 0x22CD, 0x5D10, 0x5D11, 0x5D12]
 if IN:      # images built on direct-select change more; its own hook must still be there
     own = open(_default, "rb").read()
-    dok = CODE[0x5D10:0x5D13] == own[0x5D10:0x5D13] and CODE[0x9400:0x9438] == own[0x9400:0x9438]
+    dok = CODE[0x5D10:0x5D13] == own[0x5D10:0x5D13] and CODE[0x9400:0x943D] == own[0x9400:0x943D]
     print("hook 0x5D10 and the code at 0x9400 as direct-select built them  %s" % ("OK" if dok else "*** FAIL ***"))
 else:
     dok = changed == expected

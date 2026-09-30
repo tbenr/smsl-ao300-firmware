@@ -2,11 +2,12 @@
 
 The stock UI, unchanged, drawn through the tuned pixel path that the blit-test build
 verified on the panel (see Bus timing). Built on top of direct-select. The RESET page shows
-`v1.4 tbenr fast`.
+`v1.4 tbenr fast2` (fast2 is the same layer rebuilt on direct-select v2, 2026-09-30).
 
 ## Status
 
-Flashed on the amp on 2026-09-28 and working so far. Longer listening tests are still to
+fast2: emulator-verified, and on the amp inside hn11 since 2026-09-30; not flashed standalone. fast (`v1.4 tbenr fast`, on direct-select v1) was
+flashed on the amp on 2026-09-28 and working so far. Longer listening tests are still to
 come: power-on, input switching and the display flicker.
 
 ## What changes

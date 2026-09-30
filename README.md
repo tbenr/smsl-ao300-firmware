@@ -62,7 +62,7 @@ features/
                                   direct-select; emulator-verified, see its README
     build_patch.py, emu_test.py   build build/flash_fastlcd.bin, lockstep UI tour vs stock
   house-numerals/                 House Numerals home and volume page, on top of fast-lcd,
-                                  built with tools/patch/uikit.py; hn10 tried on the amp
+                                  built with tools/patch/uikit.py; hn11 tried on the amp
                                   on 2026-09-30; see its README
     build_patch.py, emu_test.py   build build/flash_house_numerals.bin (hn10: the mock's home
                                    and volume page in its own typefaces, non-blocking wipes
@@ -168,7 +168,7 @@ Each image is a feature stacked on another image, and can link in fixes. Every
 BASE = "fast-lcd"                  # the image it stacks on ("stock" for direct-select)
 INCLUDES = []                      # fix features whose code it links into its own image
 BASE_IMAGE = features.image(BASE)  # tools/patch/features.py resolves the path
-BASE_SHA = "b292a648…"             # still pinned: a changed parent must be re-checked
+BASE_SHA = "6d186a81…"             # still pinned: a changed parent must be re-checked
 ```
 
 `python3 tools/build.py --graph` prints the tree. `──` is BASE (builds on), and `+` is
@@ -176,11 +176,11 @@ INCLUDES (a fix linked into that image):
 
 ```
 stock                         85e8ac50…
-└── direct-select             'v1.4 tbenr'        0x9400..0x9442  bb468b29… known
-    ├── fast-lcd              'v1.4 tbenr fast'   0x9700..0x977B  b292a648… known
-    │   └── house-numerals    'v1.4 tbenr hn10'   0x9800..0xEF50  45c22bf1… known
+└── direct-select             'v1.4 tbenr ds2'    0x9400..0x944B  9b7e8b93… known
+    ├── fast-lcd              'v1.4 tbenr fast2'  0x9700..0x977C  6d186a81… known
+    │   └── house-numerals    'v1.4 tbenr hn11'   0x9800..0xEF50  6050a846… known
     │         + fix-auto-off  fix linked into house-numerals
-    └── fix-auto-off          'v1.4 tbenr aof1'   0x9680..0x969D  f9b5d14d… known  [fix, hook 0x55B9; included by house-numerals]
+    └── fix-auto-off          'v1.4 tbenr aof2'   0x9680..0x969D  f1e4ef1c… known  [fix, hook 0x55B9; included by house-numerals]
 ```
 
 House-numerals then depends on fast-lcd (its base, and so on down to stock) and on
@@ -284,8 +284,13 @@ way. Both were tried on the amp on 2026-09-30: good.
 
 Verified on the amp on 2026-09-29, as part of hn7: the Auto OFF fix (`features/fix-auto-off`). With
 Dimmer on Auto OFF the display goes dark after a cold power-up. Its standalone image
-`features/fix-auto-off/build/flash_fixautooff.bin` (`v1.4 tbenr aof1`, direct-select plus the
+`features/fix-auto-off/build/flash_fixautooff.bin` (`v1.4 tbenr aof2`, direct-select plus the
 fix) has not been flashed.
+
+Verified on the amp on 2026-09-30, as hn11: direct-select v2 (`v1.4 tbenr ds2`), which
+ignores a direct command for the input already selected instead of re-initialising it.
+Every image was rebuilt on it that day (`fast2`, `aof2`, `hn11`), all emulator-verified; the
+standalone ds2, fast2 and aof2 images have not been flashed.
 
 ## What the custom firmware adds
 
@@ -303,12 +308,15 @@ Six new NEC commands, sent with the stock remote's address bytes 0x12 0x34:
 | 0x15 | 6 AUX IN |
 
 They act only when the amp is on and showing the home screen; otherwise they are
-ignored. Every other command behaves exactly as in stock, including the ones the remote
-never sends. The mechanism is described in `features/direct-select/ir_direct_select.asm`.
+ignored. A command for the input that is already selected is ignored as well (since
+`v1.4 tbenr ds2`): re-applying an input runs the stock source switch again, which
+re-initialises it and interrupts the audio. Every other command behaves exactly as in
+stock, including the ones the remote never sends. The mechanism is described in
+`features/direct-select/ir_direct_select.asm`.
 
 ### Version string
 
-The RESET menu page shows `v1.4 tbenr` instead of `v1.4`. Change `VERSION_TEXT` in
+The RESET menu page shows `v1.4 tbenr ds2` instead of `v1.4`. Change `VERSION_TEXT` in
 `build_patch.py` to alter it; the row fits 20 characters.
 
 ## UI themes

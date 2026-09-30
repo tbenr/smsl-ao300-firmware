@@ -16,7 +16,9 @@ We hook 0x5D10 with `LJMP patch`. The patch:
     screen (RAM 0x45 == 1), writes the target input number (1..6) to RAM 0x47 and
     calls the stock "apply input" tail at 0x5640 (same code a real Source press
     runs: switches the audio mux via 0x24D6, refreshes OSD/LEDs), then returns
-    "no key" (0xFF) so the normal dispatcher does nothing else;
+    "no key" (0xFF) so the normal dispatcher does nothing else. A command for the
+    input already selected (target == RAM 0x47) is swallowed without the apply:
+    re-applying the same input re-initialises the source and interrupts the audio;
   * for raw 0x10..0x15 when not powered on / not home, just returns "no key";
   * for every other raw command, performs the original table lookup, but only
     for commands 0x00..0x0E (the real table). Stock reads erased flash (0xFF =
@@ -68,7 +70,7 @@ NINPUTS = 6            # number of inputs (commands CMD_LO .. CMD_LO+NINPUTS-1)
 # ---- version string shown on the RESET menu page ---------------------------
 # Stock draws "v1.4" from a Keil code pointer (R2:R1) loaded at 0x22CA; the string
 # itself has no slack, so we place a new one after the patch code and repoint.
-VERSION_TEXT     = "v1.4 tbenr"
+VERSION_TEXT     = "v1.4 tbenr ds2"
 VERSION_PTR_ADDR = 0x22CA          # bytes: 7A hi 79 lo  (mov R2,#hi ; mov R1,#lo)
 VERSION_OLD_STR  = 0x8EB3          # address of the stock "v1.4"
 VERSION_MAX_LEN  = 20              # the hint row below it is 20 chars in the same font
@@ -108,6 +110,7 @@ class Asm:
     def mov_dptr(self, a):       self._b(0x90, (a >> 8) & 0xFF, a & 0xFF)
     def movc(self):              self._b(0x93)
     def ret(self):               self._b(0x22)
+    def cjne_a_dir(self, d, lab): self._b(0xB5, d); self._rel_tail(lab)
     def lcall(self, a):          self._b(0x12, (a >> 8) & 0xFF, a & 0xFF)
     def ljmp(self, a):           self._b(0x02, (a >> 8) & 0xFF, a & 0xFF)
 
@@ -116,12 +119,18 @@ class Asm:
     def jnc(self, lab):   self._rel(0x50, lab)
     def jz(self, lab):    self._rel(0x60, lab)
     def jnz(self, lab):   self._rel(0x70, lab)
+    def sjmp(self, lab):  self._rel(0x80, lab)
     def cjne_a_imm_here(self, i):
         # cjne A,#i,$+3  -> never branches, only sets carry (C=1 if A<i)
         self._b(0xB4, i, 0x00)
 
     def _rel(self, op, lab):
-        self._b(op, 0)
+        self._b(op)
+        self._rel_tail(lab)
+
+    def _rel_tail(self, lab):
+        # the relative offset byte of a branch whose opcode (and operand) is already emitted
+        self._b(0)
         self.fix.append((len(self.buf) - 1, lab, self.pc))
 
     def resolve(self):
@@ -148,6 +157,9 @@ def build_patch():
     a.jnz("EAT")                   # not home -> ignore
     a.mov_a_r7()                   # A = idx
     a.inc_a()                      # A = idx+1 = input number 1..6
+    a.cjne_a_dir(RAM_INPUT, "APPLY")  # differs from the current input -> switch
+    a.sjmp("EAT")                  # already selected -> ignore (no re-init, no OSD)
+    a.label("APPLY")
     a.mov_dir_a(RAM_INPUT)         # 0x47 = target input
     a.mov_dir_imm(RAM_OSD0, 0x00)  # show OSD like a real press
     a.mov_dir_imm(RAM_OSD1, 0xC8)

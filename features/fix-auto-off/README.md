@@ -3,7 +3,7 @@
 A stock bug, fixed by SMSL in the AO300 PRO V1.2 and ported here. With Dimmer set to
 Auto OFF, the display should go dark a few seconds after the last key. After a cold
 power-up it stays lit until the first key press. The standalone image is direct-select
-plus the fix; the RESET page shows `v1.4 tbenr aof1`.
+plus the fix; the RESET page shows `v1.4 tbenr aof2` (aof1 was the same fix on direct-select v1).
 
 ## Status
 

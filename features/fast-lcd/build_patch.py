@@ -35,7 +35,7 @@ BASE = "direct-select"              # image this builds on (tools/patch/features
 INCLUDES = []                       # fix features linked into this image
 XDATA = []                          # XDATA its code uses (none)
 BASE_IMAGE = features.image(BASE)
-BASE_SHA = "bb468b29ea935150d2c43e00074a68184920329529077898011a0c334a76f43e"
+BASE_SHA = "9b7e8b930d0b9f038d1996445e888ae08db4e928e2ec6755acb2564113912046"
 OUT_IMAGE = os.path.join(HERE, "build", "flash_fastlcd.bin")
 OUT_LISTING = os.path.join(HERE, "fast_lcd.asm")
 
@@ -52,7 +52,7 @@ CLEAR_WINDOW = bytes.fromhex("782f7401f208743ff2e4fbfa7da9fcfffe124437")  # 0x51
 P1 = 0x90
 DC, WR, CS = 0x83, 0x85, 0x87                   # bit addresses P0.3, P0.5, P0.7
 
-VERSION_TEXT = "v1.4 tbenr fast"
+VERSION_TEXT = "v1.4 tbenr fast2"
 VERSION_PTR_ADDR = 0x22CA
 VERSION_MAX_LEN = 20
 

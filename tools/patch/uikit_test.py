@@ -25,7 +25,7 @@ from asm51 import Asm  # noqa: E402
 from ao300 import CLOCK_HZ  # noqa: E402
 
 BASE_IMAGE = features.image("fast-lcd")
-BASE_SHA = "b292a64855975584dda5fe3fb282103bfde77f7f7237ca9945ac4b5442dae859"
+BASE_SHA = "6d186a817762b8d705f75ffe178089483e4584fc01ebe55884fbb88b114cec7d"
 CODE_ADDR = 0x9800
 WHITE_ACCENT = 0xFC43
 W, H = ut.W, ut.H

@@ -68,7 +68,7 @@ from uikit import (hi, lo, S, st_imm16, ld16, st16, FONTS, SMALL_MAP, BIG_MAP, B
 BASE = "fast-lcd"                   # image this builds on (tools/patch/features.py)
 INCLUDES = ["fix-auto-off"]         # fix features linked into this image
 BASE_IMAGE = features.image(BASE)
-BASE_SHA = "b292a64855975584dda5fe3fb282103bfde77f7f7237ca9945ac4b5442dae859"
+BASE_SHA = "6d186a817762b8d705f75ffe178089483e4584fc01ebe55884fbb88b114cec7d"
 OUT_IMAGE = os.path.join(HERE, "build", "flash_house_numerals.bin")
 OUT_LISTING = os.path.join(HERE, "house_numerals.asm")
 
@@ -366,7 +366,7 @@ HOOKS = [STOCK_SITES[site] + (op, target) for site, op, target in (
     ("format_tag_clear_changed", 0x12, "hm_fmt_clear"),
 )]
 HOOKS += [f.HOOK for f in features.fixes(INCLUDES)]    # the fixes linked in
-VERSION_TEXT = "v1.4 tbenr hn10"
+VERSION_TEXT = "v1.4 tbenr hn11"
 
 
 rect = KIT.rect
