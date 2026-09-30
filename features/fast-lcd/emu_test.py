@@ -2,14 +2,14 @@
 """Emulator test for the fast-LCD image: the stock UI, drawn faster, otherwise identical.
 
 Two amps run in lockstep, whole firmware from reset with the real Timer0 ISR
-(tools/emu/ao300.py): the direct-select image as reference and the fast-LCD image.
+(tools/emu/ao300.py): the stock image as reference and the fast-LCD image.
 USB has a signal from boot (P4.5 low), so the unmute paths run too. The tour:
 
   Power, Source, Vol+ (volume page) and back home, Menu, Down, Down, Up, menu
-  timeout, direct-select HDMI, direct-select USB, Vol- twice, Power off.
+  timeout, Source four more times round to USB, Vol- twice, Power off.
 
 Checks:
-  * the image differs from direct-select only in the two hooks and the version pointer;
+  * the image differs from stock only in the two hooks and the version pointer;
   * the fast pixel and clear routines leave the registers as the stock ones do;
   * after every step, once both screens are idle, they are pixel-identical, and the
     page and power state agree;
@@ -38,7 +38,6 @@ from ao300 import Amp, CLOCK_HZ, NEC_POWER, NEC_UP, NEC_MENU, NEC_DOWN, NEC_SOUR
     NEC_VOL_UP, NEC_VOL_DOWN            # noqa: E402
 import build_patch as bp               # noqa: E402
 
-NEC_USB, NEC_HDMI = 0x10, 0x14         # direct-select inputs 1 and 5
 CHUNK = 0.01                           # lockstep granularity, one Timer0 tick
 
 TOUR = [                               # (step name, NEC command or None, seconds)
@@ -51,8 +50,11 @@ TOUR = [                               # (step name, NEC command or None, second
     ("menu_down2", NEC_DOWN, 1.0),
     ("menu_up", NEC_UP, 1.0),
     ("menu_timeout", None, 10.5),
-    ("hdmi", NEC_HDMI, 3.0),
-    ("usb", NEC_USB, 4.0),
+    ("source_coax", NEC_SOURCE, 3.0),     # Optical -> Coaxial
+    ("source_bt", NEC_SOURCE, 3.0),       # -> Bluetooth
+    ("source_hdmi", NEC_SOURCE, 3.0),     # -> HDMI ARC
+    ("source_aux", NEC_SOURCE, 3.0),      # -> AUX IN
+    ("source_usb", NEC_SOURCE, 4.0),      # -> USB, the input with a signal
     ("vol_down1", NEC_VOL_DOWN, 0.4),
     ("vol_down2", NEC_VOL_DOWN, 3.0),
     ("standby", NEC_POWER, 3.0),
@@ -68,7 +70,7 @@ def check(name, ok, detail=""):
 
 
 def image_diff():
-    print("Image diff vs direct-select")
+    print("Image diff vs stock")
     a = open(bp.BASE_IMAGE, "rb").read()
     b = open(bp.OUT_IMAGE, "rb").read()
     changed = [i for i in range(len(a)) if a[i] != b[i]]
@@ -155,7 +157,7 @@ def main():
     image_diff()
     register_contract()
 
-    print("\nUI tour, both images in lockstep (reference: direct-select)")
+    print("\nUI tour, both images in lockstep (reference: stock)")
     (ref, new), rows = lockstep_tour()
     print("\n  %-14s %10s %10s" % ("step", "stock ms", "fast ms"))
     for r in rows:

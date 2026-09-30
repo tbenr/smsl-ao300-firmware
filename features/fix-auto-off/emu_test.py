@@ -4,9 +4,9 @@
   * the hook: post_power_on's tail (0x55B9) arms g_screen_off (0x2F:0x30) = 0x01F4 with
     Dimmer on Auto OFF (0x29 = 2) and changes nothing else; with Always ON it is the stock
     tail call;
-  * all 256 NEC commands through the IR translate hook (0x5D10) behave as in direct-select,
+  * all 256 NEC commands through the IR translate hook (0x5D10) behave as in stock,
     in standby and on every page, with either Dimmer setting;
-  * the image differs from direct-select only in the hook, the version pointer and the
+  * the image differs from stock only in the hook, the version pointer and the
     appended code;
   * whole firmware from reset with the real Timer0 ISR, base and fix side by side. Dimmer is
     seeded into the emulated EEPROM read (offset 0x020B). Amp runs timer3_isr as well, so
@@ -34,7 +34,7 @@ import fix_auto_off as fx    # noqa: E402
 
 TEST_IMG = bp.OUT_IMAGE
 BASE_IMG = bp.BASE_IMAGE
-APPLY_TAIL = 0x5640                  # direct-select's input apply, needs real hardware
+APPLY_TAIL = 0x5640                  # input_apply, needs real hardware
 POST_POWER_ON_TAIL = 0x55B9         # post_power_on (0x5585) is done, ~1 s after entry
 IAP_READ_DATA = 0x5970               # eeprom_read: mov R7,IAP_DATA
 DIMMER_EEPROM = (0x02, 0x0B)         # EEPROM offset of g_dimmer_mode (loaded at 0x306F)
@@ -50,7 +50,7 @@ def check(name, ok, detail=""):
 
 
 def image_diff():
-    print("\nImage diff vs direct-select")
+    print("\nImage diff vs stock")
     a = open(BASE_IMG, "rb").read()
     b = open(TEST_IMG, "rb").read()
     changed = [i for i in range(len(a)) if a[i] != b[i]]
@@ -111,7 +111,7 @@ def make(img_path, cmd, power, page, dimmer):
 
 
 def sweep():
-    print("\nAll 256 NEC commands vs the direct-select image")
+    print("\nAll 256 NEC commands vs the stock image")
     diffs = 0
     for dimmer in (1, 2):
         for power, page in ((1, 1), (0, 1), (1, 0), (1, 2), (1, 3)):

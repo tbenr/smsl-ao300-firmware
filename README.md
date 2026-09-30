@@ -49,17 +49,20 @@ tools/
 features/
   status-line-flicker/            analysis of the "flickering C" display bug (no build yet)
     NOTES.md, evidence/           findings, ruled-out causes, fix candidate, video crops
-  direct-select/                  the custom firmware build
-    build_patch.py                assembles the patch and writes build/flash_patched.bin
-    ir_direct_select.asm          annotated listing of the routine placed at 0x9400
-    emu_test.py                   emulator test of the patched image
+  direct-select/                  direct input selection over IR: a fix, included by the
+                                  images meant for the amp; standalone on stock (see its README)
+    direct_select.py              the fix: HOOK and emit(a), for any build pipeline
+    build_patch.py                the standalone image, build/flash_patched.bin
+    direct_select.asm             generated listing of the routine placed at 0x9400
+    emu_test.py                   emulator test of the standalone image, or of the fix in
+                                  any image that includes it (--in)
     build/flash_patched.bin     * patched firmware image
     build/SMSL_AO300_UPDATE_VER0A5_EN_directselect.exe * rebuilt updater carrying it
   ui-theme/                       design stage: visual themes for the home and volume
                                   screens, not built yet
     ui_themes.html                interactive theme designs and the stock screen map
   fast-lcd/                       the stock UI through the tuned pixel path, on top of
-                                  direct-select; emulator-verified, see its README
+                                  stock; emulator-verified, see its README
     build_patch.py, emu_test.py   build build/flash_fastlcd.bin, lockstep UI tour vs stock
   house-numerals/                 House Numerals home and volume page, on top of fast-lcd,
                                   built with tools/patch/uikit.py; hn10 to hn11.1 tried on the amp
@@ -68,7 +71,8 @@ features/
                                    and volume page in its own typefaces, non-blocking wipes
                                    with the mock's cubic ease, the number roll and the line's spring), home and
                                    page models, lockstep UI tour, keys during wipes and on the
-                                   page, INT1 sweep, 256-command sweep vs fast-lcd
+                                   page, INT1 sweep, 256-command sweep vs fast-lcd plus the
+                                   same fixes (the reference the test builds)
     layout.json, sizing.html      the home layout the build reads, and the page that edits it
                                    (preview exact to the firmware; served by tools/fonts/rasterize.py)
     house_numerals.asm            annotated listing of the patch code at 0x9800
@@ -76,10 +80,10 @@ features/
                                   "No Connected"), includable like a fix; see its README
   fix-auto-off/                   stock-bug fix, ported from the AO300 PRO V1.2: Dimmer Auto
                                   OFF also times out after a cold power-up. Standalone on
-                                  direct-select; other builds include it (see its README)
+                                  stock; other builds include it (see its README)
     fix_auto_off.py               the fix: HOOK and emit(a), for any build pipeline
     build_patch.py, emu_test.py   build build/flash_fixautooff.bin, hook test, 256-command
-                                   sweep, cold power-up / standby scenarios vs direct-select
+                                   sweep, cold power-up / standby scenarios vs stock
     fix_auto_off.asm              generated listing
 
 ghidraPRG/                    * Ghidra project (import original/extracted/flash.bin as
@@ -167,35 +171,42 @@ Each image is a feature stacked on another image, and can link in fixes. Every
 `features/<name>/build_patch.py` declares where it sits:
 
 ```python
-BASE = "fast-lcd"                  # the image it stacks on ("stock" for direct-select)
-INCLUDES = []                      # fix features whose code it links into its own image
+BASE = "fast-lcd"                  # the image it stacks on: another feature, or "stock"
+INCLUDES = ["direct-select", "fix-auto-off", "strings"]   # fixes linked into its own code
 BASE_IMAGE = features.image(BASE)  # tools/patch/features.py resolves the path
-BASE_SHA = "6d186a81…"             # still pinned: a changed parent must be re-checked
+BASE_SHA = "30c1e6fe…"             # still pinned: a changed parent must be re-checked
 ```
 
 `python3 tools/build.py --graph` prints the tree. `──` is BASE (builds on), and `+` is
 INCLUDES (a fix linked into that image):
 
 ```
-stock                         85e8ac50…
-└── direct-select             'v1.4 tbenr ds2'    0x9400..0x944B  9b7e8b93… known
-    ├── fast-lcd              'v1.4 tbenr fast2'  0x9700..0x977C  6d186a81… known
-    │   └── house-numerals    'v1.4 tbenr hn11.1' 0x9800..0xEF5E  3aa0f2d6… known
-    │         + fix-auto-off  fix linked into house-numerals
-    │         + strings       fix linked into house-numerals
-    ├── fix-auto-off          'v1.4 tbenr aof2'   0x9680..0x969D  f1e4ef1c… known  [fix, hook 0x55B9; included by house-numerals]
-    └── strings               'v1.4 tbenr str2'   0x96A0..0x96AF  472184f1… known  [fix, patch 0x91ED; included by house-numerals]
+stock                      85e8ac50…
+├── direct-select          'v1.4 tbenr ds2'    0x9400..0x944B  9b7e8b93… known  [fix, hook 0x5D10; included by house-numerals]
+├── fast-lcd               'v1.4 tbenr fast3'  0x9700..0x977C  30c1e6fe… known
+│   └── house-numerals     'v1.4 tbenr hn12'   0x9800..0xEF99  5f406b5d… known
+│         + direct-select  fix linked into house-numerals
+│         + fix-auto-off   fix linked into house-numerals
+│         + strings        fix linked into house-numerals
+├── fix-auto-off           'v1.4 tbenr aof3'   0x9680..0x969D  1fb64470… known  [fix, hook 0x55B9; included by house-numerals]
+└── strings                'v1.4 tbenr str3'   0x96A0..0x96AF  6c5611ad… known  [fix, patch 0x91ED; included by house-numerals]
 ```
 
-House-numerals then depends on fast-lcd (its base, and so on down to stock) and on
-fix-auto-off and strings (included). An image has exactly one BASE, because images stack, but can
+Stacking (BASE) is for code that changes how the stock UI is drawn: fast-lcd on stock, a
+theme on fast-lcd. Everything else is a fix on stock, with its own small standalone image,
+and is linked into the image meant for the amp through INCLUDES. House-numerals then
+depends on fast-lcd (its base, and so on down to stock) and on direct-select, fix-auto-off
+and strings (included). An image has exactly one BASE, because images stack, but can
 include any number of fixes. Including a fix uses the fix's source, not its standalone
-image; that image stays a separate branch of the tree.
+image; that image stays a separate branch of the tree, and a change to a fix only moves
+the shas of the images that include it. (Until 2026-09-30 every image stacked on
+direct-select instead, so a change to it rebuilt everything: hn11 and hn11.1 are from
+that shape, hn12 is the same firmware in this one.)
 
 A fix is a feature whose folder also holds `<name>.py` (dashes as underscores) exporting
 `HOOK` and `emit(a)` (code at a hook), or `PATCHES` (in-place byte changes of the same
 length, `[(address, original, new, note)]`; `features/strings` corrects stock texts this
-way), or both. Its own image is only a standalone build on direct-select. A build that
+way), or both. Its own image is only a standalone build on stock. A build that
 lists it in `INCLUDES` links it in three places: `HOOKS += features.hooks(INCLUDES)`,
 `patches += features.patches(INCLUDES)` and `features.emit(a, INCLUDES)` in `assemble()`.
 
@@ -294,7 +305,7 @@ in `features/strings` ("Disconnected" for ARC's "No Connected"); tried on the am
 
 Verified on the amp on 2026-09-29, as part of hn7: the Auto OFF fix (`features/fix-auto-off`). With
 Dimmer on Auto OFF the display goes dark after a cold power-up. Its standalone image
-`features/fix-auto-off/build/flash_fixautooff.bin` (`v1.4 tbenr aof2`, direct-select plus the
+`features/fix-auto-off/build/flash_fixautooff.bin` (`v1.4 tbenr aof3`, stock plus the
 fix) has not been flashed.
 
 Verified on the amp on 2026-09-30, as hn11: direct-select v2 (`v1.4 tbenr ds2`), which
@@ -302,6 +313,11 @@ ignores a direct command for the input already selected instead of re-initialisi
 Every image was rebuilt on it that day (`fast2`, `aof2`, `str2`, `hn11`, then `hn11.1` once
 hn10.1's fixes were merged in), all emulator-verified. hn11.1 was flashed on 2026-09-30 and
 works; the standalone ds2, fast2, aof2 and str2 images have not been flashed.
+
+Flattened graph, 2026-09-30: direct-select became a fix on stock (its standalone image is
+byte-identical to ds2), fast-lcd, fix-auto-off and strings moved onto stock (`fast3`,
+`aof3`, `str3`), and house-numerals includes direct-select (`hn12`, hn11.1 with the same
+code at other addresses). All emulator-verified; hn12 has not been flashed yet.
 
 ## What the custom firmware adds
 
@@ -323,7 +339,7 @@ ignored. A command for the input that is already selected is ignored as well (si
 `v1.4 tbenr ds2`): re-applying an input runs the stock source switch again, which
 re-initialises it and interrupts the audio. Every other command behaves exactly as in
 stock, including the ones the remote never sends. The mechanism is described in
-`features/direct-select/ir_direct_select.asm`.
+`features/direct-select/direct_select.py`; `direct_select.asm` is the generated listing.
 
 ### Version string
 
@@ -553,7 +569,7 @@ Measured from the images; the code/EEPROM split is the chip's own setting (0xF40
 
 | Region | Size | Used | Free |
 |---|---|---|---|
-| Code flash, 0x0000..0xF3FF | 62464 bytes | 61279 bytes (features/house-numerals hn10.1) | ~1.2 KB |
+| Code flash, 0x0000..0xF3FF | 62464 bytes | 61338 bytes (features/house-numerals hn12) | ~1.1 KB |
 | EEPROM area, 0xF400..0xFDFF | 2560 bytes, 5 sectors of 512 | sectors at offsets 0x0000, 0x0200, 0x0400 | 2 sectors, 1 KB |
 | Internal direct RAM, 0x00..0x7F | 128 bytes | all (registers, bit flags, variables up to 0x7F) | none |
 | Internal indirect RAM, 0x80..0xFF | 128 bytes | stack from 0x88 (`mov SP,#0x88` at 0x44A5) | stack headroom only |

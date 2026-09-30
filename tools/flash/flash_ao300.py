@@ -81,6 +81,10 @@ KNOWN_IMAGES = {
     "6050a846a6153f5a2c1fa319260bee831763057e4ab15a3297659144bcfd382a": "fast-lcd fast2 + House Numerals v11 (hn10 on direct-select v2: same-input direct command ignored; without hn10.1's fixes), 'v1.4 tbenr hn11' (features/house-numerals/build/flash_house_numerals.bin)",
     "472184f144181062ae4fb78c8290e8f56708514575751d6e7476307bdf7fb3bf": "direct-select v2 + corrected stock texts ('Disconnected' on ARC), 'v1.4 tbenr str2' (features/strings/build/flash_strings.bin)",
     "3aa0f2d68351486a0746eaa9c4473ccf4184b68fd25839766ad9706a1e354d60": "fast-lcd fast2 + House Numerals v11.1 (hn10.1 on direct-select v2: status tint fix, strings, same-input direct command ignored), 'v1.4 tbenr hn11.1' (features/house-numerals/build/flash_house_numerals.bin)",
+    "30c1e6fe785dc725037e5925d53f5b82305618037532b4a0cd7397a0774f560b": "stock + fast LCD paths only (the flattened graph: no direct-select in it), 'v1.4 tbenr fast3' (features/fast-lcd/build/flash_fastlcd.bin)",
+    "1fb644707c1ce4d59760f2e37a288903b7eb622fefe4969f09af6027856858ff": "stock + Auto OFF armed after power-on only (AO300 PRO V1.2 fix), 'v1.4 tbenr aof3' (features/fix-auto-off/build/flash_fixautooff.bin)",
+    "6c5611ad8985f599877793e81c90b1e37b0eb352140878caf85d037a9004454d": "stock + corrected stock texts only ('Disconnected' on ARC), 'v1.4 tbenr str3' (features/strings/build/flash_strings.bin)",
+    "5f406b5d828965a59a0773af4f62879a4749ae2e61a264e5ed2378765e3f3dc5": "fast-lcd fast3 + House Numerals v12 (hn11.1 with direct-select linked in as a fix instead of stacked under fast-lcd; same behaviour), 'v1.4 tbenr hn12' (features/house-numerals/build/flash_house_numerals.bin)",
 }
 
 

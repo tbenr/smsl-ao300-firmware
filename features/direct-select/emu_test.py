@@ -1,8 +1,9 @@
 """Focused 8051 emulator to validate the IR direct-select patch.
 
-Executes from the hook entry (0x5D10) on the patched image. The stock
-"apply input" tail at 0x5640 is intercepted (recorded, not executed) so we
-observe exactly what the patch decides without simulating the audio hardware.
+Executes from the hook entry (0x5D10) on the patched image (or, with --in <feature>, on
+that feature's image, which includes the fix). The stock "apply input" tail at 0x5640 is
+intercepted (recorded, not executed) so we observe exactly what the patch decides without
+simulating the audio hardware.
 The NOTSEL resume stub at 0x5D17 (mov R7,A; clr A; mov 0x6F,A; ret) is real code
 and runs normally.
 """
@@ -197,10 +198,10 @@ print("version pointer 0x22CA -> 0x%04X %r  %s" % (ptr, text, "OK" if vok else "
 stock_len = len(STOCK.rstrip(b"\xff"))
 changed = sorted(i for i in range(stock_len) if STOCK[i] != CODE[i])
 expected = [0x22CB, 0x22CD, 0x5D10, 0x5D11, 0x5D12]
-if IN:      # images built on direct-select change more; its own hook must still be there
-    own = open(_default, "rb").read()
-    dok = CODE[0x5D10:0x5D13] == own[0x5D10:0x5D13] and CODE[0x9400:0x943D] == own[0x9400:0x943D]
-    print("hook 0x5D10 and the code at 0x9400 as direct-select built them  %s" % ("OK" if dok else "*** FAIL ***"))
+if IN:      # an image that includes the fix changes more; its hook must jump into that image's code
+    target = (CODE[0x5D11] << 8) | CODE[0x5D12]
+    dok = CODE[0x5D10] == 0x02 and stock_len <= target < len(IMG)
+    print("hook 0x5D10 is ljmp 0x%04X, into the image's own code  %s" % (target, "OK" if dok else "*** FAIL ***"))
 else:
     dok = changed == expected
     print("bytes changed in stock range: %s  %s" % ([hex(i) for i in changed], "OK" if dok else "*** FAIL ***"))

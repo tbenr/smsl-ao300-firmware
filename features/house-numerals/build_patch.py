@@ -66,9 +66,9 @@ from uikit import (hi, lo, S, st_imm16, ld16, st16, FONTS, SMALL_MAP, BIG_MAP, B
                    VOL_ENTRY_SITES, VOL_ENTRY_ORIG, vol_entry_bytes, VERSION_PTR_ADDR, VERSION_MAX_LEN)
 
 BASE = "fast-lcd"                   # image this builds on (tools/patch/features.py)
-INCLUDES = ["fix-auto-off", "strings"]   # fix features linked into this image
+INCLUDES = ["direct-select", "fix-auto-off", "strings"]   # fix features linked into this image
 BASE_IMAGE = features.image(BASE)
-BASE_SHA = "6d186a817762b8d705f75ffe178089483e4584fc01ebe55884fbb88b114cec7d"
+BASE_SHA = "30c1e6fe785dc725037e5925d53f5b82305618037532b4a0cd7397a0774f560b"
 OUT_IMAGE = os.path.join(HERE, "build", "flash_house_numerals.bin")
 OUT_LISTING = os.path.join(HERE, "house_numerals.asm")
 
@@ -368,7 +368,7 @@ HOOKS = [STOCK_SITES[site] + (op, target) for site, op, target in (
 )]
 HOOKS += features.hooks(INCLUDES)      # the fixes linked in: their hooks ...
 FIX_PATCHES = features.patches(INCLUDES)   # ... and their in-place patches (strings: "Disconnected")
-VERSION_TEXT = "v1.4 tbenr hn11.1"
+VERSION_TEXT = "v1.4 tbenr hn12"
 
 
 rect = KIT.rect

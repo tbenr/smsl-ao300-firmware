@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Build the strings image: direct-select plus the corrected stock texts (strings.py).
+"""Build the strings image: the stock v1.4 image plus the corrected stock texts (strings.py).
 
-Usage: build_patch.py [base_image]   (default features/direct-select/build/flash_patched.bin)
+Usage: build_patch.py [base_image]   (default original/extracted/flash.bin)
 Writes build/flash_strings.bin and the listing strings.asm (patch notes only: no code).
 """
 import os
@@ -16,17 +16,17 @@ from asm51 import Asm  # noqa: E402
 import uikit  # noqa: E402
 import strings  # noqa: E402
 
-BASE = "direct-select"              # image this builds on (tools/patch/features.py)
+BASE = features.STOCK               # the stock v1.4 image (tools/patch/features.py)
 INCLUDES = []                       # fix features linked into this image
 XDATA = strings.XDATA               # none
 BASE_IMAGE = features.image(BASE)
-BASE_SHA = "9b7e8b930d0b9f038d1996445e888ae08db4e928e2ec6755acb2564113912046"
+BASE_SHA = features.STOCK_SHA
 OUT_IMAGE = os.path.join(HERE, "build", "flash_strings.bin")
 OUT_LISTING = os.path.join(HERE, "strings.asm")
 CODE_ADDR = 0x96A0                  # after fix-auto-off (0x9680..0x969D); only the version string goes here
 HOOKS = []
 PATCHES = [(addr, orig, (lambda labels, new=new: new), note) for addr, orig, new, note in strings.PATCHES]
-VERSION_TEXT = "v1.4 tbenr str2"
+VERSION_TEXT = "v1.4 tbenr str3"
 
 
 def assemble():

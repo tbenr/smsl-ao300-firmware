@@ -1,10 +1,12 @@
 # House Numerals
 
 A reduced build of study 3 ("House Numerals", after SMSL's SU and DO series screens) from
-`features/ui-theme/ui_themes.html`. Built on top of fast-lcd, with fix-auto-off and strings included. The RESET page shows
-`v1.4 tbenr hn11.1`.
+`features/ui-theme/ui_themes.html`. Built on top of fast-lcd, with direct-select, fix-auto-off and
+strings included. The RESET page shows `v1.4 tbenr hn12`.
 
-This is image hn11.1 (sha256 `3aa0f2d6…`): hn10.1 rebuilt on direct-select v2, which ignores a
+This is image hn12 (sha256 `5f406b5d…`): hn11.1 with direct-select linked in as a fix (its code
+at the end of this image's own code) instead of stacked under fast-lcd; the same firmware
+otherwise. hn11.1 (`3aa0f2d6…`) is hn10.1 rebuilt on direct-select v2, which ignores a
 direct command for the input already selected (hn11, `6050a846…`, was hn10 on the same base).
 Nothing in this layer changed. hn10.1 (`89a6ed99…`) is hn10 with one fix and one more fix linked in:
 - **The status line's tint after an input change.** Seen on the amp with hn8: after Source from
@@ -103,6 +105,9 @@ Earlier images:
 - Flashed so far: the first image (`v1.4 tbenr hn`, `deada16a…`, 47 ms wipe) and hn4.1.
 
 ## Status
+
+hn12: emulator-verified (all tests pass, including "direct-select in house-numerals",
+"fix-auto-off in house-numerals" and "strings in house-numerals"). Not yet flashed.
 
 hn11.1: emulator-verified (all tests pass, including "direct-select in house-numerals",
 "fix-auto-off in house-numerals" and "strings in house-numerals"). Flashed on the amp on
@@ -752,7 +757,11 @@ places the volume keys open the volume page (hn9 adds none). Every stock byte is
 
 `python3 tools/run_tests.py` gives **ALL PASS** for every feature (hn9: 137 s wall,
 house-numerals 137 s, most of it the sweep). `emu_test.py` has four groups: `unit`, `tour`,
-`int1`, `sweep`; `unit tour` alone runs in about a minute.
+`int1`, `sweep`; `unit tour` alone runs in about a minute. Since hn12 the whole-firmware
+scenarios and the sweep run against a reference the test builds itself, fast-lcd plus the fixes
+this image includes (`build/reference.bin`), so that only the theme differs between the two
+amps; the image diff still runs against fast-lcd, the base. Before, fast-lcd carried
+direct-select itself.
 
 - **Status tint** (hn10.1). Unit: the refresh's draw keeps the loader's tint (three no-signal texts
   reddish, a sample rate grey); four draws at y 135 that are not the loader's, after a no-signal

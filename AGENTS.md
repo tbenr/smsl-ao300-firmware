@@ -36,7 +36,7 @@ rules apply to anyone working here, human or agent.
 - One folder per feature: `features/<name>/` with `build_patch.py`, an annotated or
   generated `.asm` listing, `emu_test.py`, `README.md`, and outputs in `build/`.
 - Every `build_patch.py` declares its place in the feature graph: `BASE` (the image it
-  stacks on, "stock" for direct-select), `INCLUDES` (fixes it links in) and
+  stacks on: another feature, or "stock"), `INCLUDES` (fixes it links in) and
   `BASE_IMAGE = features.image(BASE)` (`tools/patch/features.py`). Build with
   `tools/build.py`. It builds bases first and fails on stale pins, on a feature re-patching
   bytes an ancestor changed, and on an included fix whose hook isn't installed.
@@ -47,7 +47,7 @@ rules apply to anyone working here, human or agent.
   what must stay true there, not this layer's exact bytes.
 - Fixes for stock bugs live in `features/fix-<name>/`. They export `HOOK` and `emit(a)` from
   `<name>.py` (dashes as underscores), so other builds can include them. Their own
-  `build_patch.py` is a standalone image on direct-select.
+  `build_patch.py` is a standalone image on stock.
 - `build_patch.py` checks the base image's sha256 and asserts the original bytes at every
   hook before it changes them. Hooks use as few bytes as possible (an LJMP or a
   repointed branch). New code is appended after the current end of the patch area and
@@ -56,7 +56,8 @@ rules apply to anyone working here, human or agent.
   sectors in use (offsets 0x0000, 0x0200, 0x0400) alone.
 - Each build sets its own `VERSION_TEXT` (20 characters at most), so the RESET page
   shows which image is running.
-- Build on top of direct-select unless the user asks otherwise.
+- An image meant for the amp includes direct-select, fix-auto-off and strings (INCLUDES)
+  unless the user asks otherwise. Only a UI theme stacks on fast-lcd; fixes stack on stock.
 - UI themes build on fast-lcd and `tools/patch/uikit.py`. Code more than one theme can use goes
   into the kit, with tests in `tools/patch/uikit_test.py`. After a kit change, rebuild every
   theme: an image whose sha changes needs its tests run again and a new `KNOWN_IMAGES` entry.

@@ -2,8 +2,8 @@
 
 A stock bug, fixed by SMSL in the AO300 PRO V1.2 and ported here. With Dimmer set to
 Auto OFF, the display should go dark a few seconds after the last key. After a cold
-power-up it stays lit until the first key press. The standalone image is direct-select
-plus the fix; the RESET page shows `v1.4 tbenr aof2` (aof1 was the same fix on direct-select v1).
+power-up it stays lit until the first key press. The standalone image is stock plus the
+fix; the RESET page shows `v1.4 tbenr aof3` (aof1 and aof2 were the same fix on direct-select).
 
 ## Status
 
@@ -66,9 +66,9 @@ integration test is what confirms it.
 
 - **Hook.** `post_power_on`'s tail with dimmer 0..3 and two preset counter values: the
   counter becomes 0x01F4 only with dimmer 2. Every other RAM byte, SP and the screen match
-  direct-select.
+  stock.
 - **IR sweep.** All 256 NEC commands through 0x5D10, with dimmer 1 and 2, in standby and on
-  pages 0..3, match direct-select.
+  pages 0..3, match stock.
 - **Image diff.** Only 0x55BA, 0x55BB and the version pointer change. The code sits at
   0x9680, a slot no other feature uses.
 - **Full firmware, base and fix side by side.** Both boot from reset on `Amp`, which runs

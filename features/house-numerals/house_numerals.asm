@@ -17,13 +17,14 @@
 ; 0x425D: 12 4f 20 -> 12 ed 18  (hm_fmt)
 ; 0x41E8: 02 00 26 -> 02 ef 2e  (hm_fmt_clear)
 ; 0x41FC: 12 00 26 -> 12 ef 2e  (hm_fmt_clear)
-; 0x55B9: 02 5d 42 -> 02 ef 3f  (fx_auto_off)
+; 0x5D10: af 6a ef -> 02 ef 3f  (ds_select)
+; 0x55B9: 02 5d 42 -> 02 ef 7c  (fx_auto_off)
 ; 0x0D33: 12 5d 42 7b ff -> 12 e2 23 80 11  (lcall hn_enter_vol ; sjmp 0x0D49)
 ; 0x0DB3: 12 5d 42 7b ff -> 12 e2 23 80 11  (lcall hn_enter_vol ; sjmp 0x0DC9)
 ; 0x0E5A: 12 5d 42 7b ff -> 12 e2 23 80 11  (lcall hn_enter_vol ; sjmp 0x0E70)
 ; 0x0F02: 12 5d 42 7b ff -> 12 e2 23 80 11  (lcall hn_enter_vol ; sjmp 0x0F18)
 ; 0x91ED: 4e 6f 20 43 6f 6e 6e 65 63 74 65 64 00 -> 44 69 73 63 6f 6e 6e 65 63 74 65 64 00  (HDMI ARC without a link: the status loader's text for input 5 (0x406D))
-; version string 'v1.4 tbenr hn11.1' at 0xEF4D, pointer 0x22CA repointed
+; version string 'v1.4 tbenr hn12' at 0xEF8A, pointer 0x22CA repointed
 
             ; input-name pointers for inputs 1..6 (volume page), then the VOL label
 names:
@@ -7565,14 +7566,52 @@ hm_fmt_clear:
   EF38: 7e 00                    mov R6,#0x00
   EF3A: 7f 00                    mov R7,#0x00
   EF3C: 02 d4 52                 ljmp uk_fill
+            ; ds_select: replaces ir_cmd_to_key's entry (0x5D10). Raw NEC command 0x6A -> internal key in R7.
+            ; RAM: g_ir_cmd 0x6A, g_input 0x47, g_power_on 0x4F, g_ui_page 0x45, g_osd_timer 0x27:0x28, g_ir_key2 0x6F
+ds_select:
+  EF3F: e5 6a                    mov A,0x6A                  ; raw NEC command byte
+  EF41: c3                       clr C
+  EF42: 94 10                    subb A,#0x10              ; A = cmd - 0x10 ; C=1 if cmd < 0x10
+  EF44: 40 28                    jc ds_stock                 ; below range -> stock path
+  EF46: b4 06 00                 cjne A,#6,ds_c1            ; never branches; sets C=1 if A < 6
+ds_c1:
+  EF49: 50 23                    jnc ds_stock                ; A >= 6 (cmd > 0x15) -> stock path
+  EF4B: ff                       mov R7,A                    ; R7 = index 0..5
+  EF4C: e5 4f                    mov A,0x4F                  ; g_power_on
+  EF4E: 60 18                    jz ds_eat                   ; standby -> ignore
+  EF50: e5 45                    mov A,0x45                  ; g_ui_page
+  EF52: 64 01                    xrl A,#1                    ; zero iff page == 1 (home)
+  EF54: 70 12                    jnz ds_eat                  ; in a menu -> ignore
+  EF56: ef                       mov A,R7
+  EF57: 04                       inc A                       ; input number 1..6
+  EF58: b5 47 02                 cjne A,0x47,ds_apply        ; not the current input -> switch
+  EF5B: 80 0b                    sjmp ds_eat                 ; already selected -> ignore (no re-init, no OSD)
+ds_apply:
+  EF5D: f5 47                    mov 0x47,A                  ; g_input = target
+  EF5F: 75 27 00                 mov 0x27,#0x00              ; g_osd_timer: show the input name, as a real press does
+  EF62: 75 28 c8                 mov 0x28,#0xC8
+  EF65: 12 56 40                 lcall 0x5640                ; input_apply: switch hardware + refresh display
+ds_eat:
+  EF68: 7f ff                    mov R7,#0xFF                ; return "no key" to read_key
+  EF6A: e4                       clr A
+  EF6B: f5 6f                    mov 0x6F,A                  ; g_ir_key2: stock side effect of ir_cmd_to_key
+  EF6D: 22                       ret
+ds_stock:
+  EF6E: e5 6a                    mov A,0x6A                  ; replay the displaced stock instructions
+  EF70: b4 0f 00                 cjne A,#15,ds_c2            ; never branches; sets C=1 if cmd < 15
+ds_c2:
+  EF73: 50 f3                    jnc ds_eat                  ; cmd >= 15: not in the table -> "no key" (stock read erased flash)
+  EF75: 90 93 98                 mov DPTR,#0x9398            ; ir_cmd_to_key_table
+  EF78: 93                       movc A,@A+DPTR              ; A = table[cmd]
+  EF79: 02 5d 17                 ljmp 0x5D17                 ; ir_cmd_to_key's tail: mov R7,A ; clr A ; mov 0x6F,A ; ret
             ; fx_auto_off: replaces post_power_on's tail `ljmp ui_clear_screen` (0x55B9). With Dimmer on
             ; Auto OFF, arm the screen-off countdown as a key press would, then take the stock tail call.
             ; Arming before the jump keeps the stack depth as stock; the countdown is only read by the
             ; main loop (0x33DB), so the order against ui_clear_screen does not matter.
 fx_auto_off:
-  EF3F: e5 29                    mov A,0x29                  ; g_dimmer_mode: 1 Always ON, 2 Auto OFF
-  EF41: b4 02 06                 cjne A,#0x02,fx_ao_done
-  EF44: 75 2f 01                 mov 0x2F,#0x01            ; g_screen_off_hi
-  EF47: 75 30 f4                 mov 0x30,#0xF4            ; g_screen_off_lo
+  EF7C: e5 29                    mov A,0x29                  ; g_dimmer_mode: 1 Always ON, 2 Auto OFF
+  EF7E: b4 02 06                 cjne A,#0x02,fx_ao_done
+  EF81: 75 2f 01                 mov 0x2F,#0x01            ; g_screen_off_hi
+  EF84: 75 30 f4                 mov 0x30,#0xF4            ; g_screen_off_lo
 fx_ao_done:
-  EF4A: 02 5d 42                 ljmp 0x5D42                 ; ui_clear_screen, the stock tail call
+  EF87: 02 5d 42                 ljmp 0x5D42                 ; ui_clear_screen, the stock tail call

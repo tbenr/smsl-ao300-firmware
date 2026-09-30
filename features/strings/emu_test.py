@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Emulator test for strings (stock texts corrected in place).
 
-  * the image differs from direct-select only in the patched string bytes and the version
+  * the image differs from stock only in the patched string bytes and the version
     pointer, and nothing is appended but the version string;
   * the stock status loader (0x4016) on HDMI ARC without a link puts "Disconnected" into the
     status buffer (XDATA 0x50); on the other inputs its texts are unchanged;
-  * all 256 NEC commands through the IR translate hook (0x5D10) behave as in direct-select,
+  * all 256 NEC commands through the IR translate hook (0x5D10) behave as in stock,
     in standby and on every page;
-  * whole firmware from reset, base and fix side by side: direct-select HDMI ARC, then the
+  * whole firmware from reset, base and fix side by side: Source round to HDMI ARC, then the
     status line reads "Disconnected" where the base shows "No Connected", with the same
     audio events and state.
   * --in <image> (run_tests.py, "strings in <image>"): the patched bytes are in that image,
@@ -21,7 +21,7 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(ROOT, "tools", "emu"))
 sys.path.insert(0, HERE)
 from emu8051 import Emu8051  # noqa: E402
-from ao300 import Amp, NEC_POWER  # noqa: E402
+from ao300 import Amp, NEC_POWER, NEC_SOURCE  # noqa: E402
 import build_patch as bp     # noqa: E402
 import features              # noqa: E402  (tools/patch, on the path through build_patch)
 
@@ -35,8 +35,8 @@ LOADER_END = 0x4081          # ... runs on into lcall home_refresh
 HOME_REFRESH = 0x5C8B
 SMALL_TEXT_RENDER = 0x3A53
 SMALL_BUF = 0x50
-APPLY_TAIL = 0x5640          # direct-select's input apply, needs real hardware
-NEC_ARC = 0x14               # direct-select HDMI ARC (input 5)
+APPLY_TAIL = 0x5640          # input_apply, needs real hardware
+ARC_INPUT = 5                # HDMI ARC, reached with the stock Source key (the image need not carry direct-select)
 
 fails = []
 
@@ -52,7 +52,7 @@ def buffer_text(e, addr=SMALL_BUF, n=25):
 
 
 def image_diff():
-    print("\nImage diff vs direct-select")
+    print("\nImage diff vs stock")
     a = open(BASE_IMG, "rb").read()
     b = open(TEST_IMG, "rb").read()
     changed = {i for i in range(len(a)) if a[i] != b[i]}
@@ -91,7 +91,7 @@ def loader_test(img_path, label):
     for inp, pins, text in ((2, {0xC0: (0x04, 0x04)}, "No signal"), (2, {0xC0: (0x04, 0x00)}, None),
                             (4, None, "Searching..."), (6, None, None)):
         got, base = loader(img_path, inp, pins), loader(BASE_IMG, inp, pins)
-        check("input %d%s: as direct-select (%r)" % (inp, "" if pins is None else " P4.2 %d" % (pins[0xC0][1] >> 2), base),
+        check("input %d%s: as the base (%r)" % (inp, "" if pins is None else " P4.2 %d" % (pins[0xC0][1] >> 2), base),
               got == base and (text is None or got == text), repr(got))
 
 
@@ -115,7 +115,7 @@ def make(img_path, cmd, power, page):
 
 
 def sweep():
-    print("\nAll 256 NEC commands vs the direct-select image")
+    print("\nAll 256 NEC commands vs the base image")
     diffs = 0
     for power, page in ((1, 1), (0, 1), (1, 0), (1, 2), (1, 3)):
         for cmd in range(256):
@@ -131,14 +131,18 @@ def sweep():
 
 
 def arc_scenario(img_path, label, base_path=None):
-    """Power on, direct-select HDMI ARC (no link in the emulator), 4 s: the status buffer."""
-    print("\nWhole firmware, %s: direct-select HDMI ARC without a link" % label)
+    """Power on, Source until HDMI ARC (no link in the emulator), 4 s: the status buffer."""
+    print("\nWhole firmware, %s: HDMI ARC without a link" % label)
     amps = [Amp(open(p, "rb").read()) for p in ([base_path] if base_path else []) + [img_path]]
     for amp in amps:
         amp.boot()
         amp.press(NEC_POWER)
         amp.wait(9.5)
-        amp.press(NEC_ARC)
+        for _ in range(6):
+            if amp.e.iram[0x47] == ARC_INPUT:
+                break
+            amp.press(NEC_SOURCE)
+            amp.wait(2.5)
         amp.wait(4.0)
     new = amps[-1]
     check("input 5, powered, the status line reads \"Disconnected\"",
@@ -146,7 +150,7 @@ def arc_scenario(img_path, label, base_path=None):
     if base_path:
         base = amps[0]
         same = [n for _, n, _ in base.events] == [n for _, n, _ in new.events] and base.state == new.state
-        check("direct-select shows \"No Connected\" there; same audio events and state",
+        check("the base shows \"No Connected\" there; same audio events and state",
               buffer_text(base.e) == "No Connected" and same and base.page == new.page)
 
 

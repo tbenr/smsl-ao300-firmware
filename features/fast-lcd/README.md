@@ -1,13 +1,15 @@
 # Fast LCD
 
 The stock UI, unchanged, drawn through the tuned pixel path that the blit-test build
-verified on the panel (see Bus timing). Built on top of direct-select. The RESET page shows
-`v1.4 tbenr fast2` (fast2 is the same layer rebuilt on direct-select v2, 2026-09-30).
+verified on the panel (see Bus timing). Built on top of the stock image; it carries no
+fix of its own (an image for the amp includes those, see the main README's feature graph).
+The RESET page shows `v1.4 tbenr fast3`.
 
 ## Status
 
-fast2: emulator-verified, and on the amp inside hn11 since 2026-09-30; not flashed standalone. fast (`v1.4 tbenr fast`, on direct-select v1) was
-flashed on the amp on 2026-09-28 and working so far. Longer listening tests are still to
+fast3 (on stock, 2026-09-30): emulator-verified, not flashed standalone. fast2 (the same
+layer on direct-select v2) is on the amp inside hn11 and hn11.1 since 2026-09-30. fast
+(`v1.4 tbenr fast`, on direct-select v1) was flashed on the amp on 2026-09-28 and working so far. Longer listening tests are still to
 come: power-on, input switching and the display flicker.
 
 ## What changes
@@ -27,17 +29,17 @@ setup). 108 bytes of code at 0x9700 (placed after the old blit-test's area,
 
 ## Emulator results
 
-`emu_test.py` runs the direct-select image and this one side by side in lockstep. Both
+`emu_test.py` runs the stock image and this one side by side in lockstep. Both
 run the whole firmware from reset, with the real Timer0 ISR and USB carrying a signal.
 The tour: Power, Source, Vol+ and back home, Menu, Down, Down, Up, menu timeout,
-direct-select HDMI, direct-select USB, Vol− twice, Power off.
+Source four more times round to USB, Vol− twice, Power off.
 
 | Step | Stock drawing | Fast drawing |
 |---|---|---|
 | Source (input name) | 90 ms | 60 ms |
 | Vol+ (volume page, full clear) | 190 ms | 40 ms |
 | Vol− (volume page) | 190 ms | 40 ms |
-| direct-select HDMI / USB | 90 / 100 ms | 70 / 70 ms |
+| Source (four more inputs, back to USB) | 90 / 100 ms | 70 / 80 ms |
 | Power off | 160 ms | 20 ms |
 
 These numbers run from the key press until 100 ms pass with no LCD writes. They

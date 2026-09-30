@@ -6,6 +6,9 @@
                               entry/exit/reversal/cancel logic, the number roll against roll_box,
                               the line's spring against spring_model (and it against the mock's
                               float integrator)
+  Whole-firmware scenarios and the sweep run against a reference the test builds: fast-lcd
+  plus the fixes this image includes (build/reference.bin), so only the theme differs.
+
   python3 emu_test.py tour    whole firmware from reset, lockstep with fast-lcd: the tour, a volume
                               key per input, keys during the wipes, keys on the open page (the
                               roll's frames, the spring, knob-speed repeats, a roll cut by
@@ -33,6 +36,29 @@ import pfont                                                     # noqa: E402
 
 BASE = open(bp.BASE_IMAGE, "rb").read()
 NEW = open(bp.OUT_IMAGE, "rb").read()
+
+
+def reference_image():
+    """fast-lcd plus the fixes this image includes, without the theme: the behaviour reference
+    for the whole-firmware scenarios and the IR sweep, so that only the theme differs between
+    the two amps (the image diff still runs against fast-lcd itself, the base)."""
+    import features                                              # tools/patch, on the path
+    import uikit
+    from asm51 import Asm
+    path = os.path.join(HERE, "build", "reference.bin")
+
+    def assemble():
+        a = Asm(bp.CODE_ADDR)
+        features.emit(a, bp.INCLUDES)
+        return a.resolve(), a.labels, a
+    uikit.build_image(base_path=bp.BASE_IMAGE, base_sha=bp.BASE_SHA, code_addr=bp.CODE_ADDR, assemble=assemble,
+                      hooks=features.hooks(bp.INCLUDES), patches=features.patches(bp.INCLUDES),
+                      version_text="ref", out_image=path, out_listing=path + ".asm",
+                      title="reference: fast-lcd + %s" % ", ".join(bp.INCLUDES), label_prefixes=())
+    return open(path, "rb").read()
+
+
+REF = reference_image()
 LAB = bp.assemble()[1]
 W, H = 320, 170
 EASE = bp.EASE
@@ -1722,7 +1748,7 @@ def mid_entry_ok(new, before, k):
 
 def tour():
     print("\nWhole firmware, lockstep with fast-lcd")
-    amps = [Amp(BASE), Amp(NEW)]
+    amps = [Amp(REF), Amp(NEW)]
     for amp in amps:
         amp.set_pin(0xC0, 5, 0)                         # USB audio present
         amp.boot()
@@ -1880,7 +1906,7 @@ def input_scenarios():
     for name, what, setup, cd_kind, settle, page in SCENARIOS:
         w0 = time.time()
         print("  %s: %s" % (name, what))
-        amps = [Amp(BASE), Amp(NEW)]
+        amps = [Amp(REF), Amp(NEW)]
         ref, new = amps
         w = Watch(new)
         unmutes = [[], []]
@@ -1988,7 +2014,7 @@ def key_scenarios():
     print("\nKeys during a wipe, whole firmware, against fast-lcd")
     for name, pre, when, into, cmd, settle, expect, inject in KEY_SCENARIOS:
         w0 = time.time()
-        amps = [Amp(BASE), Amp(NEW)]
+        amps = [Amp(REF), Amp(NEW)]
         ref, new = amps
         w = Watch(new)
         for amp in amps:
@@ -2076,7 +2102,7 @@ def flag_exit_scenarios():
     for gap in (0.2, 1.0, 2.0):
         name = "source_vol_%.1f" % gap
         label = "%-19s " % name
-        amps = [Amp(BASE), Amp(NEW)]
+        amps = [Amp(REF), Amp(NEW)]
         ref, new = amps
         w = Watch(new)
         ends = []
@@ -2115,7 +2141,7 @@ def flag_exit_scenarios():
 def open_page(settle=1.0, vol=None):
     """Both images powered on (USB), then Vol+ from home and `settle` s: the volume page, at rest
     (vol: the speaker volume set in RAM 0x31 before the key, which then applies vol + 1)."""
-    amps = [Amp(BASE), Amp(NEW)]
+    amps = [Amp(REF), Amp(NEW)]
     for amp in amps:
         amp.set_pin(0xC0, 5, 0)
         amp.boot()
@@ -2309,7 +2335,7 @@ INT1_T0 = 9.0                            # seconds after Power: USB settled and 
 def int1_job(offset_ms):
     """Both images: Vol+ at INT1_T0 + offset with INT1's RAM effects injected at the press."""
     out = []
-    for img in (BASE, NEW):
+    for img in (REF, NEW):
         amp = Amp(img)
         hits = {"dac": [], "unmute": []}
         amp.e.hooks[DAC_RECONFIG] = lambda em: hits["dac"].append(em.cycles / CLOCK_HZ)
@@ -2425,7 +2451,7 @@ def outcome(amp):
 
 def job(args):
     st, cmd = args
-    base, new = run(BASE, st, cmd), run(NEW, st, cmd)
+    base, new = run(REF, st, cmd), run(NEW, st, cmd)
     ob, on = outcome(base), outcome(new)
     ok = screen_ok(base, new)
     if not ok and base.powered and new.powered and base.page == new.page == 1:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the "fast LCD" image for the SMSL AO300 (on top of direct-select).
+"""Build the "fast LCD" image for the SMSL AO300 (on top of the stock image).
 
 The stock UI keeps working as it is, but its two lowest-level pixel paths are
 replaced with the tuned loop that the blit-test build verified on the panel (README, Bus timing):
@@ -31,11 +31,11 @@ sys.path.insert(0, os.path.join(ROOT, "tools", "patch"))
 import features  # noqa: E402
 from asm51 import Asm, rel, ab  # noqa: E402
 
-BASE = "direct-select"              # image this builds on (tools/patch/features.py)
+BASE = features.STOCK               # the stock v1.4 image (tools/patch/features.py)
 INCLUDES = []                       # fix features linked into this image
 XDATA = []                          # XDATA its code uses (none)
 BASE_IMAGE = features.image(BASE)
-BASE_SHA = "9b7e8b930d0b9f038d1996445e888ae08db4e928e2ec6755acb2564113912046"
+BASE_SHA = features.STOCK_SHA
 OUT_IMAGE = os.path.join(HERE, "build", "flash_fastlcd.bin")
 OUT_LISTING = os.path.join(HERE, "fast_lcd.asm")
 
@@ -52,7 +52,7 @@ CLEAR_WINDOW = bytes.fromhex("782f7401f208743ff2e4fbfa7da9fcfffe124437")  # 0x51
 P1 = 0x90
 DC, WR, CS = 0x83, 0x85, 0x87                   # bit addresses P0.3, P0.5, P0.7
 
-VERSION_TEXT = "v1.4 tbenr fast2"
+VERSION_TEXT = "v1.4 tbenr fast3"
 VERSION_PTR_ADDR = 0x22CA
 VERSION_MAX_LEN = 20
 
@@ -99,7 +99,7 @@ def main():
     img = bytearray(open(src, "rb").read())
     sha = hashlib.sha256(img).hexdigest()
     if sha != BASE_SHA:
-        raise SystemExit("base image is not the direct-select build (sha %s)" % sha)
+        raise SystemExit("base image is not the stock v1.4 image (sha %s)" % sha)
     assert img[PIXEL:PIXEL + 3] == PIXEL_ORIG, "lcd_write_pixel not as expected"
     assert img[CLEAR_LOOP:CLEAR_LOOP + 3] == CLEAR_ORIG, "lcd_clear_black loop not as expected"
     assert img[0x51EE:CLEAR_LOOP] == CLEAR_WINDOW, "lcd_clear_black window setup not as expected"

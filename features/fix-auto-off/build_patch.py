@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Build the fix-auto-off image: direct-select plus the Auto OFF power-on fix (fix_auto_off.py).
+"""Build the fix-auto-off image: the stock v1.4 image plus the Auto OFF power-on fix (fix_auto_off.py).
 
-Usage: build_patch.py [base_image]   (default features/direct-select/build/flash_patched.bin)
+Usage: build_patch.py [base_image]   (default original/extracted/flash.bin)
 Writes build/flash_fixautooff.bin and the listing fix_auto_off.asm.
 """
 import os
@@ -16,16 +16,16 @@ from asm51 import Asm  # noqa: E402
 import uikit  # noqa: E402
 import fix_auto_off  # noqa: E402
 
-BASE = "direct-select"              # image this builds on (tools/patch/features.py)
+BASE = features.STOCK               # the stock v1.4 image (tools/patch/features.py)
 INCLUDES = []                       # fix features linked into this image
 XDATA = fix_auto_off.XDATA           # this image's own code is the fix
 BASE_IMAGE = features.image(BASE)
-BASE_SHA = "9b7e8b930d0b9f038d1996445e888ae08db4e928e2ec6755acb2564113912046"
+BASE_SHA = features.STOCK_SHA
 OUT_IMAGE = os.path.join(HERE, "build", "flash_fixautooff.bin")
 OUT_LISTING = os.path.join(HERE, "fix_auto_off.asm")
-CODE_ADDR = 0x9680                  # after direct-select; free in every image (fast-lcd starts at 0x9700)
+CODE_ADDR = 0x9680                  # after direct-select's slot (0x9400..); free in every image (fast-lcd starts at 0x9700)
 HOOKS = [fix_auto_off.HOOK]
-VERSION_TEXT = "v1.4 tbenr aof2"
+VERSION_TEXT = "v1.4 tbenr aof3"
 
 
 def assemble():

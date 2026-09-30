@@ -3,8 +3,8 @@
 Stock v1.4 shows **"No Connected"** on the status line when HDMI ARC has no link. This fix
 replaces it with **"Disconnected"** in the firmware's own string table, so every image that
 includes the fix shows it wherever the stock code shows that status: the home screen, and the
-House Numerals volume page. The standalone image is direct-select plus the fix; the RESET
-page shows `v1.4 tbenr str2` (str1 was the same patch on direct-select v1).
+House Numerals volume page. The standalone image is stock plus the fix; the RESET page
+shows `v1.4 tbenr str3` (str1 and str2 were the same patch on direct-select).
 
 ## Status
 
@@ -36,14 +36,14 @@ that every included patch is applied. House Numerals includes it from hn10.1.
 ## Tests
 
 `emu_test.py`:
-- image diff: only the 13 bytes at 0x91ED and the version pointer differ from direct-select;
+- image diff: only the 13 bytes at 0x91ED and the version pointer differ from stock;
 - the stock loader on ARC without a link fills the status buffer with "Disconnected"; the other
-  inputs' texts are as in direct-select;
-- all 256 NEC commands in five power/page states, against direct-select;
-- whole firmware from reset, base and fix side by side: direct-select ARC, then the status reads
+  inputs' texts are as in stock;
+- all 256 NEC commands in five power/page states, against stock;
+- whole firmware from reset, base and fix side by side: Source round to ARC, then the status reads
   "Disconnected" where the base shows "No Connected", with the same audio events and state;
 - `--in <image>`: the bytes, the loader and the ARC scenario in any image that includes the fix.
 
 ## Memory
 
-No code: the image is direct-select plus 16 bytes of version string at 0x96A0. No XDATA.
+No code: the image is stock plus 16 bytes of version string at 0x96A0. No XDATA.

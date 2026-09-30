@@ -108,7 +108,7 @@ public class SmslAo300Labels extends GhidraScript {
         // Keil runtime
         {0x1EF5, "keil_cldptr"},       {0x1F91, "keil_ildptr"},
         // patch code, only in the images that carry it
-        {0x9400, "ir_direct_select"},  // features/direct-select
+        {0x9400, "ds_select"},         // features/direct-select standalone image; builds that include the fix place it in their own code
         {0x9680, "fx_auto_off"},       // features/fix-auto-off standalone image; builds that include the fix place it in their own code
         {0x9700, "fast_pixel"},        // features/fast-lcd, replaces lcd_write_pixel
         {0x9716, "fast_clear"},        // features/fast-lcd, replaces lcd_clear_black's loop
