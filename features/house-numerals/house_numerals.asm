@@ -8,21 +8,22 @@
 ; 0x5B2A: 12 33 25 -> 12 e3 89  (uk_tasks)
 ; 0x4081: 12 5c 8b -> 02 e2 f6  (hn_hold)
 ; 0x5D42: 12 5c bc -> 02 e2 ed  (hn_cancel)
-; 0x4A85: e5 47 14 -> 02 e3 12  (hn_name_guard)
+; 0x4A85: e5 47 14 -> 02 e3 19  (hn_name_guard)
 ; 0x3FF8: c2 0b c2 -> 02 e3 32  (hn_flag_path)
 ; 0x4016: 12 52 32 -> 12 dd a0  (hn_signal)
-; 0x5744: 30 11 0b -> 02 eb 91  (hm_icon)
-; 0x5916: ab 07 e5 -> 02 ec 97  (hm_volume)
-; 0x4F18: 7d 0a 7c -> 02 ed 03  (hm_eq)
-; 0x425D: 12 4f 20 -> 12 ed 0c  (hm_fmt)
-; 0x41E8: 02 00 26 -> 02 ef 22  (hm_fmt_clear)
-; 0x41FC: 12 00 26 -> 12 ef 22  (hm_fmt_clear)
-; 0x55B9: 02 5d 42 -> 02 ef 33  (fx_auto_off)
+; 0x5744: 30 11 0b -> 02 eb 9d  (hm_icon)
+; 0x5916: ab 07 e5 -> 02 ec a3  (hm_volume)
+; 0x4F18: 7d 0a 7c -> 02 ed 0f  (hm_eq)
+; 0x425D: 12 4f 20 -> 12 ed 18  (hm_fmt)
+; 0x41E8: 02 00 26 -> 02 ef 2e  (hm_fmt_clear)
+; 0x41FC: 12 00 26 -> 12 ef 2e  (hm_fmt_clear)
+; 0x55B9: 02 5d 42 -> 02 ef 3f  (fx_auto_off)
 ; 0x0D33: 12 5d 42 7b ff -> 12 e2 23 80 11  (lcall hn_enter_vol ; sjmp 0x0D49)
 ; 0x0DB3: 12 5d 42 7b ff -> 12 e2 23 80 11  (lcall hn_enter_vol ; sjmp 0x0DC9)
 ; 0x0E5A: 12 5d 42 7b ff -> 12 e2 23 80 11  (lcall hn_enter_vol ; sjmp 0x0E70)
 ; 0x0F02: 12 5d 42 7b ff -> 12 e2 23 80 11  (lcall hn_enter_vol ; sjmp 0x0F18)
-; version string 'v1.4 tbenr hn11' at 0xEF41, pointer 0x22CA repointed
+; 0x91ED: 4e 6f 20 43 6f 6e 6e 65 63 74 65 64 00 -> 44 69 73 63 6f 6e 6e 65 63 74 65 64 00  (HDMI ARC without a link: the status loader's text for input 5 (0x406D))
+; version string 'v1.4 tbenr hn11.1' at 0xEF4D, pointer 0x22CA repointed
 
             ; input-name pointers for inputs 1..6 (volume page), then the VOL label
 names:
@@ -4321,7 +4322,7 @@ hv_status:
   DD8E: 7f 93                    mov R7,#0x93
   DD90: 7d 4d                    mov R5,#77
   DD92: 7c 11                    mov R4,#17
-  DD94: 02 eb 38                 ljmp hq_go         ; black up to x 147 (a redraw after a turned-round exit may be shorter), wipe or not
+  DD94: 02 eb 44                 ljmp hq_go         ; black up to x 147 (a redraw after a turned-round exit may be shorter), wipe or not
             ; hn_stat_load: XDATA 0x50 = the status line as home_refresh_periodic loads it (0x4016..0x407E: the
             ; signal check 0x5232, then the input's string or its sample rate). That code ends in the lcall
             ; home_refresh at 0x4081, which is hn_hold: with HN_SLD set it returns, to our caller.
@@ -5361,32 +5362,36 @@ hh_refresh:
   E308: 74 01                    mov A,#1
   E30A: f0                       movx @DPTR,A
   E30B: 22                       ret                ; 0x3FE3's own return (0x4088 is a tail jump)
+            ; hh_stock: home_refresh, then the status line as the loader left it: the draw at 0x4084 is marked as
+            ; the loader's (HN_SIG bit 1), so hm_status_r keeps the tint the signal check decided
 hh_stock:
   E30C: 12 5c 8b                 lcall 0x5C8B       ; home_refresh
-  E30F: 02 40 84                 ljmp 0x4084
+  E30F: 90 01 b2                 mov DPTR,#0x01B2
+  E312: e0                       movx A,@DPTR
+  E313: 44 02                    orl A,#2
+  E315: f0                       movx @DPTR,A
+  E316: 02 40 84                 ljmp 0x4084        ; mov R7,#0x87 ; mov R6,#0 ; ljmp small_text_render
             ; hn_name_guard: home_draw_input_name's entry. A name drawn on page 1 during an exit (Source,
             ; direct-select, input_apply, key_bt_function's home_refresh) would draw over the half-revealed
             ; screen, and the stock sequence may already have drawn other home parts. So the exit ends here
             ; with the whole home screen as the held-back refresh would draw it (hn_home_now), then the stock
             ; name draw goes on.
 hn_name_guard:
-  E312: 90 01 08                 mov DPTR,#0x0108
-  E315: e0                       movx A,@DPTR
-  E316: b4 02 03                 cjne A,#2,hg_go
-  E319: 12 e3 22                 lcall hn_home_now
+  E319: 90 01 08                 mov DPTR,#0x0108
+  E31C: e0                       movx A,@DPTR
+  E31D: b4 02 03                 cjne A,#2,hg_go
+  E320: 12 e3 29                 lcall hn_home_now
 hg_go:
-  E31C: e5 47                    mov A,0x47
-  E31E: 14                       dec A
-  E31F: 02 4a 88                 ljmp 0x4A88
+  E323: e5 47                    mov A,0x47
+  E325: 14                       dec A
+  E326: 02 4a 88                 ljmp 0x4A88
             ; hn_home_now: stop the wipe, black screen, then home_refresh and the status line from XDATA 0x50
-            ; as home_refresh_periodic draws them (the text buffers are kept: the status line is the stock one)
+            ; as home_refresh_periodic draws them (hh_stock; the text buffers are kept: the status line is the
+            ; stock one, in the tint of the loader's last check)
 hn_home_now:
-  E322: 12 e2 dd                 lcall hn_stop      ; HN_MODE 0 first, so the name draw inside home_refresh passes the guard
-  E325: 12 51 ee                 lcall 0x51EE       ; lcd_clear_black
-  E328: 12 5c 8b                 lcall 0x5C8B       ; home_refresh
-  E32B: 7f 87                    mov R7,#0x87
-  E32D: 7e 00                    mov R6,#0
-  E32F: 02 3a 53                 ljmp 0x3A53        ; small_text_render, y 135
+  E329: 12 e2 dd                 lcall hn_stop      ; HN_MODE 0 first, so the name draw inside home_refresh passes the guard
+  E32C: 12 51 ee                 lcall 0x51EE       ; lcd_clear_black
+  E32F: 02 e3 0c                 ljmp hh_stock
             ; hn_flag_path: home_refresh_periodic's flag path (0x3FF8, taken when 0x21.3, 0x21.1 or 0x20.6 is set,
             ; e.g. after Source: they stay set until this refresh, so across a volume page too). Stock clears the
             ; flags, sets page 1 and blacks out x 0..239, y 43..169 (0x412F, 125 ms) before loading the status
@@ -6390,7 +6395,7 @@ rs_split_ok:
   E8E1: e0                       movx A,@DPTR
   E8E2: b4 20 2c                 cjne A,#32,rv_hh_stat
 rs_ready:
-  E8E5: 12 ea e4                 lcall hm_stat_meas
+  E8E5: 12 ea f0                 lcall hm_stat_meas
   E8E8: 90 01 78                 mov DPTR,#0x0178
   E8EB: e0                       movx A,@DPTR
   E8EC: fa                       mov R2,A
@@ -6415,7 +6420,7 @@ rs_ready:
   E904: a3                       inc DPTR
   E905: eb                       mov A,R3
   E906: f0                       movx @DPTR,A
-  E907: 12 ea 89                 lcall hm_status
+  E907: 12 ea 95                 lcall hm_status
   E90A: 90 01 0a                 mov DPTR,#0x010A
   E90D: e0                       movx A,@DPTR
   E90E: 44 40                    orl A,#0x40
@@ -6550,7 +6555,7 @@ hn_align_big_x:
   E9B7: e4                       clr A              ; the two instructions the hook replaced
   E9B8: 78 02                    mov R0,#2
   E9BA: 02 2a 28                 ljmp 0x2A28
-            ; hn_align_small: on page 1, the text at the stock y 135 is ours (hm_status, then return from the stock renderer:
+            ; hn_align_small: on page 1, the text at the stock y 135 is ours (hm_status_r, then return from the stock renderer:
             ; nothing is pushed at this point); other page-1 texts start at x 16 (XDATA 0x04:0x05)
 hn_align_small:
   E9BD: e5 45                    mov A,0x45
@@ -6561,7 +6566,7 @@ hn_align_small:
   E9C7: 08                       inc R0
   E9C8: e2                       movx A,@R0         ; y lo
   E9C9: b4 87 03                 cjne A,#135,hn_align_small_left
-  E9CC: 02 ea 89                 ljmp hm_status
+  E9CC: 02 ea 89                 ljmp hm_status_r
 hn_align_small_left:
   E9CF: 78 04                    mov R0,#4
   E9D1: e2                       movx A,@R0         ; start x hi
@@ -6638,7 +6643,7 @@ hm_name:
   EA33: 7f 3f                    mov R7,#0x3F
   EA35: 7d 38                    mov R5,#56
   EA37: 7c 34                    mov R4,#52
-  EA39: 02 eb 31                 ljmp hm_rest
+  EA39: 02 eb 3d                 ljmp hm_rest
             ; hm_name_meas: TP_END = where hm_name's text ends (nothing drawn)
 hm_name_meas:
   EA3C: 90 01 5b                 mov DPTR,#0x015B
@@ -6696,109 +6701,113 @@ hm_name_meas:
   EA83: 74 01                    mov A,#1
   EA85: f0                       movx @DPTR,A
   EA86: 02 d5 71                 ljmp uk_text
+            ; hm_status_r: small_text_render's hand-over on page 1 at y 135. The reddish tint belongs to the text
+            ; the status loader decided with its signal check (HN_SIG 0). Only the periodic refresh's own draw
+            ; shows that text (hh_stock marks it: HN_SIG bit 1). Every other caller has put its own text into
+            ; XDATA 0x50 (input_apply's placeholder 0x4C29, the BT key 0x10A1, eq_show 0x396A, 0x532E): grey,
+            ; HN_SIG 1, until the loader runs again. Falls into hm_status.
+hm_status_r:
+  EA89: 90 01 b2                 mov DPTR,#0x01B2
+  EA8C: e0                       movx A,@DPTR
+  EA8D: 20 e1 02                 jb ACC.1,hsr_loader
+  EA90: 74 01                    mov A,#1
+hsr_loader:
+  EA92: 54 01                    anl A,#1
+  EA94: f0                       movx @DPTR,A
             ; hm_status: the status line (XDATA 0x50), mono, grey (reddish without a signal, hn_dim_ink), at x 18, baseline 147
 hm_status:
-  EA89: 90 01 5b                 mov DPTR,#0x015B
-  EA8C: 74 a4                    mov A,#hi(pf_status)
-  EA8E: f0                       movx @DPTR,A
-  EA8F: a3                       inc DPTR
-  EA90: 74 35                    mov A,#lo(pf_status)
-  EA92: f0                       movx @DPTR,A
-  EA93: a3                       inc DPTR
-  EA94: 74 00                    mov A,#0x00
-  EA96: f0                       movx @DPTR,A
-  EA97: a3                       inc DPTR
-  EA98: 74 50                    mov A,#0x50
+  EA95: 90 01 5b                 mov DPTR,#0x015B
+  EA98: 74 a4                    mov A,#hi(pf_status)
   EA9A: f0                       movx @DPTR,A
   EA9B: a3                       inc DPTR
-  EA9C: 74 00                    mov A,#0
+  EA9C: 74 35                    mov A,#lo(pf_status)
   EA9E: f0                       movx @DPTR,A
   EA9F: a3                       inc DPTR
   EAA0: 74 00                    mov A,#0x00
   EAA2: f0                       movx @DPTR,A
   EAA3: a3                       inc DPTR
-  EAA4: 74 12                    mov A,#0x12
+  EAA4: 74 50                    mov A,#0x50
   EAA6: f0                       movx @DPTR,A
   EAA7: a3                       inc DPTR
-  EAA8: 74 7d                    mov A,#125
+  EAA8: 74 00                    mov A,#0
   EAAA: f0                       movx @DPTR,A
   EAAB: a3                       inc DPTR
-  EAAC: 74 8c                    mov A,#0x8C
+  EAAC: 74 00                    mov A,#0x00
   EAAE: f0                       movx @DPTR,A
   EAAF: a3                       inc DPTR
-  EAB0: 74 92                    mov A,#0x92
+  EAB0: 74 12                    mov A,#0x12
   EAB2: f0                       movx @DPTR,A
   EAB3: a3                       inc DPTR
-  EAB4: 74 00                    mov A,#0x00
+  EAB4: 74 7d                    mov A,#125
   EAB6: f0                       movx @DPTR,A
   EAB7: a3                       inc DPTR
-  EAB8: 74 00                    mov A,#0x00
+  EAB8: 74 8c                    mov A,#0x8C
   EABA: f0                       movx @DPTR,A
   EABB: a3                       inc DPTR
-  EABC: 74 00                    mov A,#0x00
+  EABC: 74 92                    mov A,#0x92
   EABE: f0                       movx @DPTR,A
   EABF: a3                       inc DPTR
   EAC0: 74 00                    mov A,#0x00
   EAC2: f0                       movx @DPTR,A
   EAC3: a3                       inc DPTR
-  EAC4: 74 01                    mov A,#0x01
+  EAC4: 74 00                    mov A,#0x00
   EAC6: f0                       movx @DPTR,A
   EAC7: a3                       inc DPTR
-  EAC8: 74 3f                    mov A,#0x3F
+  EAC8: 74 00                    mov A,#0x00
   EACA: f0                       movx @DPTR,A
   EACB: a3                       inc DPTR
-  EACC: 74 00                    mov A,#0
+  EACC: 74 00                    mov A,#0x00
   EACE: f0                       movx @DPTR,A
   EACF: a3                       inc DPTR
-  EAD0: 74 01                    mov A,#1
+  EAD0: 74 01                    mov A,#0x01
   EAD2: f0                       movx @DPTR,A
-  EAD3: 12 dd ab                 lcall hn_dim_ink
-  EAD6: 12 d5 71                 lcall uk_text
-  EAD9: 7e 01                    mov R6,#1
-  EADB: 7f 3f                    mov R7,#0x3F
-  EADD: 7d 7d                    mov R5,#125
-  EADF: 7c 1c                    mov R4,#28
-  EAE1: 02 eb 31                 ljmp hm_rest
+  EAD3: a3                       inc DPTR
+  EAD4: 74 3f                    mov A,#0x3F
+  EAD6: f0                       movx @DPTR,A
+  EAD7: a3                       inc DPTR
+  EAD8: 74 00                    mov A,#0
+  EADA: f0                       movx @DPTR,A
+  EADB: a3                       inc DPTR
+  EADC: 74 01                    mov A,#1
+  EADE: f0                       movx @DPTR,A
+  EADF: 12 dd ab                 lcall hn_dim_ink
+  EAE2: 12 d5 71                 lcall uk_text
+  EAE5: 7e 01                    mov R6,#1
+  EAE7: 7f 3f                    mov R7,#0x3F
+  EAE9: 7d 7d                    mov R5,#125
+  EAEB: 7c 1c                    mov R4,#28
+  EAED: 02 eb 3d                 ljmp hm_rest
             ; hm_stat_meas: TP_END = where hm_status's text ends
 hm_stat_meas:
-  EAE4: 90 01 5b                 mov DPTR,#0x015B
-  EAE7: 74 a4                    mov A,#hi(pf_status)
-  EAE9: f0                       movx @DPTR,A
-  EAEA: a3                       inc DPTR
-  EAEB: 74 35                    mov A,#lo(pf_status)
-  EAED: f0                       movx @DPTR,A
-  EAEE: a3                       inc DPTR
-  EAEF: 74 00                    mov A,#0x00
-  EAF1: f0                       movx @DPTR,A
-  EAF2: a3                       inc DPTR
-  EAF3: 74 50                    mov A,#0x50
+  EAF0: 90 01 5b                 mov DPTR,#0x015B
+  EAF3: 74 a4                    mov A,#hi(pf_status)
   EAF5: f0                       movx @DPTR,A
   EAF6: a3                       inc DPTR
-  EAF7: 74 00                    mov A,#0
+  EAF7: 74 35                    mov A,#lo(pf_status)
   EAF9: f0                       movx @DPTR,A
   EAFA: a3                       inc DPTR
   EAFB: 74 00                    mov A,#0x00
   EAFD: f0                       movx @DPTR,A
   EAFE: a3                       inc DPTR
-  EAFF: 74 12                    mov A,#0x12
+  EAFF: 74 50                    mov A,#0x50
   EB01: f0                       movx @DPTR,A
   EB02: a3                       inc DPTR
-  EB03: 74 7d                    mov A,#125
+  EB03: 74 00                    mov A,#0
   EB05: f0                       movx @DPTR,A
   EB06: a3                       inc DPTR
-  EB07: 74 8c                    mov A,#0x8C
+  EB07: 74 00                    mov A,#0x00
   EB09: f0                       movx @DPTR,A
   EB0A: a3                       inc DPTR
-  EB0B: 74 92                    mov A,#0x92
+  EB0B: 74 12                    mov A,#0x12
   EB0D: f0                       movx @DPTR,A
   EB0E: a3                       inc DPTR
-  EB0F: 74 00                    mov A,#0x00
+  EB0F: 74 7d                    mov A,#125
   EB11: f0                       movx @DPTR,A
   EB12: a3                       inc DPTR
-  EB13: 74 00                    mov A,#0x00
+  EB13: 74 8c                    mov A,#0x8C
   EB15: f0                       movx @DPTR,A
   EB16: a3                       inc DPTR
-  EB17: 74 01                    mov A,#0x01
+  EB17: 74 92                    mov A,#0x92
   EB19: f0                       movx @DPTR,A
   EB1A: a3                       inc DPTR
   EB1B: 74 00                    mov A,#0x00
@@ -6807,138 +6816,138 @@ hm_stat_meas:
   EB1F: 74 00                    mov A,#0x00
   EB21: f0                       movx @DPTR,A
   EB22: a3                       inc DPTR
-  EB23: 74 00                    mov A,#0x00
+  EB23: 74 01                    mov A,#0x01
   EB25: f0                       movx @DPTR,A
   EB26: a3                       inc DPTR
-  EB27: 74 00                    mov A,#0
+  EB27: 74 00                    mov A,#0x00
   EB29: f0                       movx @DPTR,A
   EB2A: a3                       inc DPTR
-  EB2B: 74 01                    mov A,#1
+  EB2B: 74 00                    mov A,#0x00
   EB2D: f0                       movx @DPTR,A
-  EB2E: 02 d5 71                 ljmp uk_text
+  EB2E: a3                       inc DPTR
+  EB2F: 74 00                    mov A,#0x00
+  EB31: f0                       movx @DPTR,A
+  EB32: a3                       inc DPTR
+  EB33: 74 00                    mov A,#0
+  EB35: f0                       movx @DPTR,A
+  EB36: a3                       inc DPTR
+  EB37: 74 01                    mov A,#1
+  EB39: f0                       movx @DPTR,A
+  EB3A: 02 d5 71                 ljmp uk_text
             ; hm_rest: black from TP_END + 1 to R6:R7 (the element's last column), rows R5 .. R5 + R4 - 1: the
             ; rest of a shorter text than before. Not during a wipe: the wipe owns the screen, and its band
             ; is black already.
 hm_rest:
-  EB31: 90 01 08                 mov DPTR,#0x0108
-  EB34: e0                       movx A,@DPTR
-  EB35: 60 01                    jz hq_go
-  EB37: 22                       ret
+  EB3D: 90 01 08                 mov DPTR,#0x0108
+  EB40: e0                       movx A,@DPTR
+  EB41: 60 01                    jz hq_go
+  EB43: 22                       ret
 hq_go:
-  EB38: 90 01 9f                 mov DPTR,#0x019F
-  EB3B: ee                       mov A,R6
-  EB3C: f0                       movx @DPTR,A
-  EB3D: a3                       inc DPTR
-  EB3E: ef                       mov A,R7
-  EB3F: f0                       movx @DPTR,A
-  EB40: a3                       inc DPTR
-  EB41: ed                       mov A,R5
-  EB42: f0                       movx @DPTR,A       ; HM_RY
-  EB43: a3                       inc DPTR
-  EB44: ec                       mov A,R4
-  EB45: f0                       movx @DPTR,A       ; HM_RH
-  EB46: 90 01 78                 mov DPTR,#0x0178
-  EB49: e0                       movx A,@DPTR
-  EB4A: fa                       mov R2,A
-  EB4B: a3                       inc DPTR
-  EB4C: e0                       movx A,@DPTR
-  EB4D: 24 01                    add A,#1
-  EB4F: fb                       mov R3,A
-  EB50: e4                       clr A
-  EB51: 3a                       addc A,R2
-  EB52: fa                       mov R2,A           ; x = TP_END + 1
+  EB44: 90 01 9f                 mov DPTR,#0x019F
+  EB47: ee                       mov A,R6
+  EB48: f0                       movx @DPTR,A
+  EB49: a3                       inc DPTR
+  EB4A: ef                       mov A,R7
+  EB4B: f0                       movx @DPTR,A
+  EB4C: a3                       inc DPTR
+  EB4D: ed                       mov A,R5
+  EB4E: f0                       movx @DPTR,A       ; HM_RY
+  EB4F: a3                       inc DPTR
+  EB50: ec                       mov A,R4
+  EB51: f0                       movx @DPTR,A       ; HM_RH
+  EB52: 90 01 78                 mov DPTR,#0x0178
+  EB55: e0                       movx A,@DPTR
+  EB56: fa                       mov R2,A
+  EB57: a3                       inc DPTR
+  EB58: e0                       movx A,@DPTR
+  EB59: 24 01                    add A,#1
+  EB5B: fb                       mov R3,A
+  EB5C: e4                       clr A
+  EB5D: 3a                       addc A,R2
+  EB5E: fa                       mov R2,A           ; x = TP_END + 1
 hq_loop:
             ; done when x > limit
-  EB53: 90 01 9f                 mov DPTR,#0x019F
-  EB56: e0                       movx A,@DPTR
-  EB57: fe                       mov R6,A
-  EB58: a3                       inc DPTR
-  EB59: e0                       movx A,@DPTR
-  EB5A: ff                       mov R7,A
-  EB5B: c3                       clr C
-  EB5C: 9b                       subb A,R3
-  EB5D: f9                       mov R1,A           ; limit - x (lo)
-  EB5E: ee                       mov A,R6
-  EB5F: 9a                       subb A,R2
-  EB60: 40 2e                    jc hq_ret
-  EB62: 70 04                    jnz hq_wide        ; 256 columns or more left
-  EB64: e9                       mov A,R1
-  EB65: 04                       inc A
-  EB66: 70 02                    jnz hq_w
+  EB5F: 90 01 9f                 mov DPTR,#0x019F
+  EB62: e0                       movx A,@DPTR
+  EB63: fe                       mov R6,A
+  EB64: a3                       inc DPTR
+  EB65: e0                       movx A,@DPTR
+  EB66: ff                       mov R7,A
+  EB67: c3                       clr C
+  EB68: 9b                       subb A,R3
+  EB69: f9                       mov R1,A           ; limit - x (lo)
+  EB6A: ee                       mov A,R6
+  EB6B: 9a                       subb A,R2
+  EB6C: 40 2e                    jc hq_ret
+  EB6E: 70 04                    jnz hq_wide        ; 256 columns or more left
+  EB70: e9                       mov A,R1
+  EB71: 04                       inc A
+  EB72: 70 02                    jnz hq_w
 hq_wide:
-  EB68: 74 ff                    mov A,#255
+  EB74: 74 ff                    mov A,#255
 hq_w:
-  EB6A: f9                       mov R1,A           ; width
-  EB6B: 90 01 a3                 mov DPTR,#0x01A3
-  EB6E: e9                       mov A,R1
-  EB6F: 2b                       add A,R3
-  EB70: ff                       mov R7,A
-  EB71: e4                       clr A
-  EB72: 3a                       addc A,R2
-  EB73: f0                       movx @DPTR,A
-  EB74: a3                       inc DPTR
-  EB75: ef                       mov A,R7
-  EB76: f0                       movx @DPTR,A       ; HM_RX = x + width
-  EB77: 90 01 a1                 mov DPTR,#0x01A1
-  EB7A: e0                       movx A,@DPTR
-  EB7B: fd                       mov R5,A
-  EB7C: a3                       inc DPTR
-  EB7D: e0                       movx A,@DPTR
-  EB7E: fc                       mov R4,A
-  EB7F: 7e 00                    mov R6,#0
-  EB81: 7f 00                    mov R7,#0
-  EB83: 12 d4 52                 lcall uk_fill
-  EB86: 90 01 a3                 mov DPTR,#0x01A3
+  EB76: f9                       mov R1,A           ; width
+  EB77: 90 01 a3                 mov DPTR,#0x01A3
+  EB7A: e9                       mov A,R1
+  EB7B: 2b                       add A,R3
+  EB7C: ff                       mov R7,A
+  EB7D: e4                       clr A
+  EB7E: 3a                       addc A,R2
+  EB7F: f0                       movx @DPTR,A
+  EB80: a3                       inc DPTR
+  EB81: ef                       mov A,R7
+  EB82: f0                       movx @DPTR,A       ; HM_RX = x + width
+  EB83: 90 01 a1                 mov DPTR,#0x01A1
+  EB86: e0                       movx A,@DPTR
+  EB87: fd                       mov R5,A
+  EB88: a3                       inc DPTR
   EB89: e0                       movx A,@DPTR
-  EB8A: fa                       mov R2,A
-  EB8B: a3                       inc DPTR
-  EB8C: e0                       movx A,@DPTR
-  EB8D: fb                       mov R3,A
-  EB8E: 80 c3                    sjmp hq_loop
+  EB8A: fc                       mov R4,A
+  EB8B: 7e 00                    mov R6,#0
+  EB8D: 7f 00                    mov R7,#0
+  EB8F: 12 d4 52                 lcall uk_fill
+  EB92: 90 01 a3                 mov DPTR,#0x01A3
+  EB95: e0                       movx A,@DPTR
+  EB96: fa                       mov R2,A
+  EB97: a3                       inc DPTR
+  EB98: e0                       movx A,@DPTR
+  EB99: fb                       mov R3,A
+  EB9A: 80 c3                    sjmp hq_loop
 hq_ret:
-  EB90: 22                       ret
+  EB9C: 22                       ret
             ; hm_icon: replaces home_draw_output_icon 0x5744: the mock's speaker (red with an X when muted,
             ; 0x22.1) or headphones (g_output 0x2B not 1) at 12,9
 hm_icon:
-  EB91: 78 06                    mov R0,#6
-  EB93: 30 11 50                 jnb 0x22.1,hmi_on
-  EB96: 74 01                    mov A,#1
-  EB98: f2                       movx @R0,A         ; XDATA 6 = the stock icon number, as stock
-  EB99: 90 01 5b                 mov DPTR,#0x015B
-  EB9C: 74 c6                    mov A,#hi(pf_icon)
-  EB9E: f0                       movx @DPTR,A
-  EB9F: a3                       inc DPTR
-  EBA0: 74 73                    mov A,#lo(pf_icon)
-  EBA2: f0                       movx @DPTR,A
-  EBA3: a3                       inc DPTR
-  EBA4: 74 98                    mov A,#hi(hm_s_mute)
-  EBA6: f0                       movx @DPTR,A
-  EBA7: a3                       inc DPTR
-  EBA8: 74 a3                    mov A,#lo(hm_s_mute)
+  EB9D: 78 06                    mov R0,#6
+  EB9F: 30 11 50                 jnb 0x22.1,hmi_on
+  EBA2: 74 01                    mov A,#1
+  EBA4: f2                       movx @R0,A         ; XDATA 6 = the stock icon number, as stock
+  EBA5: 90 01 5b                 mov DPTR,#0x015B
+  EBA8: 74 c6                    mov A,#hi(pf_icon)
   EBAA: f0                       movx @DPTR,A
   EBAB: a3                       inc DPTR
-  EBAC: 74 01                    mov A,#1
+  EBAC: 74 73                    mov A,#lo(pf_icon)
   EBAE: f0                       movx @DPTR,A
   EBAF: a3                       inc DPTR
-  EBB0: 74 00                    mov A,#0x00
+  EBB0: 74 98                    mov A,#hi(hm_s_mute)
   EBB2: f0                       movx @DPTR,A
   EBB3: a3                       inc DPTR
-  EBB4: 74 0c                    mov A,#0x0C
+  EBB4: 74 a3                    mov A,#lo(hm_s_mute)
   EBB6: f0                       movx @DPTR,A
   EBB7: a3                       inc DPTR
-  EBB8: 74 0a                    mov A,#10
+  EBB8: 74 01                    mov A,#1
   EBBA: f0                       movx @DPTR,A
   EBBB: a3                       inc DPTR
-  EBBC: 74 f8                    mov A,#0xF8
+  EBBC: 74 00                    mov A,#0x00
   EBBE: f0                       movx @DPTR,A
   EBBF: a3                       inc DPTR
-  EBC0: 74 00                    mov A,#0x00
+  EBC0: 74 0c                    mov A,#0x0C
   EBC2: f0                       movx @DPTR,A
   EBC3: a3                       inc DPTR
-  EBC4: 74 00                    mov A,#0x00
+  EBC4: 74 0a                    mov A,#10
   EBC6: f0                       movx @DPTR,A
   EBC7: a3                       inc DPTR
-  EBC8: 74 00                    mov A,#0x00
+  EBC8: 74 f8                    mov A,#0xF8
   EBCA: f0                       movx @DPTR,A
   EBCB: a3                       inc DPTR
   EBCC: 74 00                    mov A,#0x00
@@ -6947,274 +6956,274 @@ hm_icon:
   EBD0: 74 00                    mov A,#0x00
   EBD2: f0                       movx @DPTR,A
   EBD3: a3                       inc DPTR
-  EBD4: 74 01                    mov A,#0x01
+  EBD4: 74 00                    mov A,#0x00
   EBD6: f0                       movx @DPTR,A
   EBD7: a3                       inc DPTR
-  EBD8: 74 3f                    mov A,#0x3F
+  EBD8: 74 00                    mov A,#0x00
   EBDA: f0                       movx @DPTR,A
   EBDB: a3                       inc DPTR
-  EBDC: 74 00                    mov A,#0
+  EBDC: 74 00                    mov A,#0x00
   EBDE: f0                       movx @DPTR,A
   EBDF: a3                       inc DPTR
-  EBE0: 74 00                    mov A,#0
+  EBE0: 74 01                    mov A,#0x01
   EBE2: f0                       movx @DPTR,A
-  EBE3: 02 ec 89                 ljmp hmi_draw
+  EBE3: a3                       inc DPTR
+  EBE4: 74 3f                    mov A,#0x3F
+  EBE6: f0                       movx @DPTR,A
+  EBE7: a3                       inc DPTR
+  EBE8: 74 00                    mov A,#0
+  EBEA: f0                       movx @DPTR,A
+  EBEB: a3                       inc DPTR
+  EBEC: 74 00                    mov A,#0
+  EBEE: f0                       movx @DPTR,A
+  EBEF: 02 ec 95                 ljmp hmi_draw
 hmi_on:
-  EBE6: e5 2b                    mov A,0x2B
-  EBE8: 64 01                    xrl A,#1
-  EBEA: 60 50                    jz hmi_spk
-  EBEC: 74 02                    mov A,#2
-  EBEE: f2                       movx @R0,A
-  EBEF: 90 01 5b                 mov DPTR,#0x015B
-  EBF2: 74 c6                    mov A,#hi(pf_icon)
-  EBF4: f0                       movx @DPTR,A
-  EBF5: a3                       inc DPTR
-  EBF6: 74 73                    mov A,#lo(pf_icon)
-  EBF8: f0                       movx @DPTR,A
-  EBF9: a3                       inc DPTR
-  EBFA: 74 98                    mov A,#hi(hm_s_hp)
-  EBFC: f0                       movx @DPTR,A
-  EBFD: a3                       inc DPTR
-  EBFE: 74 a5                    mov A,#lo(hm_s_hp)
+  EBF2: e5 2b                    mov A,0x2B
+  EBF4: 64 01                    xrl A,#1
+  EBF6: 60 50                    jz hmi_spk
+  EBF8: 74 02                    mov A,#2
+  EBFA: f2                       movx @R0,A
+  EBFB: 90 01 5b                 mov DPTR,#0x015B
+  EBFE: 74 c6                    mov A,#hi(pf_icon)
   EC00: f0                       movx @DPTR,A
   EC01: a3                       inc DPTR
-  EC02: 74 01                    mov A,#1
+  EC02: 74 73                    mov A,#lo(pf_icon)
   EC04: f0                       movx @DPTR,A
   EC05: a3                       inc DPTR
-  EC06: 74 00                    mov A,#0x00
+  EC06: 74 98                    mov A,#hi(hm_s_hp)
   EC08: f0                       movx @DPTR,A
   EC09: a3                       inc DPTR
-  EC0A: 74 0c                    mov A,#0x0C
+  EC0A: 74 a5                    mov A,#lo(hm_s_hp)
   EC0C: f0                       movx @DPTR,A
   EC0D: a3                       inc DPTR
-  EC0E: 74 0a                    mov A,#10
+  EC0E: 74 01                    mov A,#1
   EC10: f0                       movx @DPTR,A
   EC11: a3                       inc DPTR
-  EC12: 74 ff                    mov A,#0xFF
+  EC12: 74 00                    mov A,#0x00
   EC14: f0                       movx @DPTR,A
   EC15: a3                       inc DPTR
-  EC16: 74 ff                    mov A,#0xFF
+  EC16: 74 0c                    mov A,#0x0C
   EC18: f0                       movx @DPTR,A
   EC19: a3                       inc DPTR
-  EC1A: 74 00                    mov A,#0x00
+  EC1A: 74 0a                    mov A,#10
   EC1C: f0                       movx @DPTR,A
   EC1D: a3                       inc DPTR
-  EC1E: 74 00                    mov A,#0x00
+  EC1E: 74 ff                    mov A,#0xFF
   EC20: f0                       movx @DPTR,A
   EC21: a3                       inc DPTR
-  EC22: 74 00                    mov A,#0x00
+  EC22: 74 ff                    mov A,#0xFF
   EC24: f0                       movx @DPTR,A
   EC25: a3                       inc DPTR
   EC26: 74 00                    mov A,#0x00
   EC28: f0                       movx @DPTR,A
   EC29: a3                       inc DPTR
-  EC2A: 74 01                    mov A,#0x01
+  EC2A: 74 00                    mov A,#0x00
   EC2C: f0                       movx @DPTR,A
   EC2D: a3                       inc DPTR
-  EC2E: 74 3f                    mov A,#0x3F
+  EC2E: 74 00                    mov A,#0x00
   EC30: f0                       movx @DPTR,A
   EC31: a3                       inc DPTR
-  EC32: 74 00                    mov A,#0
+  EC32: 74 00                    mov A,#0x00
   EC34: f0                       movx @DPTR,A
   EC35: a3                       inc DPTR
-  EC36: 74 00                    mov A,#0
+  EC36: 74 01                    mov A,#0x01
   EC38: f0                       movx @DPTR,A
-  EC39: 02 ec 89                 ljmp hmi_draw
-hmi_spk:
-  EC3C: 74 03                    mov A,#3
-  EC3E: f2                       movx @R0,A
-  EC3F: 90 01 5b                 mov DPTR,#0x015B
-  EC42: 74 c6                    mov A,#hi(pf_icon)
+  EC39: a3                       inc DPTR
+  EC3A: 74 3f                    mov A,#0x3F
+  EC3C: f0                       movx @DPTR,A
+  EC3D: a3                       inc DPTR
+  EC3E: 74 00                    mov A,#0
+  EC40: f0                       movx @DPTR,A
+  EC41: a3                       inc DPTR
+  EC42: 74 00                    mov A,#0
   EC44: f0                       movx @DPTR,A
-  EC45: a3                       inc DPTR
-  EC46: 74 73                    mov A,#lo(pf_icon)
-  EC48: f0                       movx @DPTR,A
-  EC49: a3                       inc DPTR
-  EC4A: 74 98                    mov A,#hi(hm_s_spk)
-  EC4C: f0                       movx @DPTR,A
-  EC4D: a3                       inc DPTR
-  EC4E: 74 a1                    mov A,#lo(hm_s_spk)
+  EC45: 02 ec 95                 ljmp hmi_draw
+hmi_spk:
+  EC48: 74 03                    mov A,#3
+  EC4A: f2                       movx @R0,A
+  EC4B: 90 01 5b                 mov DPTR,#0x015B
+  EC4E: 74 c6                    mov A,#hi(pf_icon)
   EC50: f0                       movx @DPTR,A
   EC51: a3                       inc DPTR
-  EC52: 74 01                    mov A,#1
+  EC52: 74 73                    mov A,#lo(pf_icon)
   EC54: f0                       movx @DPTR,A
   EC55: a3                       inc DPTR
-  EC56: 74 00                    mov A,#0x00
+  EC56: 74 98                    mov A,#hi(hm_s_spk)
   EC58: f0                       movx @DPTR,A
   EC59: a3                       inc DPTR
-  EC5A: 74 0c                    mov A,#0x0C
+  EC5A: 74 a1                    mov A,#lo(hm_s_spk)
   EC5C: f0                       movx @DPTR,A
   EC5D: a3                       inc DPTR
-  EC5E: 74 0a                    mov A,#10
+  EC5E: 74 01                    mov A,#1
   EC60: f0                       movx @DPTR,A
   EC61: a3                       inc DPTR
-  EC62: 74 ff                    mov A,#0xFF
+  EC62: 74 00                    mov A,#0x00
   EC64: f0                       movx @DPTR,A
   EC65: a3                       inc DPTR
-  EC66: 74 ff                    mov A,#0xFF
+  EC66: 74 0c                    mov A,#0x0C
   EC68: f0                       movx @DPTR,A
   EC69: a3                       inc DPTR
-  EC6A: 74 00                    mov A,#0x00
+  EC6A: 74 0a                    mov A,#10
   EC6C: f0                       movx @DPTR,A
   EC6D: a3                       inc DPTR
-  EC6E: 74 00                    mov A,#0x00
+  EC6E: 74 ff                    mov A,#0xFF
   EC70: f0                       movx @DPTR,A
   EC71: a3                       inc DPTR
-  EC72: 74 00                    mov A,#0x00
+  EC72: 74 ff                    mov A,#0xFF
   EC74: f0                       movx @DPTR,A
   EC75: a3                       inc DPTR
   EC76: 74 00                    mov A,#0x00
   EC78: f0                       movx @DPTR,A
   EC79: a3                       inc DPTR
-  EC7A: 74 01                    mov A,#0x01
+  EC7A: 74 00                    mov A,#0x00
   EC7C: f0                       movx @DPTR,A
   EC7D: a3                       inc DPTR
-  EC7E: 74 3f                    mov A,#0x3F
+  EC7E: 74 00                    mov A,#0x00
   EC80: f0                       movx @DPTR,A
   EC81: a3                       inc DPTR
-  EC82: 74 00                    mov A,#0
+  EC82: 74 00                    mov A,#0x00
   EC84: f0                       movx @DPTR,A
   EC85: a3                       inc DPTR
-  EC86: 74 00                    mov A,#0
+  EC86: 74 01                    mov A,#0x01
   EC88: f0                       movx @DPTR,A
+  EC89: a3                       inc DPTR
+  EC8A: 74 3f                    mov A,#0x3F
+  EC8C: f0                       movx @DPTR,A
+  EC8D: a3                       inc DPTR
+  EC8E: 74 00                    mov A,#0
+  EC90: f0                       movx @DPTR,A
+  EC91: a3                       inc DPTR
+  EC92: 74 00                    mov A,#0
+  EC94: f0                       movx @DPTR,A
 hmi_draw:
-  EC89: 12 d5 71                 lcall uk_text
-  EC8C: 7e 00                    mov R6,#0
-  EC8E: 7f 2c                    mov R7,#44
-  EC90: 7d 0a                    mov R5,#10
-  EC92: 7c 16                    mov R4,#22
-  EC94: 02 eb 31                 ljmp hm_rest
+  EC95: 12 d5 71                 lcall uk_text
+  EC98: 7e 00                    mov R6,#0
+  EC9A: 7f 2c                    mov R7,#44
+  EC9C: 7d 0a                    mov R5,#10
+  EC9E: 7c 16                    mov R4,#22
+  ECA0: 02 eb 3d                 ljmp hm_rest
             ; hm_volume: replaces home_draw_volume 0x5916 (R7 speaker volume; the headphone volume 0x52 when
             ; g_output is not 1): no leading zero, white, at 36, baseline 24
 hm_volume:
-  EC97: e5 2b                    mov A,0x2B
-  EC99: 64 01                    xrl A,#1
-  EC9B: 60 02                    jz hmv_spk
-  EC9D: af 52                    mov R7,0x52
+  ECA3: e5 2b                    mov A,0x2B
+  ECA5: 64 01                    xrl A,#1
+  ECA7: 60 02                    jz hmv_spk
+  ECA9: af 52                    mov R7,0x52
 hmv_spk:
-  EC9F: 78 05                    mov R0,#5
-  ECA1: 74 02                    mov A,#2
-  ECA3: f2                       movx @R0,A         ; XDATA 5 = 2, as stock
-  ECA4: ef                       mov A,R7
-  ECA5: 90 01 92                 mov DPTR,#0x0192
-  ECA8: 12 db bc                 lcall hn_dec2
-  ECAB: 90 01 5b                 mov DPTR,#0x015B
-  ECAE: 74 c2                    mov A,#hi(pf_hvol)
-  ECB0: f0                       movx @DPTR,A
-  ECB1: a3                       inc DPTR
-  ECB2: 74 e9                    mov A,#lo(pf_hvol)
-  ECB4: f0                       movx @DPTR,A
-  ECB5: a3                       inc DPTR
-  ECB6: 74 01                    mov A,#0x01
-  ECB8: f0                       movx @DPTR,A
-  ECB9: a3                       inc DPTR
-  ECBA: 74 92                    mov A,#0x92
+  ECAB: 78 05                    mov R0,#5
+  ECAD: 74 02                    mov A,#2
+  ECAF: f2                       movx @R0,A         ; XDATA 5 = 2, as stock
+  ECB0: ef                       mov A,R7
+  ECB1: 90 01 92                 mov DPTR,#0x0192
+  ECB4: 12 db bc                 lcall hn_dec2
+  ECB7: 90 01 5b                 mov DPTR,#0x015B
+  ECBA: 74 c2                    mov A,#hi(pf_hvol)
   ECBC: f0                       movx @DPTR,A
   ECBD: a3                       inc DPTR
-  ECBE: 74 00                    mov A,#0
+  ECBE: 74 e9                    mov A,#lo(pf_hvol)
   ECC0: f0                       movx @DPTR,A
   ECC1: a3                       inc DPTR
-  ECC2: 74 00                    mov A,#0x00
+  ECC2: 74 01                    mov A,#0x01
   ECC4: f0                       movx @DPTR,A
   ECC5: a3                       inc DPTR
-  ECC6: 74 2e                    mov A,#0x2E
+  ECC6: 74 92                    mov A,#0x92
   ECC8: f0                       movx @DPTR,A
   ECC9: a3                       inc DPTR
-  ECCA: 74 07                    mov A,#7
+  ECCA: 74 00                    mov A,#0
   ECCC: f0                       movx @DPTR,A
   ECCD: a3                       inc DPTR
-  ECCE: 74 ff                    mov A,#0xFF
+  ECCE: 74 00                    mov A,#0x00
   ECD0: f0                       movx @DPTR,A
   ECD1: a3                       inc DPTR
-  ECD2: 74 ff                    mov A,#0xFF
+  ECD2: 74 2e                    mov A,#0x2E
   ECD4: f0                       movx @DPTR,A
   ECD5: a3                       inc DPTR
-  ECD6: 74 00                    mov A,#0x00
+  ECD6: 74 07                    mov A,#7
   ECD8: f0                       movx @DPTR,A
   ECD9: a3                       inc DPTR
-  ECDA: 74 00                    mov A,#0x00
+  ECDA: 74 ff                    mov A,#0xFF
   ECDC: f0                       movx @DPTR,A
   ECDD: a3                       inc DPTR
-  ECDE: 74 00                    mov A,#0x00
+  ECDE: 74 ff                    mov A,#0xFF
   ECE0: f0                       movx @DPTR,A
   ECE1: a3                       inc DPTR
   ECE2: 74 00                    mov A,#0x00
   ECE4: f0                       movx @DPTR,A
   ECE5: a3                       inc DPTR
-  ECE6: 74 01                    mov A,#0x01
+  ECE6: 74 00                    mov A,#0x00
   ECE8: f0                       movx @DPTR,A
   ECE9: a3                       inc DPTR
-  ECEA: 74 3f                    mov A,#0x3F
+  ECEA: 74 00                    mov A,#0x00
   ECEC: f0                       movx @DPTR,A
   ECED: a3                       inc DPTR
-  ECEE: 74 00                    mov A,#0
+  ECEE: 74 00                    mov A,#0x00
   ECF0: f0                       movx @DPTR,A
   ECF1: a3                       inc DPTR
-  ECF2: 74 00                    mov A,#0
+  ECF2: 74 01                    mov A,#0x01
   ECF4: f0                       movx @DPTR,A
-  ECF5: 12 d5 71                 lcall uk_text
-  ECF8: 7e 00                    mov R6,#0
-  ECFA: 7f 4d                    mov R7,#77
-  ECFC: 7d 07                    mov R5,#7
-  ECFE: 7c 19                    mov R4,#25
-  ED00: 02 eb 31                 ljmp hm_rest
+  ECF5: a3                       inc DPTR
+  ECF6: 74 3f                    mov A,#0x3F
+  ECF8: f0                       movx @DPTR,A
+  ECF9: a3                       inc DPTR
+  ECFA: 74 00                    mov A,#0
+  ECFC: f0                       movx @DPTR,A
+  ECFD: a3                       inc DPTR
+  ECFE: 74 00                    mov A,#0
+  ED00: f0                       movx @DPTR,A
+  ED01: 12 d5 71                 lcall uk_text
+  ED04: 7e 00                    mov R6,#0
+  ED06: 7f 4d                    mov R7,#77
+  ED08: 7d 07                    mov R5,#7
+  ED0A: 7c 19                    mov R4,#25
+  ED0C: 02 eb 3d                 ljmp hm_rest
             ; hm_eq: replaces the EQ tag's paint 0x4F18 (string R3:R2:R1): a box ending before x 310
 hm_eq:
-  ED03: 12 ee e2                 lcall hm_tag_copy
-  ED06: 74 76                    mov A,#118
-  ED08: 7e 4e                    mov R6,#78
-  ED0A: 80 07                    sjmp hm_tag
+  ED0F: 12 ee ee                 lcall hm_tag_copy
+  ED12: 74 76                    mov A,#118
+  ED14: 7e 4e                    mov R6,#78
+  ED16: 80 07                    sjmp hm_tag
             ; hm_fmt: replaces home_draw_format_tag's lcall 0x4F20 (string R3:R2:R1): a box ending before x 264
 hm_fmt:
-  ED0C: 12 ee e2                 lcall hm_tag_copy
-  ED0F: 74 48                    mov A,#72
-  ED11: 7e 16                    mov R6,#22
+  ED18: 12 ee ee                 lcall hm_tag_copy
+  ED1B: 74 48                    mov A,#72
+  ED1D: 7e 16                    mov R6,#22
             ; hm_tag: the text in HM_TAG in the accent, mono, centred in a 1-px accent box 2 * TAG_PAD wider than it
             ; and ending before x A + 192; black from x R6 + 192 up to the box (HM_TR, HM_TL, HM_TX: x - 192)
 hm_tag:
-  ED13: 90 01 a5                 mov DPTR,#0x01A5
-  ED16: f0                       movx @DPTR,A
-  ED17: a3                       inc DPTR
-  ED18: ee                       mov A,R6
-  ED19: f0                       movx @DPTR,A       ; HM_TL
-  ED1A: 90 01 5b                 mov DPTR,#0x015B
-  ED1D: 74 b6                    mov A,#hi(pf_mono)
-  ED1F: f0                       movx @DPTR,A
-  ED20: a3                       inc DPTR
-  ED21: 74 b7                    mov A,#lo(pf_mono)
-  ED23: f0                       movx @DPTR,A
-  ED24: a3                       inc DPTR
-  ED25: 74 01                    mov A,#0x01
-  ED27: f0                       movx @DPTR,A
-  ED28: a3                       inc DPTR
-  ED29: 74 96                    mov A,#0x96
+  ED1F: 90 01 a5                 mov DPTR,#0x01A5
+  ED22: f0                       movx @DPTR,A
+  ED23: a3                       inc DPTR
+  ED24: ee                       mov A,R6
+  ED25: f0                       movx @DPTR,A       ; HM_TL
+  ED26: 90 01 5b                 mov DPTR,#0x015B
+  ED29: 74 b6                    mov A,#hi(pf_mono)
   ED2B: f0                       movx @DPTR,A
   ED2C: a3                       inc DPTR
-  ED2D: 74 00                    mov A,#0
+  ED2D: 74 b7                    mov A,#lo(pf_mono)
   ED2F: f0                       movx @DPTR,A
   ED30: a3                       inc DPTR
-  ED31: 74 00                    mov A,#0x00
+  ED31: 74 01                    mov A,#0x01
   ED33: f0                       movx @DPTR,A
   ED34: a3                       inc DPTR
-  ED35: 74 00                    mov A,#0x00
+  ED35: 74 96                    mov A,#0x96
   ED37: f0                       movx @DPTR,A
   ED38: a3                       inc DPTR
-  ED39: 74 0e                    mov A,#14
+  ED39: 74 00                    mov A,#0
   ED3B: f0                       movx @DPTR,A
   ED3C: a3                       inc DPTR
-  ED3D: 74 ff                    mov A,#0xFF
+  ED3D: 74 00                    mov A,#0x00
   ED3F: f0                       movx @DPTR,A
   ED40: a3                       inc DPTR
-  ED41: 74 ff                    mov A,#0xFF
+  ED41: 74 00                    mov A,#0x00
   ED43: f0                       movx @DPTR,A
   ED44: a3                       inc DPTR
-  ED45: 74 00                    mov A,#0x00
+  ED45: 74 0e                    mov A,#14
   ED47: f0                       movx @DPTR,A
   ED48: a3                       inc DPTR
-  ED49: 74 00                    mov A,#0x00
+  ED49: 74 ff                    mov A,#0xFF
   ED4B: f0                       movx @DPTR,A
   ED4C: a3                       inc DPTR
-  ED4D: 74 01                    mov A,#0x01
+  ED4D: 74 ff                    mov A,#0xFF
   ED4F: f0                       movx @DPTR,A
   ED50: a3                       inc DPTR
   ED51: 74 00                    mov A,#0x00
@@ -7223,338 +7232,347 @@ hm_tag:
   ED55: 74 00                    mov A,#0x00
   ED57: f0                       movx @DPTR,A
   ED58: a3                       inc DPTR
-  ED59: 74 00                    mov A,#0x00
+  ED59: 74 01                    mov A,#0x01
   ED5B: f0                       movx @DPTR,A
   ED5C: a3                       inc DPTR
-  ED5D: 74 00                    mov A,#0
+  ED5D: 74 00                    mov A,#0x00
   ED5F: f0                       movx @DPTR,A
   ED60: a3                       inc DPTR
-  ED61: 74 00                    mov A,#0
+  ED61: 74 00                    mov A,#0x00
   ED63: f0                       movx @DPTR,A
-  ED64: 12 d5 71                 lcall uk_text      ; measure: TP_END = width - 1
-  ED67: 90 01 79                 mov DPTR,#0x0179
-  ED6A: e0                       movx A,@DPTR
-  ED6B: 04                       inc A
-  ED6C: ff                       mov R7,A           ; text width
-  ED6D: 90 01 9e                 mov DPTR,#0x019E
-  ED70: f0                       movx @DPTR,A
-  ED71: 24 0a                    add A,#10
-  ED73: fe                       mov R6,A           ; box width
-  ED74: 90 01 9d                 mov DPTR,#0x019D
-  ED77: f0                       movx @DPTR,A
-  ED78: 90 01 a5                 mov DPTR,#0x01A5
-  ED7B: e0                       movx A,@DPTR
-  ED7C: c3                       clr C
-  ED7D: 9e                       subb A,R6
-  ED7E: 90 01 9c                 mov DPTR,#0x019C
-  ED81: f0                       movx @DPTR,A       ; box x
+  ED64: a3                       inc DPTR
+  ED65: 74 00                    mov A,#0x00
+  ED67: f0                       movx @DPTR,A
+  ED68: a3                       inc DPTR
+  ED69: 74 00                    mov A,#0
+  ED6B: f0                       movx @DPTR,A
+  ED6C: a3                       inc DPTR
+  ED6D: 74 00                    mov A,#0
+  ED6F: f0                       movx @DPTR,A
+  ED70: 12 d5 71                 lcall uk_text      ; measure: TP_END = width - 1
+  ED73: 90 01 79                 mov DPTR,#0x0179
+  ED76: e0                       movx A,@DPTR
+  ED77: 04                       inc A
+  ED78: ff                       mov R7,A           ; text width
+  ED79: 90 01 9e                 mov DPTR,#0x019E
+  ED7C: f0                       movx @DPTR,A
+  ED7D: 24 0a                    add A,#10
+  ED7F: fe                       mov R6,A           ; box width
+  ED80: 90 01 9d                 mov DPTR,#0x019D
+  ED83: f0                       movx @DPTR,A
+  ED84: 90 01 a5                 mov DPTR,#0x01A5
+  ED87: e0                       movx A,@DPTR
+  ED88: c3                       clr C
+  ED89: 9e                       subb A,R6
+  ED8A: 90 01 9c                 mov DPTR,#0x019C
+  ED8D: f0                       movx @DPTR,A       ; box x
             ; black from HM_TL to the box
-  ED82: ff                       mov R7,A
-  ED83: 90 01 a6                 mov DPTR,#0x01A6
-  ED86: e0                       movx A,@DPTR
-  ED87: fe                       mov R6,A
-  ED88: ef                       mov A,R7
-  ED89: c3                       clr C
-  ED8A: 9e                       subb A,R6
-  ED8B: 60 16                    jz ht_box
-  ED8D: 40 14                    jc ht_box
-  ED8F: f9                       mov R1,A
-  ED90: ee                       mov A,R6
-  ED91: 24 c0                    add A,#192
-  ED93: fb                       mov R3,A
-  ED94: e4                       clr A
-  ED95: 34 00                    addc A,#0
-  ED97: fa                       mov R2,A
-  ED98: 7d 0a                    mov R5,#10
-  ED9A: 7c 16                    mov R4,#22
-  ED9C: 7e 00                    mov R6,#0
-  ED9E: 7f 00                    mov R7,#0
-  EDA0: 12 d4 52                 lcall uk_fill
+  ED8E: ff                       mov R7,A
+  ED8F: 90 01 a6                 mov DPTR,#0x01A6
+  ED92: e0                       movx A,@DPTR
+  ED93: fe                       mov R6,A
+  ED94: ef                       mov A,R7
+  ED95: c3                       clr C
+  ED96: 9e                       subb A,R6
+  ED97: 60 16                    jz ht_box
+  ED99: 40 14                    jc ht_box
+  ED9B: f9                       mov R1,A
+  ED9C: ee                       mov A,R6
+  ED9D: 24 c0                    add A,#192
+  ED9F: fb                       mov R3,A
+  EDA0: e4                       clr A
+  EDA1: 34 00                    addc A,#0
+  EDA3: fa                       mov R2,A
+  EDA4: 7d 0a                    mov R5,#10
+  EDA6: 7c 16                    mov R4,#22
+  EDA8: 7e 00                    mov R6,#0
+  EDAA: 7f 00                    mov R7,#0
+  EDAC: 12 d4 52                 lcall uk_fill
 ht_box:
             ; the box, in the accent: its left and right edges with the rounded corners (ht_edges), then the
             ; top and bottom rows between them (x + 2 .. x + w - 3)
-  EDA3: 12 ee 40                 lcall ht_edges
-  EDA6: 12 ee c2                 lcall ht_xw2
-  EDA9: 7d 0a                    mov R5,#10
-  EDAB: 7c 01                    mov R4,#1
-  EDAD: 12 ee d1                 lcall ht_acc
-  EDB0: 12 ee c2                 lcall ht_xw2
-  EDB3: 7d 1f                    mov R5,#31
-  EDB5: 7c 01                    mov R4,#1
-  EDB7: 12 ee d1                 lcall ht_acc
+  EDAF: 12 ee 4c                 lcall ht_edges
+  EDB2: 12 ee ce                 lcall ht_xw2
+  EDB5: 7d 0a                    mov R5,#10
+  EDB7: 7c 01                    mov R4,#1
+  EDB9: 12 ee dd                 lcall ht_acc
+  EDBC: 12 ee ce                 lcall ht_xw2
+  EDBF: 7d 1f                    mov R5,#31
+  EDC1: 7c 01                    mov R4,#1
+  EDC3: 12 ee dd                 lcall ht_acc
             ; the inside around the text, black: the rows above and below the text's cell (if any) from x + 2
             ; to x + w - 3 (the edge glyphs cover x + 1 and x + w - 2), TAG_PAD - 2 columns left and right of it
-  EDBA: 12 ee c2                 lcall ht_xw2
-  EDBD: 7d 0b                    mov R5,#11
-  EDBF: 7c 03                    mov R4,#3
-  EDC1: 12 ee db                 lcall ht_black
-  EDC4: 12 ee c2                 lcall ht_xw2
-  EDC7: 79 03                    mov R1,#3
-  EDC9: 7d 0e                    mov R5,#14
-  EDCB: 7c 11                    mov R4,#17
-  EDCD: 12 ee db                 lcall ht_black
-  EDD0: 12 ee b3                 lcall ht_xw
-  EDD3: 90 01 9e                 mov DPTR,#0x019E
-  EDD6: e0                       movx A,@DPTR
-  EDD7: 24 05                    add A,#5
-  EDD9: 2b                       add A,R3
-  EDDA: fb                       mov R3,A
-  EDDB: e4                       clr A
-  EDDC: 3a                       addc A,R2
-  EDDD: fa                       mov R2,A           ; x + pad + text width
-  EDDE: 79 03                    mov R1,#3
-  EDE0: 7d 0e                    mov R5,#14
-  EDE2: 7c 11                    mov R4,#17
-  EDE4: 12 ee db                 lcall ht_black
+  EDC6: 12 ee ce                 lcall ht_xw2
+  EDC9: 7d 0b                    mov R5,#11
+  EDCB: 7c 03                    mov R4,#3
+  EDCD: 12 ee e7                 lcall ht_black
+  EDD0: 12 ee ce                 lcall ht_xw2
+  EDD3: 79 03                    mov R1,#3
+  EDD5: 7d 0e                    mov R5,#14
+  EDD7: 7c 11                    mov R4,#17
+  EDD9: 12 ee e7                 lcall ht_black
+  EDDC: 12 ee bf                 lcall ht_xw
+  EDDF: 90 01 9e                 mov DPTR,#0x019E
+  EDE2: e0                       movx A,@DPTR
+  EDE3: 24 05                    add A,#5
+  EDE5: 2b                       add A,R3
+  EDE6: fb                       mov R3,A
+  EDE7: e4                       clr A
+  EDE8: 3a                       addc A,R2
+  EDE9: fa                       mov R2,A           ; x + pad + text width
+  EDEA: 79 03                    mov R1,#3
+  EDEC: 7d 0e                    mov R5,#14
+  EDEE: 7c 11                    mov R4,#17
+  EDF0: 12 ee e7                 lcall ht_black
             ; the text at x + pad
-  EDE7: 12 d4 a8                 lcall uk_acc
-  EDEA: 90 01 5b                 mov DPTR,#0x015B
-  EDED: 74 b6                    mov A,#hi(pf_mono)
-  EDEF: f0                       movx @DPTR,A
-  EDF0: a3                       inc DPTR
-  EDF1: 74 b7                    mov A,#lo(pf_mono)
-  EDF3: f0                       movx @DPTR,A
-  EDF4: a3                       inc DPTR
-  EDF5: 74 01                    mov A,#0x01
-  EDF7: f0                       movx @DPTR,A
-  EDF8: a3                       inc DPTR
-  EDF9: 74 96                    mov A,#0x96
+  EDF3: 12 d4 a8                 lcall uk_acc
+  EDF6: 90 01 5b                 mov DPTR,#0x015B
+  EDF9: 74 b6                    mov A,#hi(pf_mono)
   EDFB: f0                       movx @DPTR,A
   EDFC: a3                       inc DPTR
-  EDFD: 74 00                    mov A,#0
+  EDFD: 74 b7                    mov A,#lo(pf_mono)
   EDFF: f0                       movx @DPTR,A
   EE00: a3                       inc DPTR
-  EE01: a3                       inc DPTR
-  EE02: a3                       inc DPTR
-  EE03: 74 0e                    mov A,#14
-  EE05: f0                       movx @DPTR,A
-  EE06: a3                       inc DPTR
-  EE07: ee                       mov A,R6
-  EE08: f0                       movx @DPTR,A
-  EE09: a3                       inc DPTR
-  EE0A: ef                       mov A,R7
+  EE01: 74 01                    mov A,#0x01
+  EE03: f0                       movx @DPTR,A
+  EE04: a3                       inc DPTR
+  EE05: 74 96                    mov A,#0x96
+  EE07: f0                       movx @DPTR,A
+  EE08: a3                       inc DPTR
+  EE09: 74 00                    mov A,#0
   EE0B: f0                       movx @DPTR,A
   EE0C: a3                       inc DPTR
-  EE0D: 74 00                    mov A,#0x00
-  EE0F: f0                       movx @DPTR,A
-  EE10: a3                       inc DPTR
-  EE11: 74 00                    mov A,#0x00
-  EE13: f0                       movx @DPTR,A
-  EE14: a3                       inc DPTR
-  EE15: 74 00                    mov A,#0x00
+  EE0D: a3                       inc DPTR
+  EE0E: a3                       inc DPTR
+  EE0F: 74 0e                    mov A,#14
+  EE11: f0                       movx @DPTR,A
+  EE12: a3                       inc DPTR
+  EE13: ee                       mov A,R6
+  EE14: f0                       movx @DPTR,A
+  EE15: a3                       inc DPTR
+  EE16: ef                       mov A,R7
   EE17: f0                       movx @DPTR,A
   EE18: a3                       inc DPTR
   EE19: 74 00                    mov A,#0x00
   EE1B: f0                       movx @DPTR,A
   EE1C: a3                       inc DPTR
-  EE1D: 74 01                    mov A,#0x01
+  EE1D: 74 00                    mov A,#0x00
   EE1F: f0                       movx @DPTR,A
   EE20: a3                       inc DPTR
-  EE21: 74 3f                    mov A,#0x3F
+  EE21: 74 00                    mov A,#0x00
   EE23: f0                       movx @DPTR,A
   EE24: a3                       inc DPTR
-  EE25: 74 00                    mov A,#0
+  EE25: 74 00                    mov A,#0x00
   EE27: f0                       movx @DPTR,A
   EE28: a3                       inc DPTR
-  EE29: 74 00                    mov A,#0
+  EE29: 74 01                    mov A,#0x01
   EE2B: f0                       movx @DPTR,A
-  EE2C: 90 01 9c                 mov DPTR,#0x019C
-  EE2F: e0                       movx A,@DPTR
-  EE30: 24 c5                    add A,#197
-  EE32: ff                       mov R7,A
-  EE33: e4                       clr A
-  EE34: 34 00                    addc A,#0
-  EE36: 90 01 60                 mov DPTR,#0x0160
-  EE39: f0                       movx @DPTR,A
-  EE3A: a3                       inc DPTR
-  EE3B: ef                       mov A,R7
-  EE3C: f0                       movx @DPTR,A
-  EE3D: 02 d5 71                 ljmp uk_text
+  EE2C: a3                       inc DPTR
+  EE2D: 74 3f                    mov A,#0x3F
+  EE2F: f0                       movx @DPTR,A
+  EE30: a3                       inc DPTR
+  EE31: 74 00                    mov A,#0
+  EE33: f0                       movx @DPTR,A
+  EE34: a3                       inc DPTR
+  EE35: 74 00                    mov A,#0
+  EE37: f0                       movx @DPTR,A
+  EE38: 90 01 9c                 mov DPTR,#0x019C
+  EE3B: e0                       movx A,@DPTR
+  EE3C: 24 c5                    add A,#197
+  EE3E: ff                       mov R7,A
+  EE3F: e4                       clr A
+  EE40: 34 00                    addc A,#0
+  EE42: 90 01 60                 mov DPTR,#0x0160
+  EE45: f0                       movx @DPTR,A
+  EE46: a3                       inc DPTR
+  EE47: ef                       mov A,R7
+  EE48: f0                       movx @DPTR,A
+  EE49: 02 d5 71                 ljmp uk_text
             ; ht_edges: the box's left and right edges, two columns each with corners of radius 2 (pf_box: "["
             ; at x, "]" at x + w - 2), in the accent
 ht_edges:
-  EE40: 12 d4 a8                 lcall uk_acc
-  EE43: 90 01 5b                 mov DPTR,#0x015B
-  EE46: 74 c8                    mov A,#hi(pf_box)
-  EE48: f0                       movx @DPTR,A
-  EE49: a3                       inc DPTR
-  EE4A: 74 06                    mov A,#lo(pf_box)
-  EE4C: f0                       movx @DPTR,A
-  EE4D: a3                       inc DPTR
-  EE4E: 74 98                    mov A,#hi(hm_s_lb)
-  EE50: f0                       movx @DPTR,A
-  EE51: a3                       inc DPTR
-  EE52: 74 a7                    mov A,#lo(hm_s_lb)
+  EE4C: 12 d4 a8                 lcall uk_acc
+  EE4F: 90 01 5b                 mov DPTR,#0x015B
+  EE52: 74 c8                    mov A,#hi(pf_box)
   EE54: f0                       movx @DPTR,A
   EE55: a3                       inc DPTR
-  EE56: 74 01                    mov A,#1
+  EE56: 74 06                    mov A,#lo(pf_box)
   EE58: f0                       movx @DPTR,A
   EE59: a3                       inc DPTR
-  EE5A: a3                       inc DPTR
-  EE5B: a3                       inc DPTR
-  EE5C: 74 0a                    mov A,#10
-  EE5E: f0                       movx @DPTR,A
-  EE5F: a3                       inc DPTR
-  EE60: ee                       mov A,R6
-  EE61: f0                       movx @DPTR,A
-  EE62: a3                       inc DPTR
-  EE63: ef                       mov A,R7
+  EE5A: 74 98                    mov A,#hi(hm_s_lb)
+  EE5C: f0                       movx @DPTR,A
+  EE5D: a3                       inc DPTR
+  EE5E: 74 a7                    mov A,#lo(hm_s_lb)
+  EE60: f0                       movx @DPTR,A
+  EE61: a3                       inc DPTR
+  EE62: 74 01                    mov A,#1
   EE64: f0                       movx @DPTR,A
   EE65: a3                       inc DPTR
-  EE66: 74 00                    mov A,#0x00
-  EE68: f0                       movx @DPTR,A
-  EE69: a3                       inc DPTR
-  EE6A: 74 00                    mov A,#0x00
-  EE6C: f0                       movx @DPTR,A
-  EE6D: a3                       inc DPTR
-  EE6E: 74 00                    mov A,#0x00
+  EE66: a3                       inc DPTR
+  EE67: a3                       inc DPTR
+  EE68: 74 0a                    mov A,#10
+  EE6A: f0                       movx @DPTR,A
+  EE6B: a3                       inc DPTR
+  EE6C: ee                       mov A,R6
+  EE6D: f0                       movx @DPTR,A
+  EE6E: a3                       inc DPTR
+  EE6F: ef                       mov A,R7
   EE70: f0                       movx @DPTR,A
   EE71: a3                       inc DPTR
   EE72: 74 00                    mov A,#0x00
   EE74: f0                       movx @DPTR,A
   EE75: a3                       inc DPTR
-  EE76: 74 01                    mov A,#0x01
+  EE76: 74 00                    mov A,#0x00
   EE78: f0                       movx @DPTR,A
   EE79: a3                       inc DPTR
-  EE7A: 74 3f                    mov A,#0x3F
+  EE7A: 74 00                    mov A,#0x00
   EE7C: f0                       movx @DPTR,A
   EE7D: a3                       inc DPTR
-  EE7E: 74 00                    mov A,#0
+  EE7E: 74 00                    mov A,#0x00
   EE80: f0                       movx @DPTR,A
   EE81: a3                       inc DPTR
-  EE82: 74 00                    mov A,#0
+  EE82: 74 01                    mov A,#0x01
   EE84: f0                       movx @DPTR,A
-  EE85: 12 ee b3                 lcall ht_xw
-  EE88: 90 01 60                 mov DPTR,#0x0160
-  EE8B: ea                       mov A,R2
+  EE85: a3                       inc DPTR
+  EE86: 74 3f                    mov A,#0x3F
+  EE88: f0                       movx @DPTR,A
+  EE89: a3                       inc DPTR
+  EE8A: 74 00                    mov A,#0
   EE8C: f0                       movx @DPTR,A
   EE8D: a3                       inc DPTR
-  EE8E: eb                       mov A,R3
-  EE8F: f0                       movx @DPTR,A
-  EE90: 12 d5 71                 lcall uk_text
-  EE93: 90 01 5d                 mov DPTR,#0x015D
-  EE96: 74 98                    mov A,#hi(hm_s_rb)
+  EE8E: 74 00                    mov A,#0
+  EE90: f0                       movx @DPTR,A
+  EE91: 12 ee bf                 lcall ht_xw
+  EE94: 90 01 60                 mov DPTR,#0x0160
+  EE97: ea                       mov A,R2
   EE98: f0                       movx @DPTR,A
   EE99: a3                       inc DPTR
-  EE9A: 74 a9                    mov A,#lo(hm_s_rb)
-  EE9C: f0                       movx @DPTR,A
-  EE9D: 12 ee b3                 lcall ht_xw
-  EEA0: e9                       mov A,R1
-  EEA1: 14                       dec A
-  EEA2: 14                       dec A
-  EEA3: 2b                       add A,R3
-  EEA4: fb                       mov R3,A
-  EEA5: e4                       clr A
-  EEA6: 3a                       addc A,R2
-  EEA7: fa                       mov R2,A           ; x + w - 2
-  EEA8: 90 01 60                 mov DPTR,#0x0160
-  EEAB: ea                       mov A,R2
-  EEAC: f0                       movx @DPTR,A
-  EEAD: a3                       inc DPTR
-  EEAE: eb                       mov A,R3
-  EEAF: f0                       movx @DPTR,A
-  EEB0: 02 d5 71                 ljmp uk_text
+  EE9A: eb                       mov A,R3
+  EE9B: f0                       movx @DPTR,A
+  EE9C: 12 d5 71                 lcall uk_text
+  EE9F: 90 01 5d                 mov DPTR,#0x015D
+  EEA2: 74 98                    mov A,#hi(hm_s_rb)
+  EEA4: f0                       movx @DPTR,A
+  EEA5: a3                       inc DPTR
+  EEA6: 74 a9                    mov A,#lo(hm_s_rb)
+  EEA8: f0                       movx @DPTR,A
+  EEA9: 12 ee bf                 lcall ht_xw
+  EEAC: e9                       mov A,R1
+  EEAD: 14                       dec A
+  EEAE: 14                       dec A
+  EEAF: 2b                       add A,R3
+  EEB0: fb                       mov R3,A
+  EEB1: e4                       clr A
+  EEB2: 3a                       addc A,R2
+  EEB3: fa                       mov R2,A           ; x + w - 2
+  EEB4: 90 01 60                 mov DPTR,#0x0160
+  EEB7: ea                       mov A,R2
+  EEB8: f0                       movx @DPTR,A
+  EEB9: a3                       inc DPTR
+  EEBA: eb                       mov A,R3
+  EEBB: f0                       movx @DPTR,A
+  EEBC: 02 d5 71                 ljmp uk_text
             ; ht_xw: R2:R3 = box x, R1 = A = box width
 ht_xw:
-  EEB3: 90 01 9c                 mov DPTR,#0x019C
-  EEB6: e0                       movx A,@DPTR
-  EEB7: 24 c0                    add A,#192
-  EEB9: fb                       mov R3,A
-  EEBA: e4                       clr A
-  EEBB: 34 00                    addc A,#0
-  EEBD: fa                       mov R2,A
-  EEBE: a3                       inc DPTR
-  EEBF: e0                       movx A,@DPTR
-  EEC0: f9                       mov R1,A
-  EEC1: 22                       ret
+  EEBF: 90 01 9c                 mov DPTR,#0x019C
+  EEC2: e0                       movx A,@DPTR
+  EEC3: 24 c0                    add A,#192
+  EEC5: fb                       mov R3,A
+  EEC6: e4                       clr A
+  EEC7: 34 00                    addc A,#0
+  EEC9: fa                       mov R2,A
+  EECA: a3                       inc DPTR
+  EECB: e0                       movx A,@DPTR
+  EECC: f9                       mov R1,A
+  EECD: 22                       ret
             ; ht_xw2: R2:R3 = box x + 2, R1 = A = box width - 4 (the box is at least 2 * TAG_PAD wide)
 ht_xw2:
-  EEC2: 12 ee b3                 lcall ht_xw
-  EEC5: eb                       mov A,R3
-  EEC6: 24 02                    add A,#2
-  EEC8: fb                       mov R3,A
-  EEC9: e4                       clr A
-  EECA: 3a                       addc A,R2
-  EECB: fa                       mov R2,A
-  EECC: e9                       mov A,R1
-  EECD: 24 fc                    add A,#0xFC
-  EECF: f9                       mov R1,A
-  EED0: 22                       ret
+  EECE: 12 ee bf                 lcall ht_xw
+  EED1: eb                       mov A,R3
+  EED2: 24 02                    add A,#2
+  EED4: fb                       mov R3,A
+  EED5: e4                       clr A
+  EED6: 3a                       addc A,R2
+  EED7: fa                       mov R2,A
+  EED8: e9                       mov A,R1
+  EED9: 24 fc                    add A,#0xFC
+  EEDB: f9                       mov R1,A
+  EEDC: 22                       ret
 ht_acc:
-  EED1: c0 01                    push 0x01          ; uk_acc keeps R1..R5
-  EED3: 12 d4 a8                 lcall uk_acc
-  EED6: d0 01                    pop 0x01
-  EED8: 02 d4 52                 ljmp uk_fill
+  EEDD: c0 01                    push 0x01          ; uk_acc keeps R1..R5
+  EEDF: 12 d4 a8                 lcall uk_acc
+  EEE2: d0 01                    pop 0x01
+  EEE4: 02 d4 52                 ljmp uk_fill
 ht_black:
-  EEDB: 7e 00                    mov R6,#0
-  EEDD: 7f 00                    mov R7,#0
-  EEDF: 02 d4 52                 ljmp uk_fill
+  EEE7: 7e 00                    mov R6,#0
+  EEE9: 7f 00                    mov R7,#0
+  EEEB: 02 d4 52                 ljmp uk_fill
             ; hm_tag_copy: HM_TAG = the string at R3:R2:R1 (R3 0xFF: code, else XDATA), at most 5 characters,
             ; trailing spaces cut
 hm_tag_copy:
-  EEE2: 8a 83                    mov DPH,R2
-  EEE4: 89 82                    mov DPL,R1
-  EEE6: 7c 00                    mov R4,#0          ; characters copied
-  EEE8: 7d 00                    mov R5,#0          ; length up to the last non-space
+  EEEE: 8a 83                    mov DPH,R2
+  EEF0: 89 82                    mov DPL,R1
+  EEF2: 7c 00                    mov R4,#0          ; characters copied
+  EEF4: 7d 00                    mov R5,#0          ; length up to the last non-space
 htc_loop:
-  EEEA: bb ff 04                 cjne R3,#0xFF,htc_x
-  EEED: e4                       clr A
-  EEEE: 93                       movc A,@A+DPTR
-  EEEF: 80 01                    sjmp htc_got
+  EEF6: bb ff 04                 cjne R3,#0xFF,htc_x
+  EEF9: e4                       clr A
+  EEFA: 93                       movc A,@A+DPTR
+  EEFB: 80 01                    sjmp htc_got
 htc_x:
-  EEF1: e0                       movx A,@DPTR
+  EEFD: e0                       movx A,@DPTR
 htc_got:
-  EEF2: 60 21                    jz htc_end
-  EEF4: a3                       inc DPTR
-  EEF5: fe                       mov R6,A
-  EEF6: c0 83                    push DPH
-  EEF8: c0 82                    push DPL
-  EEFA: ec                       mov A,R4
-  EEFB: 24 96                    add A,#0x96
-  EEFD: f5 82                    mov DPL,A
-  EEFF: e4                       clr A
-  EF00: 34 01                    addc A,#0x01
-  EF02: f5 83                    mov DPH,A
-  EF04: ee                       mov A,R6
-  EF05: f0                       movx @DPTR,A
-  EF06: d0 82                    pop DPL
-  EF08: d0 83                    pop DPH
-  EF0A: 0c                       inc R4
-  EF0B: be 20 02                 cjne R6,#0x20,htc_ns
-  EF0E: 80 02                    sjmp htc_sp
+  EEFE: 60 21                    jz htc_end
+  EF00: a3                       inc DPTR
+  EF01: fe                       mov R6,A
+  EF02: c0 83                    push DPH
+  EF04: c0 82                    push DPL
+  EF06: ec                       mov A,R4
+  EF07: 24 96                    add A,#0x96
+  EF09: f5 82                    mov DPL,A
+  EF0B: e4                       clr A
+  EF0C: 34 01                    addc A,#0x01
+  EF0E: f5 83                    mov DPH,A
+  EF10: ee                       mov A,R6
+  EF11: f0                       movx @DPTR,A
+  EF12: d0 82                    pop DPL
+  EF14: d0 83                    pop DPH
+  EF16: 0c                       inc R4
+  EF17: be 20 02                 cjne R6,#0x20,htc_ns
+  EF1A: 80 02                    sjmp htc_sp
 htc_ns:
-  EF10: ec                       mov A,R4
-  EF11: fd                       mov R5,A
+  EF1C: ec                       mov A,R4
+  EF1D: fd                       mov R5,A
 htc_sp:
-  EF12: bc 05 d5                 cjne R4,#5,htc_loop
+  EF1E: bc 05 d5                 cjne R4,#5,htc_loop
 htc_end:
-  EF15: ed                       mov A,R5
-  EF16: 24 96                    add A,#0x96
-  EF18: f5 82                    mov DPL,A
-  EF1A: e4                       clr A
-  EF1B: 34 01                    addc A,#0x01
-  EF1D: f5 83                    mov DPH,A
-  EF1F: e4                       clr A
-  EF20: f0                       movx @DPTR,A
-  EF21: 22                       ret
+  EF21: ed                       mov A,R5
+  EF22: 24 96                    add A,#0x96
+  EF24: f5 82                    mov DPL,A
+  EF26: e4                       clr A
+  EF27: 34 01                    addc A,#0x01
+  EF29: f5 83                    mov DPH,A
+  EF2B: e4                       clr A
+  EF2C: f0                       movx @DPTR,A
+  EF2D: 22                       ret
             ; hm_fmt_clear: replaces home_draw_format_tag's clears (0x0026): the format tag's area, black
 hm_fmt_clear:
-  EF22: 7a 00                    mov R2,#0x00
-  EF24: 7b d6                    mov R3,#0xD6
-  EF26: 79 32                    mov R1,#50
-  EF28: 7d 0a                    mov R5,#10
-  EF2A: 7c 16                    mov R4,#22
-  EF2C: 7e 00                    mov R6,#0x00
-  EF2E: 7f 00                    mov R7,#0x00
-  EF30: 02 d4 52                 ljmp uk_fill
+  EF2E: 7a 00                    mov R2,#0x00
+  EF30: 7b d6                    mov R3,#0xD6
+  EF32: 79 32                    mov R1,#50
+  EF34: 7d 0a                    mov R5,#10
+  EF36: 7c 16                    mov R4,#22
+  EF38: 7e 00                    mov R6,#0x00
+  EF3A: 7f 00                    mov R7,#0x00
+  EF3C: 02 d4 52                 ljmp uk_fill
             ; fx_auto_off: replaces post_power_on's tail `ljmp ui_clear_screen` (0x55B9). With Dimmer on
             ; Auto OFF, arm the screen-off countdown as a key press would, then take the stock tail call.
             ; Arming before the jump keeps the stack depth as stock; the countdown is only read by the
             ; main loop (0x33DB), so the order against ui_clear_screen does not matter.
 fx_auto_off:
-  EF33: e5 29                    mov A,0x29                  ; g_dimmer_mode: 1 Always ON, 2 Auto OFF
-  EF35: b4 02 06                 cjne A,#0x02,fx_ao_done
-  EF38: 75 2f 01                 mov 0x2F,#0x01            ; g_screen_off_hi
-  EF3B: 75 30 f4                 mov 0x30,#0xF4            ; g_screen_off_lo
+  EF3F: e5 29                    mov A,0x29                  ; g_dimmer_mode: 1 Always ON, 2 Auto OFF
+  EF41: b4 02 06                 cjne A,#0x02,fx_ao_done
+  EF44: 75 2f 01                 mov 0x2F,#0x01            ; g_screen_off_hi
+  EF47: 75 30 f4                 mov 0x30,#0xF4            ; g_screen_off_lo
 fx_ao_done:
-  EF3E: 02 5d 42                 ljmp 0x5D42                 ; ui_clear_screen, the stock tail call
+  EF4A: 02 5d 42                 ljmp 0x5D42                 ; ui_clear_screen, the stock tail call

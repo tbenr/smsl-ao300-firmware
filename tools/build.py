@@ -11,7 +11,8 @@ Each features/<name>/build_patch.py declares BASE (the image it stacks on) and I
   * its sha is looked up in KNOWN_IMAGES (tools/flash/flash_ao300.py); a new one is reported;
   * the bytes it changes in its base must not overlap bytes an ancestor changed (two features
     hooking the same site), apart from the version pointer every image repoints;
-  * every fix in INCLUDES must have its hook installed, jumping into this image's own code;
+  * every fix in INCLUDES must have its hook installed, jumping into this image's own code,
+    and its in-place patches (PATCHES) applied;
   * XDATA: the ranges declared (XDATA = [...]) by everything in the image must not overlap;
   * code areas of features that are not in one chain should not overlap either, so each
     address keeps one name in tools/disasm/SmslAo300Labels.java (warning only).
@@ -106,11 +107,16 @@ def check(name, known):
             errors.append("re-patches bytes %s already changed: %s" % (anc, ranges(both)))
     errors += check_xdata(name)
     for fx in fg.includes(name):
-        addr, orig, op, _ = fg.fix(fx).HOOK
-        target = (img[addr + 1] << 8) | img[addr + 2]
-        if img[addr] != op or not (len(base_img) <= target < len(img)):
-            errors.append("INCLUDES %s, but its hook at 0x%04X is %s (want %02x into this image's code, "
-                          "0x%04X..0x%04X)" % (fx, addr, img[addr:addr + 3].hex(" "), op, len(base_img), len(img) - 1))
+        mod = fg.fix(fx)
+        if hasattr(mod, "HOOK"):
+            addr, orig, op, _ = mod.HOOK
+            target = (img[addr + 1] << 8) | img[addr + 2]
+            if img[addr] != op or not (len(base_img) <= target < len(img)):
+                errors.append("INCLUDES %s, but its hook at 0x%04X is %s (want %02x into this image's code, "
+                              "0x%04X..0x%04X)" % (fx, addr, img[addr:addr + 3].hex(" "), op, len(base_img), len(img) - 1))
+        for addr, orig, new, note in getattr(mod, "PATCHES", []):
+            if img[addr:addr + len(new)] != new:
+                errors.append("INCLUDES %s, but its patch at 0x%04X (%s) is not applied" % (fx, addr, note))
     return errors, notes
 
 
@@ -151,8 +157,11 @@ def graph(known):
             else:
                 desc.append("not built")
             if fg.is_fix(k):
-                desc.append("[fix, hook 0x%04X; included by %s]"
-                            % (fg.fix(k).HOOK[0], ", ".join(included_by.get(k, [])) or "none yet"))
+                mod = fg.fix(k)
+                sites = (["hook 0x%04X" % mod.HOOK[0]] if hasattr(mod, "HOOK") else []) + \
+                        ["patch 0x%04X" % p[0] for p in getattr(mod, "PATCHES", [])]
+                desc.append("[fix, %s; included by %s]"
+                            % (", ".join(sites), ", ".join(included_by.get(k, [])) or "none yet"))
             rows.append(("%s%s %s" % (prefix, "└──" if last else "├──", k), "  ".join(desc)))
             inner = prefix + ("    " if last else "│   ")
             for fx in fg.includes(k):

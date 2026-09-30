@@ -1,32 +1,7 @@
 # House Numerals: what is left
 
-State as of hn10 (`v1.4 tbenr hn10`: hn8 plus the number roll and the spring on the line (hn9)
-and the mock's cubic ease on the wipes (hn10); both tried on the amp on 2026-09-30, good). The
-reference is study 3 in `features/ui-theme/ui_themes.html`.
-
-## To investigate: reddish status after a Source change
-
-Seen on the amp with hn8: coming from an input whose status line was reddish ("No
-Connected" on HDMI, "No signal", "Searching..."), a Source press shows the next input's
-status reddish too for a while; a later refresh turns it grey. Not yet reproduced in the
-emulator, so not called a bug yet.
-
-What to check first:
-- The tint comes from `HN_SIG`, written only by `hn_signal` (the status loader's signal
-  check at 0x4016). If the Source path draws the status line through another route, for
-  example `input_apply` (0x5640) loading "Digital input" / a sample rate into XDATA 0x50 and
-  rendering it at y 135 without running the loader, `hm_status` tints it with the previous
-  input's `HN_SIG` until the periodic refresh (0x3FE3, on page 1 every 0.5 s) runs the
-  loader. A ~10 s wait would fit the optical/coax detect timeout instead.
-- Reproduce in the emulator: `Amp(NEW)`, HDMI selected with the expander reporting no
-  connection (status "No Connected", `HN_SIG` 0), then `NEC_SOURCE` or a direct-select key,
-  and watch `hm_status` calls (colour written to `TP_INK`), the loader (0x4016) and `HN_SIG`
-  over the next seconds. `features/house-numerals/emu_test.py`'s `tour` has the hooks
-  (`Watch`, `home_ok`); the `hdmi` and `source` steps are the place to add a check.
-- Candidate fixes, once the path is known: set `HN_SIG` to 1 (grey) when the input changes
-  (the name draw 0x4A85 is already hooked, `hn_name_guard`; `input_apply` 0x5640 is not),
-  or tint only text that the loader's no-signal branch (0x4048) produced, by marking it
-  there instead of at the signal check.
+State as of hn10.1 (`v1.4 tbenr hn10.1`, tried on the amp on 2026-09-30, works). The reference is
+study 3 in `features/ui-theme/ui_themes.html`.
 
 ## Missing against the mock
 
@@ -46,7 +21,7 @@ Volume page:
   target (the float one never quite does); settles in at most 0.63 s.
 - **Sizing.** `sizing.html` covers the home only; the volume page's positions are constants
   in `build_patch.py` (`V*`). A second tab with the same save path (`layout.json`,
-  `"volume"`) would let the sizes be picked by eye. Flash is tight: 1199 bytes left.
+  `"volume"`) would let the sizes be picked by eye. Flash is tight: 1185 bytes left.
 - **MUTE state** (red speaker, "MUTE" at 64 px, dark-red line): unreachable in this firmware
   (the mute key goes home, the volume keys unmute first). Only worth doing if a muted volume
   page is wanted on purpose.

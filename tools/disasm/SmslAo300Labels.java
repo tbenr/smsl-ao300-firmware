@@ -152,8 +152,8 @@ public class SmslAo300Labels extends GhidraScript {
         {0xE2DD, "hn_stop"},             // no wipe, no page drawn, no roll, spring at home (hn_cancel, hn_home_now)
         {0xE2ED, "hn_cancel"},           // ui_clear_screen's first instruction: stops a wipe and a roll, spring home
         {0xE2F6, "hn_hold"},             // 0x4081: holds the periodic home refresh back during a wipe
-        {0xE312, "hn_name_guard"},       // home_draw_input_name's entry: cancels an exit wipe first
-        {0xE322, "hn_home_now"},         // stop a wipe, black, home_refresh + status line (hn_name_guard)
+        {0xE319, "hn_name_guard"},       // home_draw_input_name's entry: cancels an exit wipe first
+        {0xE329, "hn_home_now"},         // stop a wipe, black, then hn_hold's stock path: home_refresh + status line (hn_name_guard)
         {0xE332, "hn_flag_path"},        // 0x3FF8: during a wipe the flag path skips its 0x412F fill
         {0xE347, "hn_name_load"},        // XDATA 0x35 = input name, as 0x4A85 loads it
         {0xE368, "hh_icon"},  {0xE36B, "hh_vol"},  {0xE370, "hh_fmt"},  {0xE373, "hh_eq"},  {0xE376, "hh_bar"},  {0xE386, "hh_name"}, // exit wipe: home elements
@@ -162,20 +162,21 @@ public class SmslAo300Labels extends GhidraScript {
         {0xE927, "hn_after"},            // each tick after hn_step: hn_spring, then hn_roll
         {0xE983, "hn_home_tail"},        // home_refresh's tail: volume, accent bar
         {0xE996, "hn_align_big"},        // big_text_render on page 1: the name at y 75 is hm_name, other texts start at x 16
-        {0xE9BD, "hn_align_small"},      // small_text_render on page 1: the status at y 135 is hm_status, other texts start at x 16
+        {0xE9BD, "hn_align_small"},      // small_text_render on page 1: the status at y 135 is hm_status_r, other texts start at x 16
         {0xE9E4, "hm_name"},             // home: the input name (XDATA 0x35), display face
         {0xEA3C, "hm_name_meas"},        // hm_name's end column, nothing drawn
-        {0xEA89, "hm_status"},           // home: the status line (XDATA 0x50), mono
-        {0xEAE4, "hm_stat_meas"},        // hm_status's end column, nothing drawn
-        {0xEB31, "hm_rest"},             // black from TP_END + 1 to R6:R7, rows R5.., R4 rows (not during a wipe)
-        {0xEB91, "hm_icon"},             // replaces home_draw_output_icon 0x5744: speaker / muted / headphones
-        {0xEC97, "hm_volume"},           // replaces home_draw_volume 0x5916
-        {0xED03, "hm_eq"},               // replaces eq_tag_paint 0x4F18: the EQ tag box
-        {0xED0C, "hm_fmt"},              // replaces home_draw_format_tag's lcall small_text_at (0x425D): the format tag box
-        {0xED13, "hm_tag"},              // a tag: accent box with corners of radius 2 (pf_box edges) and text, black up to it
-        {0xEE40, "ht_edges"},            // hm_tag: the box edges (pf_box "[" and "]")
-        {0xEEE2, "hm_tag_copy"},         // R3:R2:R1 string -> HM_TAG, trailing spaces cut
-        {0xEF22, "hm_fmt_clear"},        // replaces home_draw_format_tag's tag_box_clear calls (0x41E8, 0x41FC)
+        {0xEA89, "hm_status_r"},         // small_text_render's hand-over at y 135: grey unless the draw is the loader's (hn_hold marks it), then hm_status
+        {0xEA95, "hm_status"},           // home: the status line (XDATA 0x50), mono
+        {0xEAF0, "hm_stat_meas"},        // hm_status's end column, nothing drawn
+        {0xEB3D, "hm_rest"},             // black from TP_END + 1 to R6:R7, rows R5.., R4 rows (not during a wipe)
+        {0xEB9D, "hm_icon"},             // replaces home_draw_output_icon 0x5744: speaker / muted / headphones
+        {0xECA3, "hm_volume"},           // replaces home_draw_volume 0x5916
+        {0xED0F, "hm_eq"},               // replaces eq_tag_paint 0x4F18: the EQ tag box
+        {0xED18, "hm_fmt"},              // replaces home_draw_format_tag's lcall small_text_at (0x425D): the format tag box
+        {0xED1F, "hm_tag"},              // a tag: accent box with corners of radius 2 (pf_box edges) and text, black up to it
+        {0xEE4C, "ht_edges"},            // hm_tag: the box edges (pf_box "[" and "]")
+        {0xEEEE, "hm_tag_copy"},         // R3:R2:R1 string -> HM_TAG, trailing spaces cut
+        {0xEF2E, "hm_fmt_clear"},        // replaces home_draw_format_tag's tag_box_clear calls (0x41E8, 0x41FC)
     };
 
     Object[][] codeLabels = {

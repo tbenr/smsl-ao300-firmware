@@ -73,10 +73,14 @@ KNOWN_IMAGES = {
     "122a963c35cf4d64e01e8534b301e4d86e2d1b74a336e24e15a9e19b18bcebcd": "fast-lcd + House Numerals v8 (hn7 with the mock's volume page: name, status, VOL, 84-px number, 288-px line, dB caption, max 60; rounded tag corners; reddish status without a signal), 'v1.4 tbenr hn8' (features/house-numerals/build/flash_house_numerals.bin)",
     "b45331a8b812ed583daa6d914c905ad147b9713552c5da09ab03f67001b69916": "fast-lcd + House Numerals v9 (hn8 with the volume page's number roll and the spring on the position line; uk_text row clip, tick driver serves the re-mute request itself), 'v1.4 tbenr hn9' (features/house-numerals/build/flash_house_numerals.bin)",
     "45c22bf1faf01ccd3e103da0f90094cb791d5e691750d73fbbdb4f6f5b176a46": "fast-lcd + House Numerals v10 (hn9 with the mock's cubic ease on both wipes, 32 ticks each way), 'v1.4 tbenr hn10' (features/house-numerals/build/flash_house_numerals.bin)",
+    "59d33243e749be8c7f699f16f8480c4bc6689e21d7ffd40b751ac85274ee1fd3": "direct-select + corrected stock texts (HDMI ARC without a link: 'Disconnected' for 'No Connected'), 'v1.4 tbenr str1' (features/strings/build/flash_strings.bin)",
+    "89a6ed991e16b810a6bf3f0be6065075d08ab8815285589fe6d03d8b72b16a60": "fast-lcd + House Numerals v10.1 (hn10 with the status tint fix: only the status loader's own text is reddish, so an input's placeholder after Source is grey; strings included: 'Disconnected' on ARC), 'v1.4 tbenr hn10.1' (features/house-numerals/build/flash_house_numerals.bin)",
     "9b7e8b930d0b9f038d1996445e888ae08db4e928e2ec6755acb2564113912046": "direct-select v2 (a direct command for the input already selected is ignored, no re-initialisation), 'v1.4 tbenr ds2' (features/direct-select/build/flash_patched.bin)",
     "6d186a817762b8d705f75ffe178089483e4584fc01ebe55884fbb88b114cec7d": "direct-select v2 + fast LCD paths, 'v1.4 tbenr fast2' (features/fast-lcd/build/flash_fastlcd.bin)",
     "f1e4ef1c6bf9a75d8eb4bd252f423611662127c52b770ab5581eaa32077246aa": "direct-select v2 + Auto OFF armed after power-on (AO300 PRO V1.2 fix), 'v1.4 tbenr aof2' (features/fix-auto-off/build/flash_fixautooff.bin)",
-    "6050a846a6153f5a2c1fa319260bee831763057e4ab15a3297659144bcfd382a": "fast-lcd fast2 + House Numerals v11 (hn10 on direct-select v2: same-input direct command ignored), 'v1.4 tbenr hn11' (features/house-numerals/build/flash_house_numerals.bin)",
+    "6050a846a6153f5a2c1fa319260bee831763057e4ab15a3297659144bcfd382a": "fast-lcd fast2 + House Numerals v11 (hn10 on direct-select v2: same-input direct command ignored; without hn10.1's fixes), 'v1.4 tbenr hn11' (features/house-numerals/build/flash_house_numerals.bin)",
+    "472184f144181062ae4fb78c8290e8f56708514575751d6e7476307bdf7fb3bf": "direct-select v2 + corrected stock texts ('Disconnected' on ARC), 'v1.4 tbenr str2' (features/strings/build/flash_strings.bin)",
+    "3aa0f2d68351486a0746eaa9c4473ccf4184b68fd25839766ad9706a1e354d60": "fast-lcd fast2 + House Numerals v11.1 (hn10.1 on direct-select v2: status tint fix, strings, same-input direct command ignored), 'v1.4 tbenr hn11.1' (features/house-numerals/build/flash_house_numerals.bin)",
 }
 
 

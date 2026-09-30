@@ -66,7 +66,7 @@ from uikit import (hi, lo, S, st_imm16, ld16, st16, FONTS, SMALL_MAP, BIG_MAP, B
                    VOL_ENTRY_SITES, VOL_ENTRY_ORIG, vol_entry_bytes, VERSION_PTR_ADDR, VERSION_MAX_LEN)
 
 BASE = "fast-lcd"                   # image this builds on (tools/patch/features.py)
-INCLUDES = ["fix-auto-off"]         # fix features linked into this image
+INCLUDES = ["fix-auto-off", "strings"]   # fix features linked into this image
 BASE_IMAGE = features.image(BASE)
 BASE_SHA = "6d186a817762b8d705f75ffe178089483e4584fc01ebe55884fbb88b114cec7d"
 OUT_IMAGE = os.path.join(HERE, "build", "flash_house_numerals.bin")
@@ -118,7 +118,8 @@ HM_TL = 0x01A6                      # hm_tag: the tag's area starts at this colu
 HN_HF0 = 0x01A7                     # step: HN_HF / HN_VF when the step began (name and status don't share one)
 HN_SLD = 0x01A8                     # hn_stat_load: the status loader runs for the volume page (hn_hold returns)
 HV_DB = 0x01A9                      # volume page: the dB caption, 8 characters and a NUL
-HN_SIG = 0x01B2                     # the status loader's signal check: 1 = signal (hn_signal); tints the status line
+HN_SIG = 0x01B2                     # the status loader's signal check: 1 = signal (hn_signal); tints the status line.
+                                    # Bit 1: the next page-1 draw at y 135 is the loader's text (hn_hold -> hm_status_r)
 SP_P = 0x01B3                       # spring: position along the line, pixels * 64, signed (hi, lo)
 SP_V = 0x01B5                       # spring: velocity, pixels * 64 per tick, signed
 SP_T = 0x01B7                       # spring tick: the target * 64
@@ -365,8 +366,9 @@ HOOKS = [STOCK_SITES[site] + (op, target) for site, op, target in (
     ("format_tag_clear", 0x02, "hm_fmt_clear"),
     ("format_tag_clear_changed", 0x12, "hm_fmt_clear"),
 )]
-HOOKS += [f.HOOK for f in features.fixes(INCLUDES)]    # the fixes linked in
-VERSION_TEXT = "v1.4 tbenr hn11"
+HOOKS += features.hooks(INCLUDES)      # the fixes linked in: their hooks ...
+FIX_PATCHES = features.patches(INCLUDES)   # ... and their in-place patches (strings: "Disconnected")
+VERSION_TEXT = "v1.4 tbenr hn11.1"
 
 
 rect = KIT.rect
@@ -1603,9 +1605,15 @@ mov DPTR,#0x%04X""" % HN_SBUF + """
 mov A,#1
 movx @DPTR,A
 ret                ; 0x3FE3's own return (0x4088 is a tail jump)
+; hh_stock: home_refresh, then the status line as the loader left it: the draw at 0x4084 is marked as
+; the loader's (HN_SIG bit 1), so hm_status_r keeps the tint the signal check decided
 hh_stock:
 lcall 0x5C8B       ; home_refresh
-ljmp 0x4084
+mov DPTR,#0x%04X""" % HN_SIG + """
+movx A,@DPTR
+orl A,#2
+movx @DPTR,A
+ljmp 0x4084        ; mov R7,#0x87 ; mov R6,#0 ; ljmp small_text_render
 
 ; hn_name_guard: home_draw_input_name's entry. A name drawn on page 1 during an exit (Source,
 ; direct-select, input_apply, key_bt_function's home_refresh) would draw over the half-revealed
@@ -1623,14 +1631,12 @@ dec A
 ljmp 0x4A88
 
 ; hn_home_now: stop the wipe, black screen, then home_refresh and the status line from XDATA 0x50
-; as home_refresh_periodic draws them (the text buffers are kept: the status line is the stock one)
+; as home_refresh_periodic draws them (hh_stock; the text buffers are kept: the status line is the
+; stock one, in the tint of the loader's last check)
 hn_home_now:
 lcall hn_stop      ; HN_MODE 0 first, so the name draw inside home_refresh passes the guard
 lcall 0x51EE       ; lcd_clear_black
-lcall 0x5C8B       ; home_refresh
-mov R7,#0x87
-mov R6,#0
-ljmp 0x3A53        ; small_text_render, y 135
+ljmp hh_stock
 
 ; hn_flag_path: home_refresh_periodic's flag path (0x3FF8, taken when 0x21.3, 0x21.1 or 0x20.6 is set,
 ; e.g. after Source: they stay set until this refresh, so across a volume page too). Stock clears the
@@ -2242,7 +2248,7 @@ lcall uk_acc""")
     rect(a, BAR_X, BAR_W, BAR_Y, BAR_H)
     S(a, "ljmp uk_fill")
     for name, back, y, draw in (("hn_align_big", 0x2A28, NAME_Y, "hm_name"),
-                                ("hn_align_small", 0x3A85, uikit.STATUS_Y, "hm_status")):
+                                ("hn_align_small", 0x3A85, uikit.STATUS_Y, "hm_status_r")):
         S(a, """
 ; %s: on page 1, the text at the stock y %d is ours (%s, then return from the stock renderer:
 ; nothing is pushed at this point); other page-1 texts start at x 16 (XDATA 0x04:0x05)
@@ -2280,6 +2286,20 @@ ljmp 0x%04X
     S(a, "; hm_name_meas: TP_END = where hm_name's text ends (nothing drawn)\nhm_name_meas:")
     tp_setup(a, "pf_name", BIG_BUF, 0, HNAME_X, HNAME_Y, WHITE, clip=(0x100, 0), spacing=NAME_SP)
     S(a, "ljmp uk_text")
+    S(a, """
+; hm_status_r: small_text_render's hand-over on page 1 at y 135. The reddish tint belongs to the text
+; the status loader decided with its signal check (HN_SIG 0). Only the periodic refresh's own draw
+; shows that text (hh_stock marks it: HN_SIG bit 1). Every other caller has put its own text into
+; XDATA 0x50 (input_apply's placeholder 0x4C29, the BT key 0x10A1, eq_show 0x396A, 0x532E): grey,
+; HN_SIG 1, until the loader runs again. Falls into hm_status.
+hm_status_r:
+mov DPTR,#0x%04X""" % HN_SIG + """
+movx A,@DPTR
+jb ACC.1,hsr_loader
+mov A,#1
+hsr_loader:
+anl A,#1
+movx @DPTR,A""")
     S(a, "; hm_status: the status line (XDATA 0x50), mono, grey (reddish without a signal, hn_dim_ink), "
          "at x %d, baseline %d\nhm_status:" % (STAT_X, STAT_Y - PF_STATUS.top))
     tp_setup(a, "pf_status", SMALL_BUF, 0, STAT_X, STAT_Y, DIM, spacing=STAT_SP)
@@ -2647,8 +2667,7 @@ def build(a):
 def assemble():
     a = Asm(CODE_ADDR)
     build(a)
-    for f in features.fixes(INCLUDES):
-        f.emit(a)
+    features.emit(a, INCLUDES)
     code = a.resolve()
     return code, a.labels, a
 
@@ -2675,6 +2694,7 @@ def main():
         asserts.append((t, bytes([0x7B, 0xFF, 0x7A, addr >> 8, 0x79, addr & 0xFF]), "name table %d" % inp))
     patches = [(s, VOL_ENTRY_ORIG, lambda labels: vol_entry_bytes(labels["hn_enter_vol"]),
                 "lcall hn_enter_vol ; sjmp 0x%04X" % (s + len(VOL_ENTRY_ORIG))) for s in VOL_ENTRY_SITES]
+    patches += FIX_PATCHES
     uikit.build_image(base_path=sys.argv[1] if len(sys.argv) > 1 else BASE_IMAGE, base_sha=BASE_SHA,
                       code_addr=CODE_ADDR, assemble=assemble, hooks=HOOKS, patches=patches, asserts=asserts,
                       version_text=VERSION_TEXT, out_image=OUT_IMAGE, out_listing=OUT_LISTING,

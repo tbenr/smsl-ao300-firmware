@@ -1,12 +1,25 @@
 # House Numerals
 
 A reduced build of study 3 ("House Numerals", after SMSL's SU and DO series screens) from
-`features/ui-theme/ui_themes.html`. Built on top of fast-lcd, with fix-auto-off included. The RESET page shows
-`v1.4 tbenr hn11`.
+`features/ui-theme/ui_themes.html`. Built on top of fast-lcd, with fix-auto-off and strings included. The RESET page shows
+`v1.4 tbenr hn11.1`.
 
-This is image hn11 (sha256 `6050a846…`): hn10 rebuilt on direct-select v2, which ignores a direct
-command for the input already selected. Nothing in this layer changed. hn10 (`45c22bf1…`) is hn9
-with the mock's easing on both wipes:
+This is image hn11.1 (sha256 `3aa0f2d6…`): hn10.1 rebuilt on direct-select v2, which ignores a
+direct command for the input already selected (hn11, `6050a846…`, was hn10 on the same base).
+Nothing in this layer changed. hn10.1 (`89a6ed99…`) is hn10 with one fix and one more fix linked in:
+- **The status line's tint after an input change.** Seen on the amp with hn8: after Source from
+  an input without a signal, the next input's status showed reddish too, until a refresh turned
+  it grey. `input_apply` (0x5640) draws the new input's placeholder ("Digital input",
+  "initializing", "Analog input") through 0x4BC9 at once, but the periodic refresh, whose status
+  loader makes the signal check, comes 2 to 3 s after an input change. Until then the
+  placeholder was drawn in the tint of the previous input's check. The tint now belongs to the
+  loader's own text: only the refresh's draw after the loader keeps it, and every other status
+  draw on the home (the placeholder, the BT key's "BT Reconnect", the EQ key's description) is
+  grey. See "Colours" under "The home screen".
+- **`features/strings` included.** The stock "No Connected" of HDMI ARC without a link is
+  "Disconnected", patched in place in the stock string table (13 bytes at 0x91ED, no code).
+
+hn10 (`v1.4 tbenr hn10`, sha256 `45c22bf1…`) is hn9 with the mock's easing on both wipes:
 - **Cubic ease, 32 ticks each way.** The edge follows the mock's
   `ease = t < .5 ? 4t³ : 1 − (−2t + 2)³ / 2`: x = round(318 (1 − ease(k / 32))) on the way in,
   318 − x on the way out, one table for both (hn9: a cosine ease over 20 ticks). 32 ticks is the
@@ -91,9 +104,15 @@ Earlier images:
 
 ## Status
 
-hn11: emulator-verified (all tests pass, including "direct-select in house-numerals" and
-"fix-auto-off in house-numerals"). Tried on the amp on 2026-09-30: works, a direct command
-for the current input no longer interrupts the audio.
+hn11.1: emulator-verified (all tests pass, including "direct-select in house-numerals",
+"fix-auto-off in house-numerals" and "strings in house-numerals"). Not yet tried on the amp.
+
+hn11 (`6050a846…`, hn10 on direct-select v2, without hn10.1's fixes): emulator-verified. Tried on
+the amp on 2026-09-30: works, a direct command for the current input no longer interrupts the
+audio.
+
+hn10.1: emulator-verified (all tests pass, including "fix-auto-off in house-numerals" and
+"strings in house-numerals"). Tried on the amp on 2026-09-30: works.
 
 hn10: emulator-verified (all tests pass, including "fix-auto-off in house-numerals"). Tried on
 the amp on 2026-09-30: looks good.
@@ -102,9 +121,9 @@ hn9: emulator-verified (all tests pass, including "fix-auto-off in house-numeral
 the amp on 2026-09-30, before hn10: good.
 
 hn8: emulator-verified (all tests pass, including "fix-auto-off in house-numerals"). Tried on
-the amp on 2026-09-30: works. One thing to look into (see `TODO.md`): after a Source change
+the amp on 2026-09-30: works. One thing seen: after a Source change
 from an input whose status was reddish ("No Connected"), the next input's status shows reddish
-too for a while, until a refresh turns it grey.
+too for a while, until a refresh turns it grey. Reproduced in the emulator and fixed in hn10.1.
 
 hn7: emulator-verified (all tests pass, including "fix-auto-off in house-numerals"). Tried on
 the amp on 2026-09-29: looks good, and with Dimmer on Auto OFF the display goes dark after a cold
@@ -198,6 +217,15 @@ EQ key and the rest all call these painters in their own order, so they all draw
   XDATA `HN_SIG` next to the text it decides (RAM 0x22.5, which `signal_check` sets, is reused
   by `volume_apply` 0x58D3 for the mute state, so it cannot be read back at draw time). The
   analogue inputs (6, 8) show "Analog input" either way and stay grey.
+  The tint belongs to the text the loader decided. The refresh's own draw (`hn_hold`'s stock
+  path at 0x4081, after the loader) marks itself in bit 1 of `HN_SIG`, and the hand-over from
+  `small_text_render` (`hm_status_r`) keeps the tint only for a marked draw. Every other page-1
+  draw at y 135 has put its own text into XDATA 0x50 (`input_apply`'s placeholder through
+  0x4BC9, the BT key's "BT Reconnect" at 0x10A1, `eq_show`'s description at 0x396A, 0x532E):
+  it is grey, and `HN_SIG` becomes 1 until the loader runs again. The exit wipe, `hn_home_now`
+  and the volume page draw the loader's text with its tint as before. Up to hn10 every draw
+  used the last check's result, so after an input change from an input without a signal the
+  placeholder stayed reddish for the 2 to 3 s until the refresh (seen on the amp with hn8).
 - **Speed.** A whole home (home_refresh and the status line) takes 12.4 ms; the stock refresh
   took about 45 ms. The main loop now loses fewer ticks at the refreshes after power-on, so
   the first unmute comes 0.12 to 0.18 s earlier than on fast-lcd (see "Per input").
@@ -481,8 +509,8 @@ in `build_patch.py`, `V*`). Everything is drawn with `uk_text`; the kit's stock-
   the stock loader at 0x4016 (signal check, then the input's string or its sample rate). That
   code runs on into the `lcall home_refresh` at 0x4081, which is `hn_hold`: with `HN_SLD` set
   it clears the flag and returns to `hn_stat_load`'s caller instead. The text is exactly what
-  the home shows (tested against the base image's loader for every input, with and without a
-  signal). The page shows the status as of when it was drawn; the stock shows nothing there.
+  the home shows (tested against the base image's loader, with strings' texts, for every input, with and
+  without a signal). The page shows the status as of when it was drawn; the stock shows nothing there.
 - **Number.** `hv_num` is `hn_num_at` with the new text, no offset, in white: it draws the
   number right-aligned to end at x 304 (`uk_textc`, which leaves the number's first column in
   `TP_X`), clipped to the roll box 156..304 x 42..119, then fills black the rest of the box:
@@ -662,13 +690,16 @@ places the volume keys open the volume page (hn9 adds none). Every stock byte is
 | 0x4A85 | `E5 47 14` (`home_draw_input_name`) | ljmp `hn_name_guard` | a name drawn during an exit: the whole home first, then the name |
 | 0x3FF8 | `C2 0B C2` (`clr 0x21.3; clr 0x20.6`) | ljmp `hn_flag_path` | the refresh's flag path during a wipe: flags and page as stock, the 0x412F fill skipped |
 | 0x55B9 | `02 5D 42` ljmp `ui_clear_screen` | ljmp `fx_auto_off` | fix-auto-off (`INCLUDES`) |
+| 0x91ED | `"No Connected\0"` | `"Disconnected\0"` | strings (`INCLUDES`): an in-place patch, not a hook |
 | 0x0D33, 0x0DB3, 0x0E5A, 0x0F02 | `12 5D 42 7B FF …` | `12 DE 54 80 11` (lcall `hn_enter_vol` ; sjmp site+0x16) | volume-key entry sites A-D |
 
 ## Memory
 
-- **Code:** 22337 bytes at 0x9800..0xEF40 (15271 of them fonts, fix-auto-off's 14 at the
-  end), plus the version string at 0xEF41. Image length 61265 bytes; 1199 bytes are left under
-  the 0xF400 split (hn9: 1231, hn8: 2220). hn10 added 32 bytes: the ease table's 12 more words
+- **Code:** 22349 bytes at 0x9800..0xEF4C (15271 of them fonts, fix-auto-off's 14 at the
+  end), plus the version string at 0xEF4D. Image length 61279 bytes; 1185 bytes are left under
+  the 0xF400 split (hn10: 1199, hn9: 1231, hn8: 2220). hn10.1 added 12 bytes of code (the mark in
+  `hn_hold`, `hm_status_r`, less `hn_home_now`'s own status draw) and 2 of version string.
+  hn10 added 32 bytes: the ease table's 12 more words
   and the still-step test in `hn_step`. hn9 added 989 bytes: the kit's row clip (`uk_textc`, the
   row-clipped decoder `tx_yclip`, format 2 only here: about 190), the roll (about 250 with its
   39-byte frame table), the spring (about 480 with its multiply and constants), less hn8's
@@ -704,7 +735,7 @@ places the volume keys open the volume page (hn9 adds none). Every stock byte is
 | 0x01A7 | `HN_HF0` | a step's `HN_HF` / `HN_VF` at its start (the name and the status line don't share a step) |
 | 0x01A8 | `HN_SLD` | `hn_stat_load` is running the status loader: `hn_hold` returns |
 | 0x01A9..0x01B1 | `HV_DB` | the dB caption, 8 characters and a NUL |
-| 0x01B2 | `HN_SIG` | the status loader's signal check: 1 = signal (`hn_signal`) |
+| 0x01B2 | `HN_SIG` | the status loader's signal check: 1 = signal (`hn_signal`), or 1 after a status draw that was not the loader's; bit 1: the next page-1 status draw is the loader's (`hn_hold`, cleared by `hm_status_r`) |
 | 0x01B3, 0x01B5 | `SP_P`, `SP_V` | the spring: position (pixels × 64) and velocity (pixels × 64 per tick), signed |
 | 0x01B7, 0x01B9, 0x01BB | `SP_T`, `SP_E`, `SP_W` | a spring tick's target × 64, error, first product |
 | 0x01BD | `HR_F` | the roll's next frame 1..14, 0 idle |
@@ -722,8 +753,15 @@ places the volume keys open the volume page (hn9 adds none). Every stock byte is
 house-numerals 137 s, most of it the sweep). `emu_test.py` has four groups: `unit`, `tour`,
 `int1`, `sweep`; `unit tour` alone runs in about a minute.
 
-- **Image diff:** only the fifteen hook sites (plus the version pointer) differ from
-  fast-lcd inside the base image. The labels in `SmslAo300Labels.java` match this build.
+- **Status tint** (hn10.1). Unit: the refresh's draw keeps the loader's tint (three no-signal texts
+  reddish, a sample rate grey); four draws at y 135 that are not the loader's, after a no-signal
+  check, are grey and stay grey when redrawn. Whole firmware, six cases (Source, direct-select BT
+  and AUX from USB without a signal, with and without an optical lock; Source and the BT key from
+  Bluetooth searching): the status before the key is reddish, the text 0.3 s after the key is grey,
+  and once the loader has run it is reddish exactly when the new input has no signal. Against
+  hn10 five of the six 0.3 s checks fail (reddish), as seen on the amp; AUX is grey either way.
+- **Image diff:** only the fifteen hook sites and strings' patch at 0x91ED (plus the version
+  pointer) differ from fast-lcd inside the base image. The labels in `SmslAo300Labels.java` match this build.
 - **Home screen, against `home_model`.** The model is written in Python, independent of the
   8051 code. It reads the state (input, output, mute bit, volumes, EQ, format, the two text
   buffers) and draws with `PFont.render`, which the kit test proves pixel-identical to
@@ -890,6 +928,11 @@ house-numerals 137 s, most of it the sweep). `emu_test.py` has four groups: `uni
   `read_key`'s Source-in-standby jump to the bootloader (0x3DB8) are untouched.
 
 ## What to look for on the amp
+
+hn10.1, the status tint: on an input without a signal (status reddish), press Source or a direct
+input key. The next input's first status text ("Digital input", "initializing") is grey at once.
+It turns reddish 2 to 3 s later only if that input has no signal either. The BT key's
+"BT Reconnect" and the EQ key's description are grey too.
 
 hn9, the animations:
 - Vol+/Vol- on the open page: the old number slides out (up on Vol+, down on Vol-) and the new
