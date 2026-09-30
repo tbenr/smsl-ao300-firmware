@@ -65,7 +65,7 @@ features/
                                   stock; emulator-verified, see its README
     build_patch.py, emu_test.py   build build/flash_fastlcd.bin, lockstep UI tour vs stock
   house-numerals/                 House Numerals home and volume page, on top of fast-lcd,
-                                  built with tools/patch/uikit.py; hn10 to hn11.1 tried on the amp
+                                  built with tools/patch/uikit.py; hn10 to hn12 tried on the amp
                                   on 2026-09-30; see its README
     build_patch.py, emu_test.py   build build/flash_house_numerals.bin (hn10: the mock's home
                                    and volume page in its own typefaces, non-blocking wipes
@@ -317,7 +317,7 @@ works; the standalone ds2, fast2, aof2 and str2 images have not been flashed.
 Flattened graph, 2026-09-30: direct-select became a fix on stock (its standalone image is
 byte-identical to ds2), fast-lcd, fix-auto-off and strings moved onto stock (`fast3`,
 `aof3`, `str3`), and house-numerals includes direct-select (`hn12`, hn11.1 with the same
-code at other addresses). All emulator-verified; hn12 has not been flashed yet.
+code at other addresses). All emulator-verified; hn12 was flashed on 2026-09-30 and works.
 
 ## What the custom firmware adds
 

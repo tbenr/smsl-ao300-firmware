@@ -20,8 +20,8 @@ does. `build_patch.py` builds the standalone image, stock plus the fix, with the
 
 - Verified on the amp on 2026-09-28: the standalone image (then `v1.4 tbenr`, the first custom
   image). All six commands select the right input; the stock remote works unchanged.
-- ds2 (the same-input ignore) verified on the amp on 2026-09-30 inside house-numerals hn11 and
-  hn11.1. The standalone ds2 image (sha `9b7e8b93…`) has not been flashed; it is byte-identical
+- ds2 (the same-input ignore) verified on the amp on 2026-09-30 inside house-numerals hn11,
+  hn11.1 and hn12 (the fix linked in through INCLUDES). The standalone ds2 image (sha `9b7e8b93…`) has not been flashed; it is byte-identical
   whether built by the old direct build or by the kit (checked on 2026-09-30).
 
 ## Tests

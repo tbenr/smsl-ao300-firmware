@@ -107,7 +107,8 @@ Earlier images:
 ## Status
 
 hn12: emulator-verified (all tests pass, including "direct-select in house-numerals",
-"fix-auto-off in house-numerals" and "strings in house-numerals"). Not yet flashed.
+"fix-auto-off in house-numerals" and "strings in house-numerals"). Flashed on the amp on
+2026-09-30: works.
 
 hn11.1: emulator-verified (all tests pass, including "direct-select in house-numerals",
 "fix-auto-off in house-numerals" and "strings in house-numerals"). Flashed on the amp on
