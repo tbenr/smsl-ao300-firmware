@@ -105,7 +105,8 @@ Earlier images:
 ## Status
 
 hn11.1: emulator-verified (all tests pass, including "direct-select in house-numerals",
-"fix-auto-off in house-numerals" and "strings in house-numerals"). Not yet tried on the amp.
+"fix-auto-off in house-numerals" and "strings in house-numerals"). Flashed on the amp on
+2026-09-30: works.
 
 hn11 (`6050a846…`, hn10 on direct-select v2, without hn10.1's fixes): emulator-verified. Tried on
 the amp on 2026-09-30: works, a direct command for the current input no longer interrupts the

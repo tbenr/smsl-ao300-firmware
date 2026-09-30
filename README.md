@@ -62,8 +62,8 @@ features/
                                   direct-select; emulator-verified, see its README
     build_patch.py, emu_test.py   build build/flash_fastlcd.bin, lockstep UI tour vs stock
   house-numerals/                 House Numerals home and volume page, on top of fast-lcd,
-                                  built with tools/patch/uikit.py; hn10, hn10.1 and hn11 tried on
-                                  the amp on 2026-09-30; see its README
+                                  built with tools/patch/uikit.py; hn10 to hn11.1 tried on the amp
+                                  on 2026-09-30; see its README
     build_patch.py, emu_test.py   build build/flash_house_numerals.bin (hn10: the mock's home
                                    and volume page in its own typefaces, non-blocking wipes
                                    with the mock's cubic ease, the number roll and the line's spring), home and
@@ -300,8 +300,8 @@ fix) has not been flashed.
 Verified on the amp on 2026-09-30, as hn11: direct-select v2 (`v1.4 tbenr ds2`), which
 ignores a direct command for the input already selected instead of re-initialising it.
 Every image was rebuilt on it that day (`fast2`, `aof2`, `str2`, `hn11`, then `hn11.1` once
-hn10.1's fixes were merged in), all emulator-verified; hn11.1 and the standalone ds2, fast2,
-aof2 and str2 images have not been flashed.
+hn10.1's fixes were merged in), all emulator-verified. hn11.1 was flashed on 2026-09-30 and
+works; the standalone ds2, fast2, aof2 and str2 images have not been flashed.
 
 ## What the custom firmware adds
 
