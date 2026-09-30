@@ -72,6 +72,7 @@ KNOWN_IMAGES = {
     "f9b5d14d39a2437e5a7b92089101eb9c71e166df5fb37960abb370ebf420eb01": "direct-select + Auto OFF armed after power-on (AO300 PRO V1.2 fix), 'v1.4 tbenr aof1' (features/fix-auto-off/build/flash_fixautooff.bin)",
     "122a963c35cf4d64e01e8534b301e4d86e2d1b74a336e24e15a9e19b18bcebcd": "fast-lcd + House Numerals v8 (hn7 with the mock's volume page: name, status, VOL, 84-px number, 288-px line, dB caption, max 60; rounded tag corners; reddish status without a signal), 'v1.4 tbenr hn8' (features/house-numerals/build/flash_house_numerals.bin)",
     "b45331a8b812ed583daa6d914c905ad147b9713552c5da09ab03f67001b69916": "fast-lcd + House Numerals v9 (hn8 with the volume page's number roll and the spring on the position line; uk_text row clip, tick driver serves the re-mute request itself), 'v1.4 tbenr hn9' (features/house-numerals/build/flash_house_numerals.bin)",
+    "45c22bf1faf01ccd3e103da0f90094cb791d5e691750d73fbbdb4f6f5b176a46": "fast-lcd + House Numerals v10 (hn9 with the mock's cubic ease on both wipes, 32 ticks each way), 'v1.4 tbenr hn10' (features/house-numerals/build/flash_house_numerals.bin)",
 }
 
 

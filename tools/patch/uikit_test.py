@@ -378,6 +378,21 @@ def test_text_rows():
     check("row-clipped run-length glyphs at most 24 clocks per drawn pixel", t1 / n1 <= 24, "(%.1f)" % (t1 / n1))
 
 
+def test_ease():
+    print("\nease_cubic_in_out: the mock's cubic ease as positions")
+    bad = []
+    for n in (16, 20, 26, 32, 40):
+        e = uikit.ease_cubic_in_out(n, 318)
+        if not (e[0] == 318 and e[-1] == 0 and all(e[k] >= e[k + 1] for k in range(n)) and
+                all(e[k] + e[n - k] == 318 for k in range(n + 1))):
+            bad.append(n)
+    check("16, 20, 26, 32, 40 steps: 318 -> 0, never backwards, symmetric (step k and n - k sum to 318)", not bad,
+          str(bad))
+    check("ease_cubic: 4t^3 below 0.5, 1 - (2 - 2t)^3 / 2 above, ease(1 - t) = 1 - ease(t)",
+          uikit.ease_cubic(0.25) == 0.0625 and uikit.ease_cubic(0.75) == 0.9375 and
+          all(abs(uikit.ease_cubic(1 - t / 64) - (1 - uikit.ease_cubic(t / 64))) < 1e-12 for t in range(65)))
+
+
 def main():
     print("uikit: %d bytes of kit code and test fonts at 0x%04X, XDATA 0x%04X..0x%04X, uk_text 0x%04X..0x%04X" %
           (len(IMG) - CODE_ADDR, CODE_ADDR, KIT.fill_n, KIT.FP + KIT.FP_SIZE - 1, TP_BASE, TP_BASE + KIT.TP_SIZE - 1))
@@ -391,6 +406,7 @@ def main():
     test_text_strings()
     test_text_clip_and_speed()
     test_text_rows()
+    test_ease()
     print("\nALL PASS" if not fails else "\nFAILURES: %s" % fails)
     sys.exit(1 if fails else 0)
 

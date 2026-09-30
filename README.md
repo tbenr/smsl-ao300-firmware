@@ -62,11 +62,11 @@ features/
                                   direct-select; emulator-verified, see its README
     build_patch.py, emu_test.py   build build/flash_fastlcd.bin, lockstep UI tour vs stock
   house-numerals/                 House Numerals home and volume page, on top of fast-lcd,
-                                  built with tools/patch/uikit.py; hn8 tried on the amp
-                                  on 2026-09-30, hn9 emulator-verified; see its README
-    build_patch.py, emu_test.py   build build/flash_house_numerals.bin (hn9: the mock's home
-                                   and volume page in its own typefaces, non-blocking eased
-                                   wipes, the number roll and the line's spring), home and
+                                  built with tools/patch/uikit.py; hn10 tried on the amp
+                                  on 2026-09-30; see its README
+    build_patch.py, emu_test.py   build build/flash_house_numerals.bin (hn10: the mock's home
+                                   and volume page in its own typefaces, non-blocking wipes
+                                   with the mock's cubic ease, the number roll and the line's spring), home and
                                    page models, lockstep UI tour, keys during wipes and on the
                                    page, INT1 sweep, 256-command sweep vs fast-lcd
     layout.json, sizing.html      the home layout the build reads, and the page that edits it
@@ -178,7 +178,7 @@ INCLUDES (a fix linked into that image):
 stock                         85e8ac50…
 └── direct-select             'v1.4 tbenr'        0x9400..0x9442  bb468b29… known
     ├── fast-lcd              'v1.4 tbenr fast'   0x9700..0x977B  b292a648… known
-    │   └── house-numerals    'v1.4 tbenr hn9'    0x9800..0xEF30  b45331a8… known
+    │   └── house-numerals    'v1.4 tbenr hn10'   0x9800..0xEF50  45c22bf1… known
     │         + fix-auto-off  fix linked into house-numerals
     └── fix-auto-off          'v1.4 tbenr aof1'   0x9680..0x969D  f9b5d14d… known  [fix, hook 0x55B9; included by house-numerals]
 ```
@@ -279,7 +279,8 @@ the amp on 2026-09-29: it looks good, and Auto OFF times out after a cold power-
 without a signal; tried on the amp on 2026-09-30, works (an open question on the reddish
 status after a Source change is in `features/house-numerals/TODO.md`). hn9 (`v1.4 tbenr hn9`)
 adds the volume page's two animations from the mock, the number roll and the spring on the
-position line; emulator-verified, not yet tried on the amp.
+position line; hn10 (`v1.4 tbenr hn10`) gives both wipes the mock's cubic ease, 0.32 s each
+way. hn10 was tried on the amp on 2026-09-30: looks good.
 
 Verified on the amp on 2026-09-29, as part of hn7: the Auto OFF fix (`features/fix-auto-off`). With
 Dimmer on Auto OFF the display goes dark after a cold power-up. Its standalone image
@@ -344,7 +345,10 @@ The parts every theme needs live in `tools/patch/uikit.py`, extracted from house
 - **Stock facts:** the stock routines, buffers and variables themes use, and a catalogue of
   hook sites with their original bytes (`STOCK_SITES`, and `VOL_ENTRY_SITES`, where the
   volume keys open page 2).
-- **Helpers:** `ease_in_out()`, `rgb565()`, and assembly written as text lines (`S`).
+- **Helpers:** `ease_in_out()` (cosine), `ease_cubic()` / `ease_cubic_in_out()` (the UI mock's
+  cubic ease, `ui_themes.html`'s `ease`, as a table of positions; it barely moves at both ends,
+  so consecutive positions can be equal or 1 apart), `rgb565()`, and assembly written as text
+  lines (`S`).
 - **`build_image()`:** the common build, from the base sha check through to the listing.
 
 `tools/patch/uikit_test.py` tests the kit on its own. It builds fast-lcd plus the kit and
@@ -530,7 +534,7 @@ Measured from the images; the code/EEPROM split is the chip's own setting (0xF40
 
 | Region | Size | Used | Free |
 |---|---|---|---|
-| Code flash, 0x0000..0xF3FF | 62464 bytes | 61233 bytes (features/house-numerals hn9) | ~1.2 KB |
+| Code flash, 0x0000..0xF3FF | 62464 bytes | 61265 bytes (features/house-numerals hn10) | ~1.2 KB |
 | EEPROM area, 0xF400..0xFDFF | 2560 bytes, 5 sectors of 512 | sectors at offsets 0x0000, 0x0200, 0x0400 | 2 sectors, 1 KB |
 | Internal direct RAM, 0x00..0x7F | 128 bytes | all (registers, bit flags, variables up to 0x7F) | none |
 | Internal indirect RAM, 0x80..0xFF | 128 bytes | stack from 0x88 (`mov SP,#0x88` at 0x44A5) | stack headroom only |

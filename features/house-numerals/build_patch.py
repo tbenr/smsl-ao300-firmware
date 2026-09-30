@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the "House Numerals" image for the SMSL AO300 (on top of fast-lcd), hn9.
+"""Build the "House Numerals" image for the SMSL AO300 (on top of fast-lcd), hn10.
 
 A reduced build of study 3 in features/ui-theme/ui_themes.html:
 
@@ -23,8 +23,8 @@ A reduced build of study 3 in features/ui-theme/ui_themes.html:
             slides out, the new one in, one number a frame in the mock's grey, in a clip box,
             uk_textc) and changes the target of the line's spring (the mock's k 200, c 28, as a
             fixed-point matrix per tick), which redraws only the columns it moved.
-  wipes     a 2-px accent edge sweeps across the screen with an ease-in-out, 20 steps of
-            one 10 ms main-loop tick each: right to left into the volume page, left to
+  wipes     a 2-px accent edge sweeps across the screen with the mock's cubic ease, STEPS (32)
+            steps of one 10 ms main-loop tick each: right to left into the volume page, left to
             right back home. Nothing blocks: the main loop's tick path (main_tasks_on's
             lcall main_tick_tasks, 0x5B2A) runs one step after each tick it handles. Each
             step fills the band the edge swept with black, draws the edge and draws every
@@ -333,13 +333,16 @@ HOME_ELEMENTS = [(HF_ICON, "hh_icon", ICON_X, ICON_END), (HF_VOL, "hh_vol", HVOL
                  (HF_FMT, "hh_fmt", FMT_LEFT, FMT_RIGHT - 1), (HF_EQ, "hh_eq", EQ_X, EQ_RIGHT - 1),
                  (HF_STAT, "hh_stat", 0, HN_STATR)]
 
-STEPS = 20
+STEPS = 32                          # ticks per wipe, both ways (the mock's entry: 0.32 s)
 EDGE_MAX = 318
-# ease-in-out: edge x for entry step k (318 -> 0); the exit uses 318 - EASE[k]. Symmetric, so a
-# reversal maps step k to 20 - k at the same x.
-EASE = uikit.ease_in_out(STEPS, EDGE_MAX)
+# the mock's cubic ease: edge x for entry step k (318 -> 0); the exit uses 318 - EASE[k]. Symmetric,
+# so a reversal maps step k to STEPS - k at the same x. At both ends steps move the edge by 0 or
+# 1 px: a step whose x is the previous x draws nothing (hn_step), so no band is ever 0 wide.
+EASE = uikit.ease_cubic_in_out(STEPS, EDGE_MAX)
+assert EASE[0] == EDGE_MAX and EASE[STEPS] == 0
 assert all(EASE[k] + EASE[STEPS - k] == EDGE_MAX for k in range(STEPS + 1))
-assert all(EASE[k] - EASE[k + 1] >= 2 for k in range(STEPS))
+assert all(0 <= EASE[k] - EASE[k + 1] <= 253 for k in range(STEPS))    # bands of 0..253 (+ 2) columns
+assert STEPS * 2 + 1 < 256                  # hn_step indexes the table with a byte
 
 # (address, original bytes, new opcode, target label); the new bytes are opcode + target
 HOOKS = [STOCK_SITES[site] + (op, target) for site, op, target in (
@@ -363,7 +366,7 @@ HOOKS = [STOCK_SITES[site] + (op, target) for site, op, target in (
     ("format_tag_clear_changed", 0x12, "hm_fmt_clear"),
 )]
 HOOKS += [f.HOOK for f in features.fixes(INCLUDES)]    # the fixes linked in
-VERSION_TEXT = "v1.4 tbenr hn9"
+VERSION_TEXT = "v1.4 tbenr hn10"
 
 
 rect = KIT.rect
@@ -399,7 +402,7 @@ def build_data(a):
     for inp in range(1, 9):
         v = tab.get(inp, 0)
         a.data("dw 0x%04X          ; input %d" % (v, inp), [v >> 8, v & 0xFF])
-    a.comment("ease-in-out edge positions for the entry, steps 0..20 (the exit uses 318 - x)")
+    a.comment("cubic-ease edge positions for the entry, steps 0..%d (the exit uses 318 - x)" % STEPS)
     a.L("ease")
     for k, v in enumerate(EASE):
         a.data("dw %d              ; step %d" % (v, k), [v >> 8, v & 0xFF])
@@ -1474,8 +1477,8 @@ he_done:
 lcall 0x5CBC       ; ui_clear_small_buf, as ui_clear_screen
 ljmp 0x5CCB        ; ui_clear_big_buf
 
-; hn_reverse: step = 20 - step (the ease table is symmetric, so x stays); A = new step, and at 20
-; (the running wipe had drawn nothing) the wipe stops: mode 0. The status line counts as not drawn:
+; hn_reverse: step = STEPS - step (the ease table is symmetric, so x stays); A = new step, and at
+; STEPS (the running wipe had not stepped) the wipe stops: mode 0. The status line counts as not drawn:
 ; an exit clears its buffer, so an entry turned round from one loads and draws it again.
 hn_reverse:
 mov DPTR,#0x%04X""" % HN_VF + """
@@ -1786,6 +1789,12 @@ mov R2,#0x01
 mov R3,#0x40
 sjmp hs_set
 hs_mid:
+; a step that does not move the edge (the cubic's ends: x = previous x) draws and reveals nothing
+mov A,R5
+xrl A,R3
+jnz hs_moves       ; (x and previous x differ by less than 256)
+ljmp hs_end
+hs_moves:
 cjne R7,#1,hs_midx
 ; entry: band x + 2 .. xp + 1, damage from x, limit x + 2
 lcall hs_x2

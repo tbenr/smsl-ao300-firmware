@@ -1,8 +1,8 @@
 # House Numerals: what is left
 
-State as of hn9 (`v1.4 tbenr hn9`: hn8, tried on the amp on 2026-09-30, plus the number roll and
-the spring on the line, emulator-verified only). The reference is study 3 in
-`features/ui-theme/ui_themes.html`.
+State as of hn10 (`v1.4 tbenr hn10`: hn8 plus the number roll and the spring on the line (hn9)
+and the mock's cubic ease on the wipes (hn10); tried on the amp on 2026-09-30, looks good). The
+reference is study 3 in `features/ui-theme/ui_themes.html`.
 
 ## To investigate: reddish status after a Source change
 
@@ -46,14 +46,17 @@ Volume page:
   target (the float one never quite does); settles in at most 0.63 s.
 - **Sizing.** `sizing.html` covers the home only; the volume page's positions are constants
   in `build_patch.py` (`V*`). A second tab with the same save path (`layout.json`,
-  `"volume"`) would let the sizes be picked by eye. Flash is tight: 1231 bytes left.
+  `"volume"`) would let the sizes be picked by eye. Flash is tight: 1199 bytes left.
 - **MUTE state** (red speaker, "MUTE" at 64 px, dark-red line): unreachable in this firmware
   (the mute key goes home, the volume keys unmute first). Only worth doing if a muted volume
   page is wanted on purpose.
 
 Wipes:
-- **Timing.** The mock's edge wipe takes 0.32 s in and 0.42 s out with a cubic ease; ours is
-  20 ticks (about 200 ms) each way with a cosine ease, chosen on the amp.
+- **Timing.** hn10 uses the mock's cubic ease, 0.32 s (32 ticks) each way. The mock's exit takes
+  0.42 s; ours keeps one length both ways so a reversal maps step k to 32 − k at the same x. A
+  longer exit would need its own table and a reversal that looks up the x. The length is
+  `STEPS` in `build_patch.py` (measured: 26 steps fit the 8 ms budget, 20 do not without splitting
+  the number's reveal step).
 - **Column reveal.** The mock reveals the new page column by column at the edge; ours draws
   an element once the edge has fully passed it. The painter could draw the columns inside
   the band (as the position line already is), at the cost of a text draw per step.

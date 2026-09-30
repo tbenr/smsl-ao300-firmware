@@ -2,9 +2,24 @@
 
 A reduced build of study 3 ("House Numerals", after SMSL's SU and DO series screens) from
 `features/ui-theme/ui_themes.html`. Built on top of fast-lcd, with fix-auto-off included. The RESET page shows
-`v1.4 tbenr hn9`.
+`v1.4 tbenr hn10`.
 
-This is image hn9 (sha256 `b45331a8…`). It is hn8 with the volume page's two animations from
+This is image hn10 (sha256 `45c22bf1…`). It is hn9 with the mock's easing on both wipes:
+- **Cubic ease, 32 ticks each way.** The edge follows the mock's
+  `ease = t < .5 ? 4t³ : 1 − (−2t + 2)³ / 2`: x = round(318 (1 − ease(k / 32))) on the way in,
+  318 − x on the way out, one table for both (hn9: a cosine ease over 20 ticks). 32 ticks is the
+  mock's 0.32 s entry; its exit takes 0.42 s, but one length both ways keeps the reversal (step
+  k → 32 − k at the same x). The length is one constant, `STEPS` in `build_patch.py`; tables,
+  code, tests derive from it. The generator is the kit's `ease_cubic_in_out`.
+- **Steps that do not move.** The cubic barely moves at its ends: at 32 steps, 4 steps move the
+  edge 0 px and 4 move it 1 px. A step whose x equals the previous x now draws and reveals
+  nothing (it only counts); so the edge first appears with the first step that moves it (entry
+  step 3, x 317; exit step 3, x 1), and no band is ever 0 columns wide. 1-px steps keep a whole
+  2-px edge (the new edge first, then the one old column).
+- Not in this build (as hn9): the mock's 0.42 s exit, the MUTE state of the volume page, a
+  dB ↔ steps switch, sizing for the volume page, per-column reveal.
+
+hn9 (`v1.4 tbenr hn9`, sha256 `b45331a8…`) is hn8 with the volume page's two animations from
 the mock:
 - **Number roll.** On the open page a volume step rolls the number: the old one slides out and
   fades, the new one slides in from the other side, 14 frames over 0.14 s (the mock's `this.k`,
@@ -74,8 +89,12 @@ Earlier images:
 
 ## Status
 
-hn9: emulator-verified (all tests pass, including "fix-auto-off in house-numerals"). Not yet
-tried on the amp.
+hn10: emulator-verified (all tests pass, including "fix-auto-off in house-numerals"). Tried on
+the amp on 2026-09-30: looks good (the cubic wipes, and with them hn9's number roll and spring
+on the line).
+
+hn9: emulator-verified (all tests pass, including "fix-auto-off in house-numerals"). Not
+flashed by itself; its animations were tried on the amp as part of hn10.
 
 hn8: emulator-verified (all tests pass, including "fix-auto-off in house-numerals"). Tried on
 the amp on 2026-09-30: works. One thing to look into (see `TODO.md`): after a Source change
@@ -121,7 +140,7 @@ is still to come.
 | Volume page: dB caption | Plex Mono 16 px, grey, at x 16, baseline 160: the level below step 60 from the NJW1194 code table, "−39.5 dB" (8 cells; "−∞ dB" at step 0) |
 | Volume page: max | "max 60", Plex Mono 16 px, #4d5257, ending at x 304, baseline 160 |
 | (hn7) | volume page: name in the stock small font at 16,30, divider 1 x 104 at 140,14, "VOL" small font at 158,14, stock big digits at 2x at 184,42, line 240 x 3 at 40,136 |
-| Wipe in | 2-px accent edge from x 318 to 0 over 20 ticks (about 200 ms), ease-in-out; black behind it; each element appears once the edge has passed it |
+| Wipe in | 2-px accent edge from x 318 to 0 over 32 ticks (0.32 s), the mock's cubic ease-in-out; black behind it; each element appears once the edge has passed it |
 | Wipe out | the same from x 0 to 318; the home elements appear once the edge has passed them |
 | Accent | theme colour (RAM 0x48:0x49); SMSL orange 0xFC43 when the theme is White (0xFFFF) |
 
@@ -252,15 +271,19 @@ by one tick.
 
 ### A step (`hn_step`)
 
-State lives in XDATA: mode (0 idle, 1 in, 2 out), step 0..20, edge x. `ease` holds 21 edge
-positions for the way in: `round(318 (1 + cos(pi k / 20)) / 2)`, that is 318 316 310 301 288
-271 252 231 208 184 159 134 110 87 66 47 30 17 8 2 0. The way out uses 318 - x. The table is
-symmetric, so turning a wipe round maps step k to 20 - k at the same x.
+State lives in XDATA: mode (0 idle, 1 in, 2 out), step 0..STEPS (32), edge x. `ease` holds 33
+edge positions for the way in, `round(318 (1 − ease(k / 32)))` with the mock's cubic ease:
+318 318 318 317 316 313 310 305 298 290 279 266 251 233 211 187 159 131 107 85 67 52 39 28 20 13
+8 5 2 1 0 0 0 (moves of 0, 0, 1, 1, 3, 3, 5, 7, 8, 11, 13, 15, 18, 22, 24, 28, 28, 24, … px). The
+way out uses 318 − x. The table is symmetric (asserted), so turning a wipe round maps step k to
+32 − k at the same x.
 
 Each step:
-1. Takes the next x.
-2. Draws the 2-px accent edge at [x, x+1] (outside the band), except on step 20, where the
-   band runs to the screen edge.
+1. Takes the next x. If it is the previous x (and this is not the last step), the step ends
+   here: nothing drawn, nothing revealed, the flags unchanged. The first steps of either wipe
+   therefore draw nothing; the edge appears with the first step that moves it.
+2. Draws the 2-px accent edge at [x, x+1] (outside the band), except on the last step, where
+   the band runs to the screen edge.
 3. Fills the band the edge swept since the last step with black (the new page's background).
    The old edge's two columns go last: on the way in they are the band's top end, and
    `uk_fill` goes up in x; on the way out they are its bottom end, so the rest of the band is
@@ -273,42 +296,52 @@ Each step:
    passed:
    - on the way in, when its left edge is right of the edge (x0 >= x + 2);
    - on the way out, when its right edge is left of it (x1 < x);
-   - on step 20, everything.
+   - on the last step, everything.
 
-The wipe ends after step 20.
+The wipe ends after its last step (32).
 
-GRAM therefore always holds a whole edge between the first and the last step: the new one is
-there before the old one goes. The panel reads one row (firmware x) per line time, 48 µs,
+A band is the columns the edge left: on the way in x + 2 .. previous x + 1, on the way out
+previous x .. x − 1, so as wide as the move (1 to 28 columns); moves of 0 end the step before
+it, and the last step's band (to the screen edge) is at least 2 wide. So `uk_fill` never gets
+a 0-wide band. On a 1-px move the new edge covers one of the old edge's columns and the band is
+the other one, filled after the new edge is drawn.
+
+GRAM therefore always holds a whole edge between the first step that moves the edge and the
+last step: the new one is there before the old one goes. The panel reads one row (firmware x) per line time, 48 µs,
 and a band column takes 64 µs to fill. So whichever way the scan runs, a frame that misses
 the new edge still reads the old one before its columns are erased.
 
 The `tour` group runs `panel_video.py`'s scan model over an entry and an exit, both scan
-directions, at four frame phases. Every frame between the first and last step has a whole
-2-px edge (hn4 failed this in 11 of the 16 cases).
+directions, at four frame phases. Every frame between the end of the first step that moves the
+edge and the start of the last step has a whole 2-px edge (hn4 failed this in 11 of the 16
+cases).
 
 | Way in: element | Columns | Appears at step (edge x) |
 |---|---|---|
-| "max 60" | 245..304 | 7 (231) |
-| "VOL" | 164..202 | 10 (159) |
-| number, divider | 156..304, 150 | 11 (134) |
-| position line | 16..303 | drawn in parts inside each band; in full at 18 (8) |
-| name, dB caption | 16..125, 16..96 | 18 (8) |
-| status line | 18..147 | 19 (2): the step after the name's |
+| (the edge) | | 3 (317): steps 1, 2 do not move it |
+| "max 60" | 245..304 | 13 (233) |
+| "VOL" | 164..202 | 16 (159) |
+| number, divider | 156..304, 150 | 17 (131) |
+| position line | 16..303 | drawn in parts inside each band; in full at 25 (13) |
+| name, dB caption | 16..125, 16..96 | 25 (13) |
+| status line | 18..147 | 26 (8): the step after the name's |
 
 | Way out: element | Drawn by | Appears (OPTICAL, "No signal") |
 |---|---|---|
-| icon 12..45, accent bar 18..45 | `home_draw_output_icon` 0x5744 (`hm_icon`), `uk_fill` | 5 (47) |
-| volume 47..82 | `home_draw_volume` 0x5916 (`hm_volume`) | 7 (87) |
-| status line 18..end of the text | `hm_status`, buffer XDATA 0x50 | 11 (184): once the stock refresh has loaded the buffer, and the edge has passed its end |
-| input name 16..end of the text | `hm_name`, buffer XDATA 0x35 | 11 (184); USB 8 (110), BT 6 (66) |
-| format tag 228..269 | `home_draw_format_tag` 0x41CA (`hm_fmt`) | 15 (271) |
-| EQ tag 276..309 | `home_draw_eq_tag` 0x49A1 (`hm_eq`) | 18 (310) |
+| (the edge) | | 3 (1): steps 1, 2 do not move it |
+| icon 12..45, accent bar 18..45 | `home_draw_output_icon` 0x5744 (`hm_icon`), `uk_fill` | 11 (52) |
+| volume 47..82 | `home_draw_volume` 0x5916 (`hm_volume`) | 13 (85) |
+| status line 18..end of the text | `hm_status`, buffer XDATA 0x50 | 18 (211): once the stock refresh has loaded the buffer (before step 11), and the edge has passed its end, not in the name's step; USB 17 (187), BT 20 (251) |
+| input name 16..end of the text | `hm_name`, buffer XDATA 0x35 | 17 (187); USB 14 (107), BT 12 (67) |
+| format tag 228..269 | `home_draw_format_tag` 0x41CA (`hm_fmt`) | 21 (266) |
+| EQ tag 276..309 | `home_draw_eq_tag` 0x49A1 (`hm_eq`) | 26 (310) |
 
 The status line waits for its buffer:
 - The stock refresh loads XDATA 0x50 10 ticks after the return home (0x27:0x28 = 10 after
   the render). `hn_hold` notes when it has run (`HN_SBUF`).
 - The status line is drawn on the first step after that on which the edge has passed its
-  end. On step 20 it is drawn in any case.
+  end. On the last step it is drawn in any case. With 32 steps the buffer is always there
+  before the edge reaches the status line's end (step 11 against 17 at the earliest).
 - The name is loaded into XDATA 0x35 at the start of the exit, as `home_draw_input_name` does
   (`big_text_load` 0x4C8F with the string from its table; input 7: the buffer as it is).
 
@@ -359,8 +392,8 @@ hn4 changes two of those steps:
   no status line. It notes that the status buffer is loaded. Otherwise it does
   `lcall home_refresh ; ljmp 0x4084`, as stock.
 
-The stock refresh therefore draws nothing during the exit. Its next run, 0.41 s after the
-exit ends, draws exactly the same pixels over the revealed screen (tested). The end state
+The stock refresh therefore draws nothing during the exit. Its next run (50 ticks after the
+first, so 28 ticks = 0.29 s after the 32-tick exit ends; hn9: 0.41 s after a 20-tick exit), draws exactly the same pixels over the revealed screen (tested). The end state
 is the hn3 home screen.
 
 ### Interruptions and how a wipe is cancelled
@@ -377,7 +410,7 @@ is the hn3 home screen.
 - **Volume key during the entry:** the value is recorded and drawn when revealed (or at once
   if its box already is).
 - **Volume key during the exit:** the key handler sets page 2. `hn_enter_vol` turns the wipe
-  round at its x (step 20 - k), and the edge heads left again. Volume-page elements the
+  round at its x (step STEPS − k), and the edge heads left again. Volume-page elements the
   exit had not touched are still on screen and stay. The rest are redrawn as the edge passes
   them. The number on screen is redrawn at once with the new value.
 - **Source, direct-select, or any other name draw on page 1 during the exit:** the hook on
@@ -463,11 +496,11 @@ in `build_patch.py`, `V*`). Everything is drawn with `uk_text`; the kit's stock-
   the next ticks. With the page not on screen it draws the number, the line and the caption at
   once: 6.4 ms (the stock's 2-digit draw: about 40). `hn_volpage` draws the whole page in 11.5 ms
   (hn8: 10.5; `hv_num` now also blacks the rows of the box around the number).
-- **Entry order.** Right to left: "max 60" appears at step 7, "VOL" at 10, the divider and the
-  number at 11, the name, the line and the caption at 18, the status line at 19: if the name
+- **Entry order.** Right to left: "max 60" appears at step 13, "VOL" at 16, the divider and the
+  number at 17, the name, the line and the caption at 25, the status line at 26: if the name
   was drawn in a step, the status line (with its load, an I2C read on BT and HDMI) waits for
-  the next one, as the exit does for the home's name and status line; step 20 draws whatever
-  is left. An exit turned back into an entry loads and draws the status line again (the exit
+  the next one, as the exit does for the home's name and status line; the last step draws
+  whatever is left. An exit turned back into an entry loads and draws the status line again (the exit
   had cleared its buffer; `hn_reverse` marks it not drawn), black up to x 147 after the text.
 
 ### The number roll
@@ -549,23 +582,28 @@ of 1/300 s per 10 ms frame), fill `round(288 * s.x)`.
 
 ## Timing
 
-Worst tick measured (hn9): **6.90 ms**, on the entry's step 11 (the divider and the number,
-whose box fill is new in hn9, plus the spring's columns). The budget is 8 ms, inside the 10 ms
-tick. A tick is timed from `hn_step`'s entry to `uk_tasks`' return: the wipe step, the spring
-and the roll. Unit test:
+Worst tick measured (hn10): **7.09 ms**, on the entry's step 17 (the divider and the number,
+with the cubic's widest band, 28 px, plus the spring's columns). The budget is 8 ms, inside the
+10 ms tick, so no reveal had to be split further. A tick is timed from `hn_step`'s entry to
+`uk_tasks`' return: the wipe step, the spring and the roll. Unit test:
 
 | Tick | Worst |
 |---|---|
-| Entry step (+ spring) | 6.90 ms (step 11: divider, number; hn8: 5.96 on step 18) |
-| Exit step (+ spring), OPTICAL, "No signal" | 5.68 ms |
-| Exit step, USB, "2.8224MHz" | 4.67 ms |
-| Exit step, BT, "Searching..." | 5.25 ms |
+| Entry step (+ spring) | 7.09 ms (step 17: divider, number; hn9: 6.90 on step 11; hn8: 5.96) |
+| Exit step (+ spring), OPTICAL, "No signal" | 5.87 ms (hn9: 5.68) |
+| Exit step, USB, "2.8224MHz" | 4.86 ms |
+| Exit step, BT, "Searching..." | 5.06 ms |
 | Roll frame (alone; the spring adds at most 0.07) | 6.13 ms |
 | Spring tick | 0.07 ms |
 
 In the whole firmware, including the `timer3_isr` calls that land inside a tick (about 5 µs
-every 0.5 ms): wipes 6.54 ms at worst (tour 6.53; hn8: 5.96 / 5.58), roll frames with the
-spring 5.45 ms for single steps and 5.76 ms at knob speed (the page at 9..15).
+every 0.5 ms): wipes 6.74 ms at worst (tour 6.73, with a 1-digit number; hn9: 6.54), roll
+frames with the spring 5.45 ms for single steps and 5.76 ms at knob speed (the page at 9..15).
+
+The wipe's length is one constant (`STEPS`). Measured on throwaway builds with the same cubic
+(unit test, worst step with the spring): 20 steps: entry 8.07 ms (step 11, the number, over the
+8 ms budget: that length would need the number's reveal split), exit 6.83 ms; 26 steps: entry
+7.48 ms, exit 6.26 ms; 32 steps (hn10): 7.09 / 5.87 ms.
 For comparison, a whole hn8 home takes 13.9 ms, the whole volume page 11.5 ms, and the stock
 periodic home refresh blocks the main loop for about 45 ms every 0.5 s.
 
@@ -623,9 +661,10 @@ places the volume keys open the volume page (hn9 adds none). Every stock byte is
 
 ## Memory
 
-- **Code:** 22306 bytes at 0x9800..0xEF21 (15271 of them fonts, fix-auto-off's 14 at the
-  end), plus the version string at 0xEF22. Image length 61233 bytes; 1231 bytes are left under
-  the 0xF400 split (hn8: 2220). hn9 added 989 bytes: the kit's row clip (`uk_textc`, the
+- **Code:** 22337 bytes at 0x9800..0xEF40 (15271 of them fonts, fix-auto-off's 14 at the
+  end), plus the version string at 0xEF41. Image length 61265 bytes; 1199 bytes are left under
+  the 0xF400 split (hn9: 1231, hn8: 2220). hn10 added 32 bytes: the ease table's 12 more words
+  and the still-step test in `hn_step`. hn9 added 989 bytes: the kit's row clip (`uk_textc`, the
   row-clipped decoder `tx_yclip`, format 2 only here: about 190), the roll (about 250 with its
   39-byte frame table), the spring (about 480 with its multiply and constants), less hn8's
   61-byte split table (`vsplit`, now computed). `house_numerals.asm` is the generated listing.
@@ -720,10 +759,11 @@ house-numerals 137 s, most of it the sweep). `emu_test.py` has four groups: `uni
 
   The same for the exit on three inputs, including the status-buffer rule, with the line right
   of the edge retracting as the model says. The entry ends as the page with the line at the
-  spring's split; the spring then settles tick by tick as the model (35 more ticks) and the page
+  spring's split; the spring then settles tick by tick as the model (23 more ticks) and the page
   is pixel-identical to `hn_volpage`. The exit ends pixel-identical to the stock home refresh,
-  the spring at home. Reversals after steps 1, 5, 10 and 19 each way end on the right page;
-  the exit reversal redraws with the new volume.
+  the spring at home. Steps that do not move the edge draw nothing (before the first move the
+  screen is untouched). Reversals after every step 1..31 each way (the still and 1-px steps at
+  both ends included) end on the right page; the exit reversal redraws with the new volume.
 - **Logic:** `hn_enter_vol` and `hn_clear` in every mode; `hn_cancel` from both modes;
   `hn_hold` in each mode; `hn_name_guard`; `uk_tasks` (a step only after a tick, only with
   0x4F = 1; the re-mute request and the tick as `main_tick_tasks` runs them, for all four
@@ -733,30 +773,33 @@ house-numerals 137 s, most of it the sweep). `emu_test.py` has four groups: `uni
   - each step lands on the same page, power, volumes, input and output;
   - home screens equal to `home_model`; volume pages exactly as `hn_volpage`; menus and
     standby identical to fast-lcd;
-  - both entries and both exits take 20 steps with the table's x, and the screen at entry
+  - both entries and both exits take 32 steps with the table's x, and the screen at entry
     step 10 is checked (the line right of the edge at the split on screen);
   - after a key from home the page is checked 0.8 s later (hn8: 0.5), once the spring rests;
   - the volume write comes before the first step;
-  - the home refresh is held during the exit and resumes 0.41 s after it, drawing the same
-    pixels;
-  - home comes back at the same moment as fast-lcd (within 0.05 s);
+  - the home refresh is held during the exit and resumes 0.29 s after it (hn9: 0.41), drawing
+    the same pixels;
+  - home (page 1) comes back at the same moment as fast-lcd (within 0.05 s); the home screen
+    is whole when the exit ends, 0.32 s after that (checked; hn9: 0.20 s; fast-lcd draws its
+    home at its first refresh, 0.10 s after the switch, in about 45 ms);
   - audio states in the same order, none more than 0.10 s later; same argument sets for every
     audio writer.
 - **Per input:** the eight scenarios above, each checking entry, exit, screens, the unmute
   and the audio.
-- **Keys during a wipe:** 14 scenarios, each with the final screens and audio checked
+- **Keys during a wipe:** 16 scenarios, each with the final screens and audio checked
   against fast-lcd:
-  - Vol+ during the entry;
-  - Vol+ and Vol- during the exit (turned round);
+  - Vol+ during the entry, and in its still tail (step 30, x 0);
+  - Vol+ and Vol- during the exit (turned round; Vol- at step 4, x 2, in the 1-px stretch), and
+    Vol+ before the exit's edge first moves (step 1): the entry's tail from there;
   - Menu, Source, Power and direct-select (HDMI), each during the entry and during the exit;
-  - Source late in the exit (step 18);
+  - Source late in the exit (step 29 of 32);
   - the BT key (IR 0x0E) during the exit on Bluetooth;
   - Source with 0x21.3 set during the exit.
 
   For keys on page 1 during the exit, the screen 0.15 s after the key must equal a whole
   refresh for that state, and the screen at the end must equal `home_model`.
 - **Source, then Vol+ 0.2, 1.0 or 2.0 s later** (the refresh's flags still set, so its flag
-  path runs mid-exit): 20 + 20 steps. Two ticks after the exit the screen is a whole home,
+  path runs mid-exit): 32 + 32 steps. Two ticks after the exit the screen is a whole home,
   and later it matches fast-lcd.
 - **Keys on the open page** (`roll_scenarios`, whole firmware, lockstep with fast-lcd, the
   page at 9): Vol+ 9 -> 10, Vol- 10 -> 9, 9 -> 8, 8 -> 9: the 14 frames come on 14 consecutive
@@ -766,7 +809,8 @@ house-numerals 137 s, most of it the sweep). `emu_test.py` has four groups: `uni
   static page, worst tick 5.76 ms. Audio as fast-lcd. A roll cut at frame 6 by Menu (home, as
   `read_key` makes it on page 2), Source (home) and Power (standby identical to fast-lcd):
   no roll left, same state and audio as fast-lcd.
-- **Panel scan:** see "A step" above.
+- **Panel scan:** see "A step" above: 16 or 17 frames inside each 32-step wipe, from the end of
+  the first step that moves the edge to the start of the last.
 - **INT1** (`int1`, 100 whole-firmware runs per image, 7 s):
   - Setup: USB, settled, Vol+ from home with INT1's RAM effects injected at the press
     (0x21.4, 0x43:0x44 = 30, 0x4E = 0xFF), the press moved in 1 ms steps across one
@@ -867,6 +911,12 @@ hn8, the volume page:
 - Home: the tag boxes have soft corners; without a signal (optical with nothing connected)
   the status line is reddish, grey again once the signal is back.
 - Vol+ while the edge is going back: the page comes back with the status line redrawn.
+
+hn10, the wipes: the edge now starts slowly, is fastest in the middle and slows into the far
+side (the mock's cubic), 0.32 s each way instead of 0.20 s. Does the slow start read as a delay
+after the key (the edge first moves on the entry's third tick)? Is 0.32 s too slow on the way
+home? A key during the slow ends (just after pressing, or just before the edge arrives) turns
+the wipe round cleanly.
 
 hn6: the volume, the tags and the status line larger than hn5's (36, 13 and 20 px against 22,
 10 and 12), the speaker larger with them, the bar 6 px lower. Readable at arm's length?

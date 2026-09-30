@@ -36,6 +36,8 @@ NEW = open(bp.OUT_IMAGE, "rb").read()
 LAB = bp.assemble()[1]
 W, H = 320, 170
 EASE = bp.EASE
+N = bp.STEPS                             # steps per wipe
+SBUF_STEP = 11                           # the exit step before which the stock refresh loads the status line
 STEP_END = 0x5B2D                        # main_tasks_on, after the lcall uk_tasks (0x5B2A)
 fails = []
 
@@ -746,10 +748,14 @@ def run_steps(e, n):
 
 def test_step():
     print("\nhn_step: one wipe step per tick")
-    check("ease table: 21 positions 318 -> 0, symmetric, every step at least 2 px, at most 25",
-          len(EASE) == 21 and EASE[0] == 318 and EASE[-1] == 0 and
-          all(2 <= EASE[k] - EASE[k + 1] <= 25 for k in range(20)) and
-          all(EASE[k] + EASE[20 - k] == 318 for k in range(21)), str(EASE))
+    def mock_ease(t):                         # ui_themes.html: const ease = t => ...
+        return 4 * t * t * t if t < .5 else 1 - math.pow(-2 * t + 2, 3) / 2
+    moves = [EASE[k] - EASE[k + 1] for k in range(N)]
+    check("ease table: %d positions 318 -> 0 = round(318 (1 - ease(k / %d))), the mock's cubic, symmetric; "
+          "moves %d..%d px (%d steps of 0 px, %d of 1 px)" % (N + 1, N, min(moves), max(moves), moves.count(0),
+                                                             moves.count(1)),
+          EASE == [round(318 * (1 - mock_ease(k / N))) for k in range(N + 1)] and EASE[0] == 318 and
+          EASE[-1] == 0 and min(moves) >= 0 and all(EASE[k] + EASE[N - k] == 318 for k in range(N + 1)), str(EASE))
     # entry: the old page is a pattern; after each step: pattern left of the edge, accent edge,
     # the volume page right of it with only the revealed elements (and the line in parts)
     ref = volpage_render()
@@ -767,24 +773,29 @@ def test_step():
     boxes = vol_boxes()
     before = screen(e)
     sp, sv = 0, 0                             # the spring, from 0 (hn_enter_vol resets it)
-    for k in range(1, 21):
-        worst = max(worst, run_steps(e, 1)[0])
+    rev = set()
+    times = []
+    for k in range(1, N + 1):
+        times.append(run_steps(e, 1)[0])
+        worst = max(worst, times[-1])
         sp, sv = spring_model(sp, sv, fill_px(25))
         parts = vol_parts(ref, split=spring_split(sp))     # the line right of the edge: the spring's
         if (sp, sv) != spring_state(e):
             bad.append((k, "spring", spring_state(e), (sp, sv)))
         x = EASE[k]
         got_x = e.xram[bp.HN_X] << 8 | e.xram[bp.HN_X + 1]
-        rev = {b for b, (bx, bx1, by, by1) in boxes.items() if bx >= x + 2 or k == 20}
-        drawn = set().union(*order) if order else set()
-        if k < 20 and {bp.VF_NAME, bp.VF_STAT} <= rev - drawn:
-            rev.discard(bp.VF_STAT)           # not in the name's step: the status line waits one
+        if k == N or x != EASE[k - 1]:        # a step that does not move the edge reveals nothing
+            rev = {b for b, (bx, bx1, by, by1) in boxes.items() if bx >= x + 2 or k == N}
+            drawn = set().union(*order) if order else set()
+            if k < N and {bp.VF_NAME, bp.VF_STAT} <= rev - drawn:
+                rev.discard(bp.VF_STAT)       # not in the name's step: the status line waits one
         vf = e.xram[bp.HN_VF]
         if vf != sum(rev):
             bad.append((k, "flags %s" % bin(vf)))
         new = [b for b in rev if not any(b in o for o in order)]
         order.append(set(new))
-        want = entry_screen(parts, before, x, k == 20, bp.ORANGE, rev)
+        # before the edge first moves nothing is drawn: it appears with the first step that moves it
+        want = before if x == EASE[0] and k < N else entry_screen(parts, before, x, k == N, bp.ORANGE, rev)
         s = screen(e)
         if s != want:
             bad.append((k,) + next((xx, yy, hex(s[xx][yy]), hex(want[xx][yy])) for xx in range(W) for yy in range(H)
@@ -793,8 +804,10 @@ def test_step():
             bad.append((k, "x", got_x))
     print("    entry reveal: " + ", ".join("%s at step %d (x %d)" % ("+".join(VOL_NAMES[b] for b in sorted(o)), k + 1, EASE[k + 1])
                                            for k, o in enumerate(order) if o))
-    check("entry: each step x = ease[k]; old page left of the edge, 2-px accent edge, black band, "
-          "elements once the edge is left of them, the line right of the edge as spring_model", not bad, str(bad[:3]))
+    print("    entry step times (ms): " + " ".join("%.1f" % t for t in times))
+    check("entry: each step x = ease[k]; nothing until the edge first moves, then old page left of the edge, "
+          "2-px accent edge, black band, elements once the edge is left of them, the line right of the edge as "
+          "spring_model; steps that do not move draw nothing", not bad, str(bad[:3]))
     check("entry: at its end the page = vol_model with the line at the spring's split (%d); mode 0, HN_VF all"
           % spring_split(sp), vol_ok(e, split=spring_split(sp)) and e.xram[bp.HN_MODE] == 0 and
           e.xram[bp.HN_VF] == bp.VF_ALL, vol_diff(e, split=spring_split(sp)))
@@ -804,7 +817,7 @@ def test_step():
     check("entry: the spring settles %d ticks later, as spring_model tick by tick; then the page = hn_volpage's "
           "render (worst tick %.2f ms)" % (n, tw), ok and screen(e) == refs)
     e.call(LAB["hn_step"])
-    check("hn_step when idle: nothing", screen(e) == refs and e.xram[bp.HN_STEP] == 20)
+    check("hn_step when idle: nothing", screen(e) == refs and e.xram[bp.HN_STEP] == N)
 
     # exit: from the volume page to the home screen the stock refresh draws
     for inp, status in ((2, "No signal"), (1, "2.8224MHz"), (4, "Searching...")):
@@ -822,14 +835,15 @@ def test_step():
               "text buffers cleared" % inp, started and e.lcd.gram == vref.lcd.gram)
         bad, worst, order = [], 0, []
         sp, sv = spring_state(e)               # on the volume's fill; the exit pulls it to 0
-        for k in range(1, 21):
-            if k == 11:                       # the stock refresh loads the status line 10 ticks in
+        rev = set()
+        for k in range(1, N + 1):
+            if k == SBUF_STEP:                # the stock refresh loads the status line 10 ticks in
                 for j, ch in enumerate(status.encode() + b"\0"):
                     e.xram[bp.SMALL_BUF + j] = ch
                 e.xram[bp.HN_SBUF] = 1
             worst = max(worst, run_steps(e, 1)[0])
             sp, sv = spring_model(sp, sv, 0)
-            if k < 20:
+            if k < N:
                 vs = screen(vref)
                 lm = [[None] * W for _ in range(H)]
                 line_model(lm, spring_split(sp), bp.ORANGE)
@@ -839,11 +853,13 @@ def test_step():
                 if (sp, sv) != spring_state(e):
                     bad.append((k, "spring", spring_state(e), (sp, sv)))
             x = 318 - EASE[k]
-            rev = {b for b, (x0, x1, y0, y1) in boxes.items()
-                   if k == 20 or (x1 < x and (b != bp.HF_STAT or k >= 11))}
-            drawn = set().union(*order) if order else set()
-            if k < 20 and {bp.HF_NAME, bp.HF_STAT} <= rev - drawn:
-                rev.discard(bp.HF_STAT)       # not in the name's step: the status line waits one
+            moved = x != 318 - EASE[0]        # the edge has moved (it shows from then on)
+            if k == N or x != 318 - EASE[k - 1]:  # a step that does not move the edge reveals nothing
+                rev = {b for b, (x0, x1, y0, y1) in boxes.items()
+                       if k == N or (x1 < x and (b != bp.HF_STAT or k >= SBUF_STEP))}
+                drawn = set().union(*order) if order else set()
+                if k < N and {bp.HF_NAME, bp.HF_STAT} <= rev - drawn:
+                    rev.discard(bp.HF_STAT)   # not in the name's step: the status line waits one
             if e.xram[bp.HN_HF] != sum(rev):
                 bad.append((k, "flags", bin(e.xram[bp.HN_HF]), bin(sum(rev))))
             new = [b for b in rev if not any(b in o for o in order)]
@@ -851,9 +867,9 @@ def test_step():
             s = screen(e)
             for xx in range(W):
                 for yy in range(H):
-                    if k < 20 and xx >= x + 2:
+                    if k < N and (xx >= x + 2 or not moved):
                         want = vs[xx][yy]
-                    elif k < 20 and xx >= x:
+                    elif k < N and xx >= x:
                         want = bp.ORANGE
                     else:
                         want = 0
@@ -882,7 +898,8 @@ def test_step():
     # reversals: entry turned round into an exit at the same x, and back
     href = home_reference()
     vref = volpage_render()
-    for turn in (1, 5, 10, 19):
+    bad, notes = [], []
+    for turn in range(1, N):
         e = home_reference()
         e.iram[0x4F] = 1
         e.call(LAB["hn_enter_vol"])
@@ -898,7 +915,7 @@ def test_step():
                 e.xram[bp.HN_SBUF] = 1
             run_steps(e, 1)
             xs.append(e.xram[bp.HN_X] << 8 | e.xram[bp.HN_X + 1])
-        ok = e.xram[bp.HN_MODE] == 0 and xs == [318 - EASE[k] for k in range(20 - turn + 1, 21)]
+        ok = e.xram[bp.HN_MODE] == 0 and xs == [318 - EASE[k] for k in range(N - turn + 1, N + 1)]
         s, h = screen(e), screen(href)
         if e.xram[bp.HN_SBUF]:
             same, note = s == h, ""
@@ -912,10 +929,18 @@ def test_step():
             e.call(bp.HOME_REFRESH)
             e.setR(6, 0); e.setR(7, bp.STATUS_Y)
             e.call(0x3A53)
-            same, note = same and screen(e) == h, " (status line at the refresh, tick 10)"
-        check("entry turned round after step %2d (x %3d): exit from there, %d steps, home as the stock refresh%s"
-              % (turn, x0, turn, note), ok and same, str(xs[:3]))
-    for turn in (1, 6, 12, 19):
+            same, note = same and screen(e) == h, "refresh"
+        if note:
+            notes.append(turn)
+        if not (ok and same):
+            bad.append((turn, x0, xs[:3]))
+    check("entry turned round after each step 1..%d (x 318 .. %d, the still and 1-px steps at both ends "
+          "included): exit from there, as many steps, home as the stock refresh (after steps %s: once the "
+          "refresh has drawn the status line, tick 10)" % (N - 1, EASE[N - 1], ",".join(map(str, notes))),
+          not bad, str(bad[:3]))
+    bad = []
+    vref27 = screen(volpage_render(vol=27))
+    for turn in range(1, N):
         e = volpage_render()
         home_setup(e)
         e.iram[0x59] = 1
@@ -930,12 +955,12 @@ def test_step():
         for _ in range(turn):
             run_steps(e, 1)
             xs.append(e.xram[bp.HN_X] << 8 | e.xram[bp.HN_X + 1])
-        ok = e.xram[bp.HN_MODE] == 0 and xs == [EASE[k] for k in range(20 - turn + 1, 21)]
+        ok = e.xram[bp.HN_MODE] == 0 and xs == [EASE[k] for k in range(N - turn + 1, N + 1)]
         ok = ok and settle(e, 27)[1]
-        check("exit turned round after step %2d (x %3d) by a volume key: entry from there, %d steps, page for 27 "
-              "once the spring settles, status line loaded again" % (turn, x0, turn),
-              ok and screen(e) == screen(volpage_render(vol=27)) and vol_ok(e) and buffer_text(e, bp.SMALL_BUF),
-              str(xs[:3]) + vol_diff(e))
+        if not (ok and screen(e) == vref27 and vol_ok(e) and buffer_text(e, bp.SMALL_BUF)):
+            bad.append((turn, x0, xs[:3], vol_diff(e)))
+    check("exit turned round by a volume key after each step 1..%d: entry from there, as many steps, page for 27 "
+          "once the spring settles, status line loaded again" % (N - 1), not bad, str(bad[:3]))
     e = home_reference(); e.iram[0x4F] = 1
     e.call(LAB["hn_enter_vol"]); e.iram[0x59] = 1; e.call(LAB["hn_clear"])
     check("entry turned round before its first step: stops, screen untouched (the page never showed)",
@@ -1290,8 +1315,8 @@ def test_enter_vol():
         e = st(1, 3, 7, EASE[7]); e.iram[0x59] = page; e.call(LAB[label])
         check("%s, entry running: unchanged" % label, (e.xram[bp.HN_MODE], e.xram[bp.HN_STEP], xv(e)) == (1, 7, EASE[7]))
         e = st(2, 0, 7, 318 - EASE[7]); e.iram[0x59] = page; e.call(LAB[label])
-        check("%s, exit at step 7: entry at step 13, same x" % label,
-              (e.xram[bp.HN_MODE], e.xram[bp.HN_STEP], xv(e)) == (1, 13, 318 - EASE[7]) and EASE[13] == 318 - EASE[7])
+        check("%s, exit at step 7: entry at step %d, same x" % (label, N - 7),
+              (e.xram[bp.HN_MODE], e.xram[bp.HN_STEP], xv(e)) == (1, N - 7, 318 - EASE[7]) and EASE[N - 7] == 318 - EASE[7])
         e = st(0, bp.VF_ALL); e.iram[0x59] = page; e.call(LAB[label])
         check("%s, page on screen: nothing" % label, e.xram[bp.HN_MODE] == 0 and e.xram[bp.SMALL_BUF] == 0x41)
     for mode, vf, want in ((0, bp.VF_ALL, "exit"), (1, 0, "turn"), (2, 0, "stock"), (0, 0, "stock"), (0, 3, "stock")):
@@ -1303,7 +1328,7 @@ def test_enter_vol():
         if want == "exit":
             ok = e.xram[bp.HN_MODE] == 2 and xv(e) == 0 and e.xram[bp.HN_STEP] == 0 and not seen
         elif want == "turn":
-            ok = e.xram[bp.HN_MODE] == 2 and e.xram[bp.HN_STEP] == 13 and xv(e) == EASE[7] and not seen
+            ok = e.xram[bp.HN_MODE] == 2 and e.xram[bp.HN_STEP] == N - 7 and xv(e) == EASE[7] and not seen
         else:
             ok = e.xram[bp.HN_MODE] == 0 and e.xram[bp.HN_VF] == 0 and seen == ["clear"]
         check("hn_clear page 1, mode %d, HN_VF %2d: %s" % (mode, vf, {"exit": "exit from x 0, no clear",
@@ -1580,18 +1605,18 @@ class Watch:
         return max((t[5] for t in self.ticks), default=0.0)
 
 
-def wipe_checks(label, w, mark, mode, n=20):
+def wipe_checks(label, w, mark, mode, n=N):
     """The steps since mark: n of them, all in this mode, x from the ease table."""
     st = [s for s in w.since(mark)]
     xs = [s[3] for s in st]
-    want = [EASE[k] if mode == 1 else 318 - EASE[k] for k in range(21 - n, 21)]
+    want = [EASE[k] if mode == 1 else 318 - EASE[k] for k in range(N + 1 - n, N + 1)]
     check("%s%s: %d steps, x as the ease table" % (label, "entry" if mode == 1 else "exit", n),
           [s[1] for s in st] == [mode] * n and xs == want, "(%d steps, x %s)" % (len(st), xs[:3]))
     return st
 
 
 def vol_entry_checks(step, new, w, mark):
-    """A volume-key entry from home: 20 steps, and the NJW1194 volume write before the first."""
+    """A volume-key entry from home: N steps, and the NJW1194 volume write before the first."""
     st = wipe_checks("%-12s " % step, w, mark, 1)
     vol_writes = [c for c, nm, d in new.events[mark[1]:] if nm == "njw1194_write" and "R7=10" in d]
     first = st[0][0] if st else None
@@ -1649,7 +1674,7 @@ def mid_entry_ok(new, before, k):
     wrong pixel, or None."""
     x = EASE[k]
     # the line right of the edge at the split on screen (HN_SPL: the unit tests hold it to spring_model)
-    want = entry_screen(vol_parts(new.e, split=split_of(new.e)), before, x, k == 20, accent_of(new))
+    want = entry_screen(vol_parts(new.e, split=split_of(new.e)), before, x, k == N, accent_of(new))
     s = screen(new.e)
     for xx in range(W):
         for yy in range(H):
@@ -1679,6 +1704,7 @@ def tour():
             if cmd is not None:
                 amp.press(cmd)
         act, home_at = [[], []], [None, None]
+        c_start = new.e.cycles
         mid = []
 
         exit_end = []
@@ -1687,7 +1713,7 @@ def tour():
             if rec[1] == 1 and rec[2] == 10 and not mid:
                 mid.append(mid_entry_ok(new, before, 10) or True)
                 new.lcd.save_png(os.path.join(HERE, "build", "tour_%s_mid.png" % step))
-            if rec[1] == 2 and rec[2] == 20:
+            if rec[1] == 2 and rec[2] == N:
                 exit_end.append((new.e.cycles, screen(new.e)))
         w.on_step = at_step
         refreshes = []
@@ -1732,6 +1758,12 @@ def tour():
             both = None not in home_at
             check("%-12s home (page 1) within 0.05 s of fast-lcd" % step,
                   both and abs(home_at[1] - home_at[0]) <= 0.05, str(home_at))
+            if both and exit_end:
+                # the page switches as on fast-lcd; the home is whole when the exit ends, N ticks later
+                # (fast-lcd draws its home at its first refresh, 10 ticks after the switch)
+                done = (exit_end[0][0] - c_start) / CLOCK_HZ - home_at[1]
+                check("%-12s the home screen whole %.2f s after the switch to page 1 (the %d-tick exit)"
+                      % (step, done, N), N * 0.01 - 0.01 <= done <= N * 0.01 + 0.03)
         if step in ("source", "menu", "hdmi", "standby", "menu_timeout", "power_on"):
             check("%-12s no wipe" % step, not w.since(mark))
         new.lcd.save_png(os.path.join(HERE, "build", "tour_%s.png" % step))
@@ -1836,7 +1868,7 @@ def input_scenarios():
         if name == "splash":
             st = w.since(mark)
             check("%swipe started, then cancelled by post_power_on's clear (%d steps)" % (label, len(st)),
-                  new.e.xram[bp.HN_MODE] == 0 and len(st) < 20)
+                  new.e.xram[bp.HN_MODE] == 0 and len(st) < N)
         else:
             vol_entry_checks(name, new, w, mark)
             print("    %s unmute countdown at the press: %d" % (label, cd_press))
@@ -1848,7 +1880,7 @@ def input_scenarios():
         for amp in amps:
             amp.wait(2.5)
         if name != "splash":
-            wipe_checks(label, w, (mark[0] + 20,) + mark[1:], 2)
+            wipe_checks(label, w, (mark[0] + N,) + mark[1:], 2)
             check("%sback home after the exit: home_model" % label,
                   new.page == 1 and screen_ok(ref, new))
         if cd_kind == "runs":
@@ -1902,7 +1934,9 @@ KEY_SCENARIOS = [
     ("menu_in_exit", [], "exit", 0.10, NEC_MENU_OPEN, 1.5, "same", None),
     ("source_in_entry", [], "entry", 0.10, NEC_SOURCE, 1.0, "home", None),
     ("source_in_exit", [], "exit", 0.10, NEC_SOURCE, 1.0, "source", None),
-    ("source_late_exit", [], "exit", 0.17, NEC_SOURCE, 1.0, "source", None),
+    ("source_late_exit", [], "exit", 0.28, NEC_SOURCE, 1.0, "source", None),   # the exit's slow tail
+    ("vol_early_exit", [], "exit", 0.0, NEC_VOL_UP, 1.0, "vol", None),     # before the edge first moves
+    ("vol_late_entry", [], "entry", 0.30, NEC_VOL_UP, 1.0, "vol", None),   # the entry's still tail
     ("power_in_entry", [], "entry", 0.10, NEC_POWER, 3.0, "same", None),
     ("power_in_exit", [], "exit", 0.12, NEC_POWER, 3.0, "same", None),
     ("select_in_entry", [], "entry", 0.10, NEC_HDMI, 1.0, "home", None),      # the same
@@ -1972,8 +2006,9 @@ def key_scenarios():
                   new.page == 2 and screen(new.e) == volpage_reference(new), vol_diff(new.e))
             if name.endswith("in_exit"):
                 xs = [s[3] for s in st if s[1] == 1]
-                check("%sturned round: entry steps from x %d leftwards, first at %d" % (label, x_at, xs[0] if xs else -1),
-                      bool(xs) and xs[0] < x_at and xs[-1] == 0 and all(a > b for a, b in zip(xs, xs[1:])))
+                check("%sturned round: entry steps from x %d leftwards (the ease table's tail), first at %d"
+                      % (label, x_at, xs[0] if xs else -1),
+                      bool(xs) and xs[0] <= x_at and xs == [EASE[k] for k in range(N + 1 - len(xs), N + 1)])
         elif expect == "home":
             check("%shome = home_model" % label, new.page == 1 and screen_ok(ref, new))
         elif expect == "source":
@@ -2010,7 +2045,7 @@ def flag_exit_scenarios():
         ref, new = amps
         w = Watch(new)
         ends = []
-        w.on_step = lambda rec: rec[1] == 2 and rec[2] == 20 and ends.append(new.e.cycles)
+        w.on_step = lambda rec: rec[1] == 2 and rec[2] == N and ends.append(new.e.cycles)
         for amp in amps:
             amp.set_pin(0xC0, 5, 0)
             amp.boot()
@@ -2031,7 +2066,7 @@ def flag_exit_scenarios():
             amp.wait(0.02)
         st = w.since(mark)
         print("  %s: flags 0x20.6/0x21.1/0x21.3 at the Vol+ %s; %d steps" % (name, flags, len(st)))
-        check("%sentry and exit ran (40 steps)" % label, [s[1] for s in st] == [1] * 20 + [2] * 20)
+        check("%sentry and exit ran (%d steps)" % (label, 2 * N), [s[1] for s in st] == [1] * N + [2] * N)
         check("%stwo ticks after the exit: a whole home screen (= the stock refresh for that state)" % label,
               new.page == 1 and screen(new.e) == stock_home_now(new))
         new.lcd.save_png(os.path.join(HERE, "build", "keys_%s_end.png" % name))
@@ -2180,8 +2215,9 @@ def edge_scan():
         acc = bp.ORANGE
         for mode in (1, 2):
             st = [s for s in w.steps if s[1] == mode]
-            t_in = next(s for s in st if s[2] == 1)
-            t_out = next(s for s in st if s[2] == 20)
+            # the edge appears with the first step that moves it (the cubic's first steps do not)
+            t_in = next(s for s in st if s[3] != (318 if mode == 1 else 0))
+            t_out = next(s for s in st if s[2] == N)
             end1 = t_in[0] + t_in[4] * CLOCK_HZ / 1000
             inside = [fr for fr in frames if fr[0] >= end1 and fr[1] <= t_out[0]]
             bad = []
@@ -2301,7 +2337,7 @@ def reach(img, st):
 
 def run(img, st, cmd):
     """A fresh amp reached into state st, cmd pressed and settled 0.5 s later (the 200 ms wipe
-    takes 20 ticks; the volume page times out after 2 s and the menu after 9 s, so both still hold)."""
+    takes N ticks; the volume page times out after 2 s and the menu after 9 s, so both still hold)."""
     amp = reach(img, st)
     amp.press(cmd)
     amp.wait(0.5)

@@ -112,70 +112,70 @@ public class SmslAo300Labels extends GhidraScript {
         {0x9680, "fx_auto_off"},       // features/fix-auto-off standalone image; builds that include the fix place it in their own code
         {0x9700, "fast_pixel"},        // features/fast-lcd, replaces lcd_write_pixel
         {0x9716, "fast_clear"},        // features/fast-lcd, replaces lcd_clear_black's loop
-        // features/house-numerals (hn9)
-        {0xD43A, "uk_fill"},             // rectangle in one colour, streamed
-        {0xD490, "uk_acc"},              // R6:R7 = accent (theme colour, SMSL orange on White)
-        {0xD4A1, "hn_name_ptr"},         // volume page: input 1..6 -> name pointer
-        {0xD4BA, "uk_avg"},              // R6:R7 = per-channel average of the RGB565 colours R2:R3, R4:R5
-        {0xD4D2, "uk_tfetch"},           // uk_text: next character (code or XDATA string)
-        {0xD559, "uk_text"},             // proportional text painter (pfont fonts): align, spacing, x clip; 1-bit or 4-level run-length; every row
-        {0xD561, "uk_textc"},            // uk_text with a row clip (TP_YC0..TP_YC1): the number roll
-        {0xDA81, "tx_yclip"},            // uk_text: the run-length decoder for cells cut by the row clip
-        {0xDB30, "hn_draw_volume"},      // replaces volpage_draw_volume 0x5936: records the value; idle page: caption, then a roll
-        {0xDB98, "hn_dyn_now"},          // the number, the line (spring snapped) and the dB caption at once
-        {0xDBA4, "hn_dec2"},             // A (0..99) -> decimal text at DPTR, no leading zero, NUL
-        {0xDBB8, "hn_roll"},             // number roll: one frame per tick (after hn_spring), 14 frames, idle page only
-        {0xDC10, "hv_num"},              // volume page: the number, right-aligned (num84), the rest of the roll box black; ends a roll
-        {0xDC1F, "hn_num_at"},           // a number in num84 at a row offset and ink, clipped to the roll box, the rest of the box black
-        {0xDCCC, "hv_name"},             // volume page: the input name (disp36)
-        {0xDD21, "hv_status"},           // volume page: the status line, loaded by hn_stat_load (mono16)
-        {0xDD7F, "hn_stat_load"},        // XDATA 0x50 = the status line as home_refresh_periodic loads it (0x4016.., hn_hold returns)
-        {0xDD93, "hn_dim_ink"},          // TP_INK = DIM, or DIM_LOST without a signal (0x22.5) on a digital input
-        {0xDDAE, "hv_vol"},              // volume page: VOL, letter-spaced, accent
-        {0xDDFC, "hv_capr"},             // volume page: "max 60"
-        {0xDE49, "hv_div"},              // volume page: divider
-        {0xDE5A, "hv_cap"},              // volume page: the dB caption from the NJW1194 code table 0x9289
-        {0xDF16, "hv_line"},             // volume page: whole position line (two halves)
-        {0xDF41, "hn_line_seg"},         // columns HN_S0..HN_S1 of the position line, split HN_SPL (the spring's)
-        {0xDFB6, "hn_vol_static"},
-        {0xDFC5, "hn_volpage"},          // page 2 renderer (jump-table entry 0x2143)
-        {0xDFE6, "hn_spring"},           // the position line's spring: one tick (fixed-point matrix of the mock's integrator), redraws the moved columns
-        {0xE105, "hn_sp_lin"},           // spring: V * k - e * k' (Q16)
-        {0xE139, "hn_sp_mulx"},          // spring: signed word at DPTR * R4:R5 / 65536, rounded
-        {0xE18C, "hn_sp_t6"},            // spring: 64 * the line's fill for HN_VOL
-        {0xE1A9, "hn_sp_split"},         // spring: position -> split column 16..304
-        {0xE1DD, "hn_sp_snap"},          // spring: on its target, still (hn_volpage, hn_dyn_now)
-        {0xE1F4, "hn_sp_reset"},         // spring: at 0, still, split 16 (home)
-        {0xE20B, "hn_enter_vol"},        // volume-key sites and hn_clear page 2: start / turn round the entry wipe
-        {0xE244, "hn_reverse"},
-        {0xE261, "hn_clear"},            // ui_render_page's clear (0x2106): entry, exit, or cancel + stock clear
-        {0xE2C5, "hn_stop"},             // no wipe, no page drawn, no roll, spring at home (hn_cancel, hn_home_now)
-        {0xE2D5, "hn_cancel"},           // ui_clear_screen's first instruction: stops a wipe and a roll, spring home
-        {0xE2DE, "hn_hold"},             // 0x4081: holds the periodic home refresh back during a wipe
-        {0xE2FA, "hn_name_guard"},       // home_draw_input_name's entry: cancels an exit wipe first
-        {0xE30A, "hn_home_now"},         // stop a wipe, black, home_refresh + status line (hn_name_guard)
-        {0xE31A, "hn_flag_path"},        // 0x3FF8: during a wipe the flag path skips its 0x412F fill
-        {0xE32F, "hn_name_load"},        // XDATA 0x35 = input name, as 0x4A85 loads it
-        {0xE350, "hh_icon"},  {0xE353, "hh_vol"},  {0xE358, "hh_fmt"},  {0xE35B, "hh_eq"},  {0xE35E, "hh_bar"},  {0xE36E, "hh_name"}, // exit wipe: home elements
-        {0xE371, "uk_tasks"},            // replaces main_tasks_on's lcall main_tick_tasks (0x5B2A): re-mute request, then per tick a wipe step, the spring, the roll
-        {0xE387, "hn_step"},             // one wipe step
-        {0xE908, "hn_after"},            // each tick after hn_step: hn_spring, then hn_roll
-        {0xE964, "hn_home_tail"},        // home_refresh's tail: volume, accent bar
-        {0xE977, "hn_align_big"},        // big_text_render on page 1: the name at y 75 is hm_name, other texts start at x 16
-        {0xE99E, "hn_align_small"},      // small_text_render on page 1: the status at y 135 is hm_status, other texts start at x 16
-        {0xE9C5, "hm_name"},             // home: the input name (XDATA 0x35), display face
-        {0xEA1D, "hm_name_meas"},        // hm_name's end column, nothing drawn
-        {0xEA6A, "hm_status"},           // home: the status line (XDATA 0x50), mono
-        {0xEAC5, "hm_stat_meas"},        // hm_status's end column, nothing drawn
-        {0xEB12, "hm_rest"},             // black from TP_END + 1 to R6:R7, rows R5.., R4 rows (not during a wipe)
-        {0xEB72, "hm_icon"},             // replaces home_draw_output_icon 0x5744: speaker / muted / headphones
-        {0xEC78, "hm_volume"},           // replaces home_draw_volume 0x5916
-        {0xECE4, "hm_eq"},               // replaces eq_tag_paint 0x4F18: the EQ tag box
-        {0xECED, "hm_fmt"},              // replaces home_draw_format_tag's lcall small_text_at (0x425D): the format tag box
-        {0xECF4, "hm_tag"},              // a tag: accent box with corners of radius 2 (pf_box edges) and text, black up to it
-        {0xEE21, "ht_edges"},            // hm_tag: the box edges (pf_box "[" and "]")
-        {0xEEC3, "hm_tag_copy"},         // R3:R2:R1 string -> HM_TAG, trailing spaces cut
-        {0xEF03, "hm_fmt_clear"},        // replaces home_draw_format_tag's tag_box_clear calls (0x41E8, 0x41FC)
+        // features/house-numerals (hn10)
+        {0xD452, "uk_fill"},             // rectangle in one colour, streamed
+        {0xD4A8, "uk_acc"},              // R6:R7 = accent (theme colour, SMSL orange on White)
+        {0xD4B9, "hn_name_ptr"},         // volume page: input 1..6 -> name pointer
+        {0xD4D2, "uk_avg"},              // R6:R7 = per-channel average of the RGB565 colours R2:R3, R4:R5
+        {0xD4EA, "uk_tfetch"},           // uk_text: next character (code or XDATA string)
+        {0xD571, "uk_text"},             // proportional text painter (pfont fonts): align, spacing, x clip; 1-bit or 4-level run-length; every row
+        {0xD579, "uk_textc"},            // uk_text with a row clip (TP_YC0..TP_YC1): the number roll
+        {0xDA99, "tx_yclip"},            // uk_text: the run-length decoder for cells cut by the row clip
+        {0xDB48, "hn_draw_volume"},      // replaces volpage_draw_volume 0x5936: records the value; idle page: caption, then a roll
+        {0xDBB0, "hn_dyn_now"},          // the number, the line (spring snapped) and the dB caption at once
+        {0xDBBC, "hn_dec2"},             // A (0..99) -> decimal text at DPTR, no leading zero, NUL
+        {0xDBD0, "hn_roll"},             // number roll: one frame per tick (after hn_spring), 14 frames, idle page only
+        {0xDC28, "hv_num"},              // volume page: the number, right-aligned (num84), the rest of the roll box black; ends a roll
+        {0xDC37, "hn_num_at"},           // a number in num84 at a row offset and ink, clipped to the roll box, the rest of the box black
+        {0xDCE4, "hv_name"},             // volume page: the input name (disp36)
+        {0xDD39, "hv_status"},           // volume page: the status line, loaded by hn_stat_load (mono16)
+        {0xDD97, "hn_stat_load"},        // XDATA 0x50 = the status line as home_refresh_periodic loads it (0x4016.., hn_hold returns)
+        {0xDDAB, "hn_dim_ink"},          // TP_INK = DIM, or DIM_LOST without a signal (0x22.5) on a digital input
+        {0xDDC6, "hv_vol"},              // volume page: VOL, letter-spaced, accent
+        {0xDE14, "hv_capr"},             // volume page: "max 60"
+        {0xDE61, "hv_div"},              // volume page: divider
+        {0xDE72, "hv_cap"},              // volume page: the dB caption from the NJW1194 code table 0x9289
+        {0xDF2E, "hv_line"},             // volume page: whole position line (two halves)
+        {0xDF59, "hn_line_seg"},         // columns HN_S0..HN_S1 of the position line, split HN_SPL (the spring's)
+        {0xDFCE, "hn_vol_static"},
+        {0xDFDD, "hn_volpage"},          // page 2 renderer (jump-table entry 0x2143)
+        {0xDFFE, "hn_spring"},           // the position line's spring: one tick (fixed-point matrix of the mock's integrator), redraws the moved columns
+        {0xE11D, "hn_sp_lin"},           // spring: V * k - e * k' (Q16)
+        {0xE151, "hn_sp_mulx"},          // spring: signed word at DPTR * R4:R5 / 65536, rounded
+        {0xE1A4, "hn_sp_t6"},            // spring: 64 * the line's fill for HN_VOL
+        {0xE1C1, "hn_sp_split"},         // spring: position -> split column 16..304
+        {0xE1F5, "hn_sp_snap"},          // spring: on its target, still (hn_volpage, hn_dyn_now)
+        {0xE20C, "hn_sp_reset"},         // spring: at 0, still, split 16 (home)
+        {0xE223, "hn_enter_vol"},        // volume-key sites and hn_clear page 2: start / turn round the entry wipe
+        {0xE25C, "hn_reverse"},
+        {0xE279, "hn_clear"},            // ui_render_page's clear (0x2106): entry, exit, or cancel + stock clear
+        {0xE2DD, "hn_stop"},             // no wipe, no page drawn, no roll, spring at home (hn_cancel, hn_home_now)
+        {0xE2ED, "hn_cancel"},           // ui_clear_screen's first instruction: stops a wipe and a roll, spring home
+        {0xE2F6, "hn_hold"},             // 0x4081: holds the periodic home refresh back during a wipe
+        {0xE312, "hn_name_guard"},       // home_draw_input_name's entry: cancels an exit wipe first
+        {0xE322, "hn_home_now"},         // stop a wipe, black, home_refresh + status line (hn_name_guard)
+        {0xE332, "hn_flag_path"},        // 0x3FF8: during a wipe the flag path skips its 0x412F fill
+        {0xE347, "hn_name_load"},        // XDATA 0x35 = input name, as 0x4A85 loads it
+        {0xE368, "hh_icon"},  {0xE36B, "hh_vol"},  {0xE370, "hh_fmt"},  {0xE373, "hh_eq"},  {0xE376, "hh_bar"},  {0xE386, "hh_name"}, // exit wipe: home elements
+        {0xE389, "uk_tasks"},            // replaces main_tasks_on's lcall main_tick_tasks (0x5B2A): re-mute request, then per tick a wipe step, the spring, the roll
+        {0xE39F, "hn_step"},             // one wipe step
+        {0xE927, "hn_after"},            // each tick after hn_step: hn_spring, then hn_roll
+        {0xE983, "hn_home_tail"},        // home_refresh's tail: volume, accent bar
+        {0xE996, "hn_align_big"},        // big_text_render on page 1: the name at y 75 is hm_name, other texts start at x 16
+        {0xE9BD, "hn_align_small"},      // small_text_render on page 1: the status at y 135 is hm_status, other texts start at x 16
+        {0xE9E4, "hm_name"},             // home: the input name (XDATA 0x35), display face
+        {0xEA3C, "hm_name_meas"},        // hm_name's end column, nothing drawn
+        {0xEA89, "hm_status"},           // home: the status line (XDATA 0x50), mono
+        {0xEAE4, "hm_stat_meas"},        // hm_status's end column, nothing drawn
+        {0xEB31, "hm_rest"},             // black from TP_END + 1 to R6:R7, rows R5.., R4 rows (not during a wipe)
+        {0xEB91, "hm_icon"},             // replaces home_draw_output_icon 0x5744: speaker / muted / headphones
+        {0xEC97, "hm_volume"},           // replaces home_draw_volume 0x5916
+        {0xED03, "hm_eq"},               // replaces eq_tag_paint 0x4F18: the EQ tag box
+        {0xED0C, "hm_fmt"},              // replaces home_draw_format_tag's lcall small_text_at (0x425D): the format tag box
+        {0xED13, "hm_tag"},              // a tag: accent box with corners of radius 2 (pf_box edges) and text, black up to it
+        {0xEE40, "ht_edges"},            // hm_tag: the box edges (pf_box "[" and "]")
+        {0xEEE2, "hm_tag_copy"},         // R3:R2:R1 string -> HM_TAG, trailing spaces cut
+        {0xEF22, "hm_fmt_clear"},        // replaces home_draw_format_tag's tag_box_clear calls (0x41E8, 0x41FC)
     };
 
     Object[][] codeLabels = {
@@ -197,19 +197,19 @@ public class SmslAo300Labels extends GhidraScript {
         {0x4081, "home_refresh_periodic_draw"}, // lcall home_refresh; status line (hooked, features/house-numerals: hn_hold)
         {0x3FF8, "home_refresh_periodic_flags"}, // 0x21.3 / 0x21.1 / 0x20.6 set: clear them, page 1, 0x412F fill (hooked, features/house-numerals: hn_flag_path)
         {0x4A9B, "input_name_table"},       // home_draw_input_name's jump table, inputs 1..8 (7: no load)
-        {0x985F, "hn_ease"},                // features/house-numerals: wipe edge x per step (21 words)
+        {0x985F, "hn_ease"},                // features/house-numerals: wipe edge x per step (STEPS + 1 words, the cubic ease)
         {0x9800, "hn_names"},               // features/house-numerals: volume-page name pointers, inputs 1..6
         {0x984F, "hn_names8"},              // features/house-numerals: home_draw_input_name's strings, inputs 1..8
         {0x9820, "hn_rolltab"},        // features/house-numerals: number roll frames 1..13 (rows for a step up, ink), 3 bytes each
         {0x9847, "hn_spkt"},           // features/house-numerals: spring constants K2, K1, K4, K3 (Q16 words)
-        {0x9893, "pf_name"},    // features/house-numerals: disp54, home name, format 2 (uk_text)
-        {0xA41D, "pf_status"},  // features/house-numerals: mono28, home status line, format 2 (uk_text)
-        {0xB69F, "pf_mono"},    // features/house-numerals: mono16, tags, volume-page small texts, format 2 (uk_text)
-        {0xC2D1, "pf_hvol"},    // features/house-numerals: num33, home volume, format 2 (uk_text)
-        {0xC65B, "pf_icon"},    // features/house-numerals: icons22, icons, format 2 (uk_text)
-        {0xC7EE, "pf_box"},     // features/house-numerals: box22, tag box edges (pfont.box_edges), format 2 (uk_text)
-        {0xC81A, "pf_vname"},   // features/house-numerals: disp36, volume-page name, format 2 (uk_text)
-        {0xCBC9, "pf_vnum"},    // features/house-numerals: num84, volume-page number, format 2 (uk_text)
+        {0x98AB, "pf_name"},    // features/house-numerals: disp54, home name, format 2 (uk_text)
+        {0xA435, "pf_status"},  // features/house-numerals: mono28, home status line, format 2 (uk_text)
+        {0xB6B7, "pf_mono"},    // features/house-numerals: mono16, tags, volume-page small texts, format 2 (uk_text)
+        {0xC2E9, "pf_hvol"},    // features/house-numerals: num33, home volume, format 2 (uk_text)
+        {0xC673, "pf_icon"},    // features/house-numerals: icons22, icons, format 2 (uk_text)
+        {0xC806, "pf_box"},     // features/house-numerals: box22, tag box edges (pfont.box_edges), format 2 (uk_text)
+        {0xC832, "pf_vname"},   // features/house-numerals: disp36, volume-page name, format 2 (uk_text)
+        {0xCBE1, "pf_vnum"},    // features/house-numerals: num84, volume-page number, format 2 (uk_text)
         {0x33ED, "mute_timer_expired"},     // 0x43:0x44 reaches 0 -> mute_state_set(1) (call at 0x33FB)
         {0x341B, "format_poll_tick"},       // inputs 1..5: 0x4B:0x4C reaches 0 -> reload 10, format_poll, on BT bt_hold_mute_poll
         {0x3E92, "t0_remute_no_lock"},      // Timer0: optical/coax and P4.2 high (no lock) -> setb 0x21.4, 0x43:0x44 = 100

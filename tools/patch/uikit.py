@@ -113,6 +113,18 @@ def ease_in_out(steps, span):
     return [round(span * (1 + math.cos(math.pi * k / steps)) / 2) for k in range(steps + 1)]
 
 
+def ease_cubic(t):
+    """The UI mock's ease (ui_themes.html `ease`): cubic in-out, 4t^3 up to t 0.5, then
+    1 - (-2t + 2)^3 / 2; symmetric: ease(1 - t) = 1 - ease(t)."""
+    return 4 * t * t * t if t < 0.5 else 1 - (-2 * t + 2) ** 3 / 2
+
+
+def ease_cubic_in_out(steps, span):
+    """Positions span..0 for steps 0..steps along the mock's cubic ease: round(span (1 - ease(k /
+    steps))). It barely moves at both ends: consecutive positions may be equal or 1 apart."""
+    return [round(span * (1 - ease_cubic(k / steps))) for k in range(steps + 1)]
+
+
 # ---- asm text helpers ---------------------------------------------------------------------------
 def hi(v):
     """Immediate high byte of an int, or of a label (resolved by the assembler)."""
