@@ -11,8 +11,10 @@ and takes its input from the graph instead of a hand-written path:
     BASE_SHA = "..."                # still pinned: a rebuilt parent must be re-checked
 
 A fix is a feature whose folder also holds <name with _>.py exporting HOOK (a
-uikit.build_image hook tuple) and emit(a). Its own build_patch.py is only its standalone
-image. tools/build.py walks this graph: it builds in order and checks the result.
+uikit.build_image hook tuple) and emit(a), or PATCHES (in-place byte changes:
+[(address, original bytes, new bytes, note)], same length), or both. Its own build_patch.py
+is only its standalone image. tools/build.py walks this graph: it builds in order and checks
+the result.
 """
 import os
 import sys
@@ -73,18 +75,41 @@ def fix(name):
     if not is_fix(name):
         raise SystemExit("%r is not a fix (no features/%s/%s.py)" % (name, name, name.replace("-", "_")))
     mod = _load("fix_" + name.replace("-", "_"), os.path.join(FEATURES, name, name.replace("-", "_") + ".py"))
-    if not (hasattr(mod, "HOOK") and hasattr(mod, "emit")):
-        raise SystemExit("fix %r must export HOOK and emit(a)" % name)
+    if not ((hasattr(mod, "HOOK") and hasattr(mod, "emit")) or hasattr(mod, "PATCHES")):
+        raise SystemExit("fix %r must export HOOK and emit(a), or PATCHES" % name)
+    for addr, orig, new, _ in getattr(mod, "PATCHES", []):
+        if len(new) != len(orig):
+            raise SystemExit("fix %r: the patch at 0x%04X must keep its length (%d bytes)" % (name, addr, len(orig)))
     return mod
 
 
 def fixes(names):
-    """The fix modules of an INCLUDES list. A build links them in two places:
+    """The fix modules of an INCLUDES list. A build links them in three places:
 
-        HOOKS += [f.HOOK for f in FIXES]      # uikit.build_image hooks
-        for f in FIXES: f.emit(a)             # in assemble(), anywhere in its code
+        HOOKS += features.hooks(INCLUDES)        # uikit.build_image hooks
+        patches += features.patches(INCLUDES)    # uikit.build_image in-place patches
+        features.emit(a, INCLUDES)               # in assemble(), anywhere in its code
     """
     return [fix(n) for n in names]
+
+
+def hooks(names):
+    """The hook tuples of the fixes in an INCLUDES list (uikit.build_image hooks)."""
+    return [f.HOOK for f in fixes(names) if hasattr(f, "HOOK")]
+
+
+def patches(names):
+    """The in-place patches of the fixes in an INCLUDES list, as uikit.build_image takes them:
+    [(address, original bytes, function(labels) -> new bytes, note)]."""
+    return [(addr, orig, (lambda labels, new=new: new), note)
+            for f in fixes(names) for addr, orig, new, note in getattr(f, "PATCHES", [])]
+
+
+def emit(a, names):
+    """Emit the code of the fixes in an INCLUDES list into the assembler a."""
+    for f in fixes(names):
+        if hasattr(f, "emit"):
+            f.emit(a)
 
 
 def base(name):

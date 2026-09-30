@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Emulator tests for House Numerals hn9 (see README.md).
+"""Emulator tests for House Numerals hn10.1 (see README.md).
 
   python3 emu_test.py unit    image diff, then every routine at its hook: the home screen against
                               home_model, the volume page against vol_model, a wipe step by step,
@@ -67,8 +67,12 @@ def image_diff():
         check("volume entry 0x%04X -> lcall hn_enter_vol ; sjmp 0x%04X" % (s, s + len(bp.VOL_ENTRY_ORIG)),
               NEW[s:s + 5] == new, NEW[s:s + 5].hex(" "))
         want |= {s + k for k in range(5) if bp.VOL_ENTRY_ORIG[k] != new[k]}
+    for addr, orig, fn, note in bp.FIX_PATCHES:
+        new = fn(LAB)
+        check("patch 0x%04X: %s" % (addr, note), NEW[addr:addr + len(new)] == new, NEW[addr:addr + len(new)].hex(" "))
+        want |= {addr + k for k in range(len(new)) if orig[k] != new[k]}
     changed = {i for i in range(len(BASE)) if BASE[i] != NEW[i]} - {vp + 1, vp + 3}
-    check("inside the base image only the hooks changed (plus version pointer)", changed == want,
+    check("inside the base image only the hooks and the included patches changed (plus version pointer)", changed == want,
           str(sorted("%04X" % i for i in changed ^ want)))
     ver = (NEW[vp + 1] << 8) | NEW[vp + 3]
     check("version pointer -> %r" % bp.VERSION_TEXT,
@@ -251,13 +255,23 @@ def home_state(e, inp=1, out=1, vol=32, hp=20, mute=False, eq=1, fmt=2, sub=2, s
         e.xram[bp.SMALL_BUF + k] = ch
 
 
+def refresh_draw(e):
+    """What home_refresh_periodic draws once its loader has run: hn_hold's stock path (0x4081:
+    home_refresh, then the status line at y 135, in the loader's tint)."""
+    e.call(LAB["hh_stock"])
+
+
 def home_draw(e):
-    """What home_refresh_periodic draws: home_refresh, then the status line (y 135)."""
+    """refresh_draw, timed (ms)."""
     c0 = e.cycles
-    e.call(bp.HOME_REFRESH)
-    e.setR(6, 0); e.setR(7, bp.STATUS_Y)
-    e.call(0x3A53)
+    refresh_draw(e)
     return (e.cycles - c0) * 1000 / CLOCK_HZ
+
+
+def status_tint(e):
+    """The ink the status line on screen was drawn in: bp.DIM, bp.DIM_LOST, or None (no ink pixel)."""
+    cols = {px(e, xx, yy) for xx in range(bp.STAT_X, W) for yy in range(bp.STAT_Y, bp.STAT_Y + bp.PF_STATUS.H)}
+    return bp.DIM_LOST if bp.DIM_LOST in cols else bp.DIM if bp.DIM in cols else None
 
 
 def test_home():
@@ -354,6 +368,29 @@ def test_home():
 def stray_rows(e, y0, y1):
     """Ink outside rows y0..y1 (the pattern 0x1234 counts as untouched)."""
     return any(px(e, x, y) not in (0, 0x1234) for x in range(W) for y in range(H) if not y0 <= y <= y1)
+
+
+def test_status_tint():
+    print("\nthe status line's tint: reddish only for the text the status loader's no-signal check decided")
+    for inp, text, sig in ((2, "No signal", 0), (4, "Searching...", 0), (5, "Disconnected", 0), (2, "96kHz", 1)):
+        e = emu()
+        home_state(e, inp=inp, status=text, sig=bool(sig))
+        refresh_draw(e)
+        want = bp.DIM if sig else bp.DIM_LOST
+        check("the refresh's draw after the loader (0x4081), input %d %r, signal %d: %s, HN_SIG kept" %
+              (inp, text, sig, "grey" if sig else "reddish"),
+              status_tint(e) == want and e.xram[bp.HN_SIG] == sig and home_ok(e), home_diff(e))
+    # any other page-1 draw at y 135 (input_apply's placeholder 0x4C29, the BT key 0x10A1, eq_show 0x396A,
+    # 0x532E) is not the loader's text: grey, whatever the last check found
+    for inp, text in ((2, "Digital input"), (4, "initializing"), (4, "BT Reconnect"), (1, "Bass boost")):
+        e = emu()
+        home_state(e, inp=inp, status=text, sig=False)       # the previous input had no signal
+        e.setR(6, 0); e.setR(7, bp.STATUS_Y)
+        e.call(0x3A53)
+        check("small_text_render at y 135 not from the loader, input %d %r after a no-signal check: grey, "
+              "HN_SIG 1" % (inp, text), status_tint(e) == bp.DIM and e.xram[bp.HN_SIG] == 1)
+        refresh_draw(e)                                        # a redraw without the loader keeps it grey
+        check("    and stays grey when redrawn", status_tint(e) == bp.DIM and home_ok(e))
 
 
 def test_name_ptr():
@@ -577,8 +614,12 @@ def entry_screen(parts, before, x, last, acc, revealed=None):
 
 
 def stock_status(e):
-    """XDATA 0x50 as the stock loader (0x4016..0x407E, the base image) fills it for e's RAM state."""
-    b = ut.emu(BASE)
+    """XDATA 0x50 as the stock loader (0x4016..0x407E, the base image with the included string
+    patches: strings' "Disconnected") fills it for e's RAM state."""
+    img = bytearray(BASE)
+    for addr, orig, fn, _ in bp.FIX_PATCHES:
+        img[addr:addr + len(orig)] = fn(LAB)
+    b = ut.emu(bytes(img))
     b.iram[:] = e.iram[:]
     b.pins[0xC0] = e.pins.get(0xC0, (0, 0))    # P4: the signal pins
     b.hooks[0x4081] = lambda em: em.ret()
@@ -700,7 +741,7 @@ def test_volpage():
 
 
 # ---- a wipe, step by step ----------------------------------------------------------------------
-LOST = ("No signal", "Searching...", "No Connected")     # the loader's texts when 0x5232 finds no signal
+LOST = ("No signal", "Searching...", "Disconnected")     # the loader's texts when 0x5232 finds no signal (strings: ARC)
 
 
 def home_setup(e, inp=2, status="No signal"):
@@ -717,9 +758,7 @@ def home_reference(inp=2, status="No signal"):
     """The home screen as the refresh draws it (home_refresh + the status line), on black."""
     e = emu()
     home_setup(e, inp, status)
-    e.call(bp.HOME_REFRESH)
-    e.setR(6, 0); e.setR(7, bp.STATUS_Y)
-    e.call(0x3A53)
+    refresh_draw(e)
     return e
 
 
@@ -926,9 +965,7 @@ def test_step():
             same = all(s[xx][yy] == h[xx][yy] for xx in range(W) for yy in range(H)
                        if not (sx0 <= xx <= sx1 and sy0 <= yy <= sy1))
             home_setup(e)
-            e.call(bp.HOME_REFRESH)
-            e.setR(6, 0); e.setR(7, bp.STATUS_Y)
-            e.call(0x3A53)
+            refresh_draw(e)
             same, note = same and screen(e) == h, "refresh"
         if note:
             notes.append(turn)
@@ -1914,9 +1951,7 @@ def stock_home_now(amp):
     e.xram[bp.HN_MODE] = 0
     e.iram[0x45] = 1
     e.call(0x51EE)
-    e.call(bp.HOME_REFRESH)
-    e.setR(6, 0); e.setR(7, bp.STATUS_Y)
-    e.call(0x3A53)
+    refresh_draw(e)
     return screen(e)
 
 
@@ -2191,6 +2226,44 @@ def roll_scenarios():
         audio_checks(label, ref, new, quiet=True)
 
 
+def tint_scenarios():
+    """The status line's tint across an input change, whole firmware: input_apply (0x5640) draws the
+    new input's placeholder through 0x4BC9 long before the periodic refresh runs the loader (2-3 s).
+    Seen on the amp with hn8: the placeholder reddish after a no-signal input."""
+    print("\nStatus tint across an input change (whole firmware)")
+    LOCK = (0xC0, 2, 0)                       # P4.2 low: optical/coax lock
+    # (name, setup keys, key, pins at the key, placeholder, then (text, reddish) once the loader has run)
+    cases = (("usb_nosig_source_lock", [], NEC_SOURCE, [LOCK], "Digital input", (None, False)),
+             ("usb_nosig_source_nolock", [], NEC_SOURCE, [], "Digital input", ("No signal", True)),
+             ("usb_nosig_select_bt", [], NEC_BT, [], "initializing", ("Searching...", True)),
+             ("usb_nosig_select_aux", [], 0x15, [], "Analog input", ("Analog input", False)),
+             ("bt_searching_source", [(NEC_BT, 4.0)], NEC_SOURCE, [], "Digital input", ("Disconnected", True)),
+             ("bt_searching_bt_key", [(NEC_BT, 4.0)], 0x0E, [], "BT Reconnect", ("Searching...", True)))
+    for name, setup, cmd, pins, placeholder, (text, lost) in cases:
+        amp = Amp(NEW)
+        amp.boot()
+        amp.press(NEC_POWER)
+        amp.wait(9.5)
+        for c, t in setup:
+            amp.press(c)
+            amp.wait(t)
+        e = amp.e
+        check("%-24s before the key: %r reddish (no signal)" % (name, buffer_text(e, bp.SMALL_BUF)),
+              status_tint(e) == bp.DIM_LOST and home_ok(e), home_diff(e))
+        for p in pins:
+            amp.set_pin(*p)
+        amp.press(cmd)
+        amp.wait(0.3)
+        check("%-24s 0.3 s after the key: %r in grey" % (name, placeholder),
+              buffer_text(e, bp.SMALL_BUF) == placeholder and status_tint(e) == bp.DIM and e.xram[bp.HN_SIG] == 1,
+              "(%r, %s)" % (buffer_text(e, bp.SMALL_BUF), status_tint(e) and "%04X" % status_tint(e)))
+        amp.wait(4.2)
+        got = buffer_text(e, bp.SMALL_BUF)
+        check("%-24s once the loader has run: %r %s" % (name, got, "reddish" if lost else "grey"),
+              (text is None or got == text) and status_tint(e) == (bp.DIM_LOST if lost else bp.DIM) and home_ok(e),
+              home_diff(e))
+
+
 def edge_scan():
     """The panel-scan model (tools/emu/panel_video.py: 60 Hz, 12 + 320 + 12 lines, one memory row
     per line time) over an entry and an exit, scanning x upwards and downwards: every frame whose
@@ -2400,9 +2473,9 @@ def report_steps():
 
 
 GROUPS = {
-    "unit": [image_diff, test_home, test_name_ptr, test_draw_volume, test_volpage,
+    "unit": [image_diff, test_home, test_status_tint, test_name_ptr, test_draw_volume, test_volpage,
              test_step, test_roll, test_spring, test_enter_vol, test_home_tail, test_align],
-    "tour": [tour, input_scenarios, key_scenarios, flag_exit_scenarios, roll_scenarios, edge_scan],
+    "tour": [tour, input_scenarios, key_scenarios, flag_exit_scenarios, roll_scenarios, tint_scenarios, edge_scan],
     "int1": [int1],
     "sweep": [sweep],
 }

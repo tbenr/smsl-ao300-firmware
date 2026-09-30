@@ -73,6 +73,8 @@ KNOWN_IMAGES = {
     "122a963c35cf4d64e01e8534b301e4d86e2d1b74a336e24e15a9e19b18bcebcd": "fast-lcd + House Numerals v8 (hn7 with the mock's volume page: name, status, VOL, 84-px number, 288-px line, dB caption, max 60; rounded tag corners; reddish status without a signal), 'v1.4 tbenr hn8' (features/house-numerals/build/flash_house_numerals.bin)",
     "b45331a8b812ed583daa6d914c905ad147b9713552c5da09ab03f67001b69916": "fast-lcd + House Numerals v9 (hn8 with the volume page's number roll and the spring on the position line; uk_text row clip, tick driver serves the re-mute request itself), 'v1.4 tbenr hn9' (features/house-numerals/build/flash_house_numerals.bin)",
     "45c22bf1faf01ccd3e103da0f90094cb791d5e691750d73fbbdb4f6f5b176a46": "fast-lcd + House Numerals v10 (hn9 with the mock's cubic ease on both wipes, 32 ticks each way), 'v1.4 tbenr hn10' (features/house-numerals/build/flash_house_numerals.bin)",
+    "59d33243e749be8c7f699f16f8480c4bc6689e21d7ffd40b751ac85274ee1fd3": "direct-select + corrected stock texts (HDMI ARC without a link: 'Disconnected' for 'No Connected'), 'v1.4 tbenr str1' (features/strings/build/flash_strings.bin)",
+    "89a6ed991e16b810a6bf3f0be6065075d08ab8815285589fe6d03d8b72b16a60": "fast-lcd + House Numerals v10.1 (hn10 with the status tint fix: only the status loader's own text is reddish, so an input's placeholder after Source is grey; strings included: 'Disconnected' on ARC), 'v1.4 tbenr hn10.1' (features/house-numerals/build/flash_house_numerals.bin)",
 }
 
 

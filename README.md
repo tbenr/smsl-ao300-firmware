@@ -63,7 +63,7 @@ features/
     build_patch.py, emu_test.py   build build/flash_fastlcd.bin, lockstep UI tour vs stock
   house-numerals/                 House Numerals home and volume page, on top of fast-lcd,
                                   built with tools/patch/uikit.py; hn10 tried on the amp
-                                  on 2026-09-30; see its README
+                                  on 2026-09-30, hn10.1 emulator-verified; see its README
     build_patch.py, emu_test.py   build build/flash_house_numerals.bin (hn10: the mock's home
                                    and volume page in its own typefaces, non-blocking wipes
                                    with the mock's cubic ease, the number roll and the line's spring), home and
@@ -72,6 +72,8 @@ features/
     layout.json, sizing.html      the home layout the build reads, and the page that edits it
                                    (preview exact to the firmware; served by tools/fonts/rasterize.py)
     house_numerals.asm            annotated listing of the patch code at 0x9800
+  strings/                        stock texts corrected in place ("Disconnected" for ARC's
+                                  "No Connected"), includable like a fix; see its README
   fix-auto-off/                   stock-bug fix, ported from the AO300 PRO V1.2: Dimmer Auto
                                   OFF also times out after a cold power-up. Standalone on
                                   direct-select; other builds include it (see its README)
@@ -178,21 +180,24 @@ INCLUDES (a fix linked into that image):
 stock                         85e8ac50…
 └── direct-select             'v1.4 tbenr'        0x9400..0x9442  bb468b29… known
     ├── fast-lcd              'v1.4 tbenr fast'   0x9700..0x977B  b292a648… known
-    │   └── house-numerals    'v1.4 tbenr hn10'   0x9800..0xEF50  45c22bf1… known
+    │   └── house-numerals    'v1.4 tbenr hn10.1' 0x9800..0xEF5E  89a6ed99… known
     │         + fix-auto-off  fix linked into house-numerals
-    └── fix-auto-off          'v1.4 tbenr aof1'   0x9680..0x969D  f9b5d14d… known  [fix, hook 0x55B9; included by house-numerals]
+    │         + strings       fix linked into house-numerals
+    ├── fix-auto-off          'v1.4 tbenr aof1'   0x9680..0x969D  f9b5d14d… known  [fix, hook 0x55B9; included by house-numerals]
+    └── strings               'v1.4 tbenr str1'   0x96A0..0x96AF  59d33243… known  [fix, patch 0x91ED; included by house-numerals]
 ```
 
 House-numerals then depends on fast-lcd (its base, and so on down to stock) and on
-fix-auto-off (included). An image has exactly one BASE, because images stack, but can
+fix-auto-off and strings (included). An image has exactly one BASE, because images stack, but can
 include any number of fixes. Including a fix uses the fix's source, not its standalone
 image; that image stays a separate branch of the tree.
 
 A fix is a feature whose folder also holds `<name>.py` (dashes as underscores) exporting
-`HOOK` and `emit(a)`. Its own image is only a standalone build on direct-select. A build
-that lists it in `INCLUDES` links it in two places:
-`HOOKS += [f.HOOK for f in features.fixes(INCLUDES)]`, and `f.emit(a)` for each fix in
-`assemble()`.
+`HOOK` and `emit(a)` (code at a hook), or `PATCHES` (in-place byte changes of the same
+length, `[(address, original, new, note)]`; `features/strings` corrects stock texts this
+way), or both. Its own image is only a standalone build on direct-select. A build that
+lists it in `INCLUDES` links it in three places: `HOOKS += features.hooks(INCLUDES)`,
+`patches += features.patches(INCLUDES)` and `features.emit(a, INCLUDES)` in `assemble()`.
 
 `tools/build.py` builds in order and checks every image:
 
@@ -200,7 +205,8 @@ that lists it in `INCLUDES` links it in two places:
   a stale pin, and nothing below it is built.
 - **Byte conflicts.** A feature may not change bytes an ancestor already changed; the
   version pointer is the one exception.
-- **Includes.** Every included fix's hook must jump into the including image's own code.
+- **Includes.** Every included fix's hook must jump into the including image's own code,
+  and its in-place patches must be applied.
 - **Known images.** Each sha is looked up in `KNOWN_IMAGES`, and a new one is reported.
 - **Code slots.** Features outside one chain are warned if their code areas share
   addresses, so the Ghidra labels stay one name per address.
@@ -218,6 +224,7 @@ checks, in that feature's image, what must stay true wherever it is built on or 
 
 - direct-select: the six direct commands and the stock translation of the other 250.
 - fix-auto-off: Auto OFF times out after power-on as after a key; Always ON is untouched.
+- strings: the corrected texts are in the image, and the status loader shows them.
 
 ## Flashing from macOS or Linux
 
@@ -276,11 +283,14 @@ fix-auto-off included, so Dimmer Auto OFF also times out after a cold power-up. 
 the amp on 2026-09-29: it looks good, and Auto OFF times out after a cold power-up. hn8
 (`v1.4 tbenr hn8`) adds the mock's volume page (name, status line, "VOL", 84-px numerals, a
 288-px line, the level in dB and "max 60"), rounded tag corners and a reddish status line
-without a signal; tried on the amp on 2026-09-30, works (an open question on the reddish
-status after a Source change is in `features/house-numerals/TODO.md`). hn9 (`v1.4 tbenr hn9`)
+without a signal; tried on the amp on 2026-09-30, works, except that the status stayed reddish
+for a few seconds after an input change from an input without a signal (fixed in hn10.1). hn9 (`v1.4 tbenr hn9`)
 adds the volume page's two animations from the mock, the number roll and the spring on the
 position line; hn10 (`v1.4 tbenr hn10`) gives both wipes the mock's cubic ease, 0.32 s each
-way. Both were tried on the amp on 2026-09-30: good.
+way. Both were tried on the amp on 2026-09-30: good. hn10.1 (`v1.4 tbenr hn10.1`) fixes the
+status tint after an input change (only the status loader's own text is reddish) and links
+in `features/strings` ("Disconnected" for ARC's "No Connected"); emulator-verified, not yet
+tried on the amp.
 
 Verified on the amp on 2026-09-29, as part of hn7: the Auto OFF fix (`features/fix-auto-off`). With
 Dimmer on Auto OFF the display goes dark after a cold power-up. Its standalone image
@@ -534,7 +544,7 @@ Measured from the images; the code/EEPROM split is the chip's own setting (0xF40
 
 | Region | Size | Used | Free |
 |---|---|---|---|
-| Code flash, 0x0000..0xF3FF | 62464 bytes | 61265 bytes (features/house-numerals hn10) | ~1.2 KB |
+| Code flash, 0x0000..0xF3FF | 62464 bytes | 61279 bytes (features/house-numerals hn10.1) | ~1.2 KB |
 | EEPROM area, 0xF400..0xFDFF | 2560 bytes, 5 sectors of 512 | sectors at offsets 0x0000, 0x0200, 0x0400 | 2 sectors, 1 KB |
 | Internal direct RAM, 0x00..0x7F | 128 bytes | all (registers, bit flags, variables up to 0x7F) | none |
 | Internal indirect RAM, 0x80..0xFF | 128 bytes | stack from 0x88 (`mov SP,#0x88` at 0x44A5) | stack headroom only |
