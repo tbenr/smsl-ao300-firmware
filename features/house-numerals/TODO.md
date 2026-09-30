@@ -1,7 +1,8 @@
 # House Numerals: what is left
 
-State as of hn8 (`v1.4 tbenr hn8`, tried on the amp on 2026-09-30, works). The reference is
-study 3 in `features/ui-theme/ui_themes.html`.
+State as of hn9 (`v1.4 tbenr hn9`: hn8, tried on the amp on 2026-09-30, plus the number roll and
+the spring on the line, emulator-verified only). The reference is study 3 in
+`features/ui-theme/ui_themes.html`.
 
 ## To investigate: reddish status after a Source change
 
@@ -35,14 +36,17 @@ Volume page:
   (menu entry or IR command) and a decision on whether the choice survives power cycles
   (EEPROM; sectors at offsets 0x0000, 0x0200, 0x0400 are in use). The dB value itself is
   done (`hv_cap`, from the NJW1194 code table).
-- **Number roll.** The old number slides out and the new one in, fading, over 0.14 s
-  (`this.k`, cubic ease, shift 20 px, clip 146..310 x 38..120). Needs a y clip in `uk_text`
-  (only x clips exist) and a small per-tick animation in `uk_tasks`.
-- **Spring on the line.** The filled part follows the volume with a spring (k 200, damping
-  28); ours jumps. Per-tick task, fixed-point.
+- **Number roll: one number per frame.** The mock crossfades the old and the new number (both
+  drawn, each at its alpha); hn9 draws only the one with the larger alpha in each frame, in its
+  grey on black (the panel is write-only and `uk_text` streams whole cells), so the old number
+  shows for 2 of the 14 frames and the two never overlap. Its clip box is also cut to rows
+  42..119 (the mock's 38..119 overlaps "VOL"'s cell) and to the number's columns 156..304.
+  A blend would need the old number's pixels per cell (a second decode stream in `uk_text`).
+- **Spring: fixed point.** Within 1.05 px of the mock's float integrator, and it stops on the
+  target (the float one never quite does); settles in at most 0.63 s.
 - **Sizing.** `sizing.html` covers the home only; the volume page's positions are constants
   in `build_patch.py` (`V*`). A second tab with the same save path (`layout.json`,
-  `"volume"`) would let the sizes be picked by eye. Flash is tight: 2220 bytes left.
+  `"volume"`) would let the sizes be picked by eye. Flash is tight: 1231 bytes left.
 - **MUTE state** (red speaker, "MUTE" at 64 px, dark-red line): unreachable in this firmware
   (the mute key goes home, the volume keys unmute first). Only worth doing if a muted volume
   page is wanted on purpose.

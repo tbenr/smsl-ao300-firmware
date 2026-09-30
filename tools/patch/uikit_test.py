@@ -224,9 +224,9 @@ def test_clip_and_speed():
           t1 / 6720 <= 14 and t2 / 7680 <= 10, "(%.1f, %.1f)" % (t1 / 6720, t2 / 7680))
 
 
-def ref_text(font, s, x, y, ink=0xFFFF, bg=0, clip=(0, 319), align=0, spacing=0, ground=0x1234):
+def ref_text(font, s, x, y, ink=0xFFFF, bg=0, clip=(0, 319), align=0, spacing=0, ground=0x1234, rows=(0, 255)):
     fb = [[ground] * W for _ in range(H)]
-    end = PFONTS[font].render(fb, s, x, y, ink, bg, clip, align, spacing)
+    end = PFONTS[font].render(fb, s, x, y, ink, bg, clip, align, spacing, rows)
     return fb, end
 
 
@@ -337,6 +337,47 @@ def test_text_clip_and_speed():
           t1 / n1 <= 16 and t2 / n2 <= 24 and t3 / n2 <= 24, "(%.1f, %.1f, %.1f)" % (t1 / n1, t2 / n2, t3 / n2))
 
 
+def test_text_rows():
+    print("\nuk_textc: the row clip (TP_YC0..TP_YC1) against pfont.render(rows=...)")
+    cases = [("tf_num84", "-48.5", 304, 51, dict(align=1)),
+             ("tf_num84", "10", 304, 41, dict(align=1)),
+             ("tf_disp52", "COAXIAL", 16, 61, dict(spacing=1)),
+             ("tf_mono11", "Analog input", 18, 68, {}),
+             ("tf_mono11r", "max 60", 304, 148, dict(align=1)),
+             ("tf_num22", "0123", 36, 8, {})]
+    bad, n = [], 0
+    for font, s, x, y, kw in cases:
+        h = PFONTS[font].H
+        clips = [(y + 5, 255), (0, y + h - 6), (y + 3, y + h - 4), (y + h // 2, y + h // 2), (y + 1, y + 1),
+                 (y + h - 1, y + h + 20), (0, y - 1), (y + h, 169), (y + 9, y + 3), (y, y + h - 1), (0, 255),
+                 (max(0, y - 7), y + h // 3)]
+        for rows in clips:
+            for clip in ((0, 319), (x + 3 if kw.get("align") != 1 else x - 40, x + 30 if kw.get("align") != 1 else x - 9)):
+                n += 1
+                kw2 = dict(kw, ink=0xFC43, bg=0x0841, clip=clip)
+                e, _ = utext(font, s, x, y, rows=rows, **kw2)
+                fb, end = ref_text(font, s, x, y, rows=rows, **kw2)
+                if not same(e, fb) or ut.tp_end(e, KIT) != end:
+                    bad.append((font, s, rows, clip))
+    check("%d draws (6 strings in both formats, 12 row clips: above, below, both, one row, outside, empty, "
+          "the whole cell; x clips): only those rows and columns, same pixels, TP_END" % n, not bad, str(bad[:4]))
+    bad = []
+    for font, s, x, y, kw in cases:
+        e0, t0 = utext(font, s, x, y, **kw)
+        e1, t1 = utext(font, s, x, y, rows=(0, 255), **kw)
+        e2, _ = utext(font, s, x, y, rows=(y, y + PFONTS[font].H - 1), **kw)
+        if e0.lcd.gram != e1.lcd.gram or e0.lcd.gram != e2.lcd.gram or t1 - t0 > 20:
+            bad.append((font, s, t1 - t0))
+    check("uk_textc with every row (0..255, or exactly the cell's) = uk_text, in the same time", not bad, str(bad[:3]))
+    f84 = PFONTS["tf_num84"]
+    _, t0 = utext("tf_num84", "88", 16, 51)
+    _, t1 = utext("tf_num84", "88", 16, 51, rows=(61, 169))
+    n1 = f84.width("88") * (f84.H - 10)
+    print("    88 (84 px) with the top 10 rows clipped: %.2f ms (%.1f clocks per drawn pixel), unclipped %.2f ms"
+          % (t1 * 1000 / CLOCK_HZ, t1 / n1, t0 * 1000 / CLOCK_HZ))
+    check("row-clipped run-length glyphs at most 24 clocks per drawn pixel", t1 / n1 <= 24, "(%.1f)" % (t1 / n1))
+
+
 def main():
     print("uikit: %d bytes of kit code and test fonts at 0x%04X, XDATA 0x%04X..0x%04X, uk_text 0x%04X..0x%04X" %
           (len(IMG) - CODE_ADDR, CODE_ADDR, KIT.fill_n, KIT.FP + KIT.FP_SIZE - 1, TP_BASE, TP_BASE + KIT.TP_SIZE - 1))
@@ -349,6 +390,7 @@ def main():
     test_text_glyphs()
     test_text_strings()
     test_text_clip_and_speed()
+    test_text_rows()
     print("\nALL PASS" if not fails else "\nFAILURES: %s" % fails)
     sys.exit(1 if fails else 0)
 

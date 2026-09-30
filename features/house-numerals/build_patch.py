@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the "House Numerals" image for the SMSL AO300 (on top of fast-lcd), hn8.
+"""Build the "House Numerals" image for the SMSL AO300 (on top of fast-lcd), hn9.
 
 A reduced build of study 3 in features/ui-theme/ui_themes.html:
 
@@ -18,8 +18,11 @@ A reduced build of study 3 in features/ui-theme/ui_themes.html:
             (loaded as the periodic refresh loads it) left of a divider, "VOL" over the
             volume right-aligned in 84-px numerals right of it, a 288-px position line, the
             level in dB below step 60 ("_39.5 dB", from the stock NJW1194 code table) and
-            "max 60" under it. volpage_draw_volume 0x5936 is replaced, so knob and remote
-            steps redraw only the number, the line and the dB caption.
+            "max 60" under it. volpage_draw_volume 0x5936 is replaced: a knob or remote step
+            redraws the dB caption, rolls the number (14 frames, one per tick: the old one
+            slides out, the new one in, one number a frame in the mock's grey, in a clip box,
+            uk_textc) and changes the target of the line's spring (the mock's k 200, c 28, as a
+            fixed-point matrix per tick), which redraws only the columns it moved.
   wipes     a 2-px accent edge sweeps across the screen with an ease-in-out, 20 steps of
             one 10 ms main-loop tick each: right to left into the volume page, left to
             right back home. Nothing blocks: the main loop's tick path (main_tasks_on's
@@ -36,9 +39,11 @@ starts the exit instead of clearing, and home_refresh at 0x4081 (hn_hold) is hel
 wipe runs. Any stock clear (ui_clear_screen 0x5D42, hn_cancel) cancels a wipe first; so does
 the name draw 0x4A85 during an exit (Source and direct-select on page 1, hn_name_guard).
 
+Per tick (uk_tasks, after the stock tick work, amp on): the wipe step, the spring, the roll.
+
 Register use: every hn_* / hm_* / hv_* routine may clobber A, B, DPTR, PSW and R0-R7 (the stock
 routines they replace or wrap do the same). RAM 0x48:0x49 (the theme colour) is only read.
-New state lives in XDATA 0x0100..0x01B2.
+New state lives in XDATA 0x0100..0x01C1.
 """
 import hashlib
 import json
@@ -96,9 +101,9 @@ HN_B1 = 0x0119                      # ... to
 HN_NAMER = 0x011B                   # exit: right end of the home input name
 HN_S0 = 0x011D                      # hn_line_seg: columns from ...
 HN_S1 = 0x011F                      # ... to
-HN_SPL = 0x0121                     # hn_line_seg: 40 + 4 * volume
+HN_SPL = 0x0121                     # the position line's split column on screen (the spring's, 16..304)
 HN_STATR = 0x0123                   # exit: right end of the status line as drawn
-TP_BASE = 0x0160                    # uk_text's parameter block and work area (50 bytes)
+TP_BASE = 0x015B                    # uk_text's parameter block and work area (55 bytes, up to HM_VS)
 HM_VS = 0x0192                      # home volume as text (up to 2 digits and a NUL)
 HM_TAG = 0x0196                     # a tag's text, trailing spaces cut (up to 5 characters and a NUL)
 HM_TX = 0x019C                      # hm_tag: box x
@@ -114,11 +119,19 @@ HN_HF0 = 0x01A7                     # step: HN_HF / HN_VF when the step began (n
 HN_SLD = 0x01A8                     # hn_stat_load: the status loader runs for the volume page (hn_hold returns)
 HV_DB = 0x01A9                      # volume page: the dB caption, 8 characters and a NUL
 HN_SIG = 0x01B2                     # the status loader's signal check: 1 = signal (hn_signal); tints the status line
+SP_P = 0x01B3                       # spring: position along the line, pixels * 64, signed (hi, lo)
+SP_V = 0x01B5                       # spring: velocity, pixels * 64 per tick, signed
+SP_T = 0x01B7                       # spring tick: the target * 64
+SP_E = 0x01B9                       # spring tick: position - target
+SP_W = 0x01BB                       # hn_sp_lin: its first product
+HR_F = 0x01BD                       # number roll: the next frame 1..14, 0 idle
+HR_DIR = 0x01BE                     # number roll: 0 up (the old number leaves upwards), 1 down
+HR_OLD = 0x01BF                     # number roll: the previous target's text (up to 2 digits and a NUL)
 
 # uk_fill's work area (HN_N, HN_C) and uk_paint's parameter block and work area (FP..FP_OFF)
 # belong to the kit, placed where hn4.1 had them
 KIT = uikit.Kit(fill_ws=HN_N, fp_base=0x0130, tp_base=TP_BASE)
-XDATA_END = HN_SIG
+XDATA_END = HR_OLD + 2
 # XDATA this image's own code uses: the variables above and the kit's blocks (tools/build.py checks it)
 XDATA = [(0x0100, XDATA_END + 1, "house-numerals variables, uikit fill/FP/TP blocks")]
 (FP, FP_FONT, FP_STR, FP_SPC, FP_X, FP_Y, FP_INK, FP_BG, FP_CX0, FP_CX1, FP_SCALE, FP_W, FP_BPC, FP_BPG,
@@ -224,6 +237,86 @@ assert VCAP_Y + PF_MONO.H <= 170 and VCAP_END < VCAPR_X and VLINE_SPLIT[60] == V
 assert VLINE_MID - VLINE_X <= 255 and VLINE_X + VLINE_W - VLINE_MID <= 255
 assert all(PF_MONO.width(t) >= 8 * PF_MONO.width("0") for t in VCAP_TEXTS)   # 8 cells (the infinity is 1 px wider)
 
+# ---- the number roll (the mock's this.k, 0.14 s): ROLL_FRAMES frames, one per tick. The panel is
+# write-only and uk_text streams its cells, so two translucent numbers cannot be mixed: each frame
+# draws one number on black, the old one while the mock's ease e < 0.5, then the new one, at the
+# mock's offset for it (rounded to rows) and with its alpha as the ink (white * alpha, a grey), in
+# the clip box ROLL_X0..ROLL_X1 x ROLL_Y0..ROLL_Y1 (the mock's 146..309 x 38..119, cut to the
+# number's columns and to the rows between "VOL" and the position line).
+ROLL_FRAMES = 14                                                # 0.14 s at one frame per 10 ms tick
+ROLL_SHIFT = 20                                                 # the mock's shift, px
+ROLL_X0, ROLL_X1 = VNUM_LEFT, VNUM_RIGHT
+ROLL_Y0 = max(38, VLBL_Y + PF_MONO.H)                           # below "VOL"'s cell
+ROLL_Y1 = min(38 + 82 - 1, VLINE_Y - 1)                         # above the position line
+
+
+def roll_frames():
+    """[(old?, dy for a step up, ink)] for frames 1..ROLL_FRAMES: e = 1 - (1 - k)^3, k = n / 14; the
+    old number (alpha 1 - e, baseline - shift * e) while e < 0.5, else the new one (alpha e,
+    baseline + shift * (1 - e)); a step down mirrors dy."""
+    out = []
+    for n in range(1, ROLL_FRAMES + 1):
+        e = 1 - (1 - n / ROLL_FRAMES) ** 3
+        old = e < 0.5
+        dy = -ROLL_SHIFT * e if old else ROLL_SHIFT * (1 - e)
+        g = int(math.floor(255 * ((1 - e) if old else e) + 0.5))
+        out.append((old, int(math.floor(dy + 0.5)), uikit.rgb565(g, g, g)))
+    return out
+
+
+ROLL = roll_frames()
+ROLL_OLD = sum(1 for f in ROLL if f[0])                          # frames 1..ROLL_OLD draw the old number
+assert all(f[0] for f in ROLL[:ROLL_OLD]) and ROLL[-1] == (False, 0, WHITE)   # the last = hv_num's number
+assert all(abs(dy) <= ROLL_SHIFT for _, dy, _ in ROLL)
+# the box holds the number at every offset it is drawn at, and nothing else of the page
+assert ROLL_Y0 <= VNUM_Y and VNUM_Y + PF_VNUM.H - 1 <= ROLL_Y1
+assert VNUM_RIGHT - VNUM_MAXW + 1 > ROLL_X0       # hn_num_at fills the columns left of the number: never 0 wide
+assert VLBL_Y + PF_MONO.H - 1 < ROLL_Y0 and ROLL_Y1 < VLINE_Y and VDIV_X < ROLL_X0
+assert VCAP_Y > ROLL_Y1 and VNAME_END < ROLL_X0 and VSTAT_END < ROLL_X0
+assert VNUM_RIGHT - min(PF_VNUM.width(str(v)) for v in range(61)) + 1 - ROLL_X0 <= 255   # uk_fill widths
+
+# ---- the spring on the position line (the mock's spring(s, target, dt, 200, 28), integrated at
+# 240 Hz): one step per 10 ms tick. Linear with the target fixed, so a tick is a 2 x 2 matrix on
+# (position - target, velocity), composed from the mock's substeps; in fixed point: pixels * 64,
+# velocity in pixels * 64 per tick, the products as Q16 fractions (hs_mulq). A tick with
+# |error| < SPRING_SE and |velocity| < SPRING_SV settles on the target.
+SPRING_K, SPRING_C, SPRING_DT = 200.0, 28.0, 0.01
+SPRING_Q = 6
+SPRING_SE, SPRING_SV = 32, 6
+
+
+def spring_float_tick(x, v, target):
+    """The mock's integrator over one 10 ms tick (x and v in pixels, pixels/s)."""
+    n = math.ceil(SPRING_DT / (1 / 240))
+    h = SPRING_DT / n
+    for _ in range(n):
+        acc = SPRING_K * (target - x) - SPRING_C * v
+        v += acc * h
+        x += v * h
+    return x, v
+
+
+def spring_matrix():
+    m11, m21 = spring_float_tick(1.0, 0.0, 0.0)
+    m12, m22 = spring_float_tick(0.0, 1 / SPRING_DT, 0.0)
+    return m11, m12, m21 * SPRING_DT, m22 * SPRING_DT       # velocity in pixels per tick
+
+
+_M = spring_matrix()
+SPRING_K1 = int(round((1 - _M[0]) * 65536))                     # e' = e - e*K1 + V*K2
+SPRING_K2 = int(round(_M[1] * 65536))
+SPRING_K3 = int(round(-_M[2] * 65536))                          # V' = V*K4 - e*K3
+SPRING_K4 = int(round(_M[3] * 65536))
+assert all(0 < k < 65536 for k in (SPRING_K1, SPRING_K2, SPRING_K3, SPRING_K4))
+
+
+def spring_target(v):
+    """The line's fill for volume v in pixels, as hn_sp_t6 computes it: 4v + (4v + 2) / 5."""
+    return 4 * v + (4 * v + 2) // 5
+
+
+assert all(spring_target(v) == VLINE_SPLIT[v] - VLINE_X for v in range(61))
+
 # volume-page elements: (bit, name, x0, x1); an element appears once the edge is left of x0
 VF_NAME, VF_STAT, VF_DIV, VF_VOL, VF_NUM, VF_LINE, VF_CAP, VF_CAPR = 1, 2, 4, 8, 16, 32, 64, 128
 VF_ALL = 255
@@ -270,7 +363,7 @@ HOOKS = [STOCK_SITES[site] + (op, target) for site, op, target in (
     ("format_tag_clear_changed", 0x12, "hm_fmt_clear"),
 )]
 HOOKS += [f.HOOK for f in features.fixes(INCLUDES)]    # the fixes linked in
-VERSION_TEXT = "v1.4 tbenr hn8"
+VERSION_TEXT = "v1.4 tbenr hn9"
 
 
 rect = KIT.rect
@@ -290,12 +383,16 @@ def build_data(a):
     a.data('db "max 60",0', b"max 60\0")
     a.L("str_dbinf")
     a.data('db "  _~ dB ",0     ; volume 0: minus infinity', b"  _~ dB \0")
-    a.comment("the position line: the first track column for volumes 0..60 (low byte; the high byte is 1 "
-              "from the first entry at or over 256, see hv_split)")
-    a.L("vsplit")
-    for k in range(0, 61, 16):
-        vals = VLINE_SPLIT[k:k + 16]
-        a.data("db " + ",".join("%d" % (v & 0xFF) for v in vals), [v & 0xFF for v in vals])
+    a.comment("number roll, frames 1..%d (frame %d is hv_num): cell row offset for a step up (a step down "
+              "negates it), ink; frames 1..%d draw the old number" % (ROLL_FRAMES - 1, ROLL_FRAMES, ROLL_OLD))
+    a.L("ro_tab")
+    for n, (old, dy, ink) in enumerate(ROLL[:-1], 1):
+        a.data("db %d,0x%02X,0x%02X ; frame %d: %s" % (dy, ink >> 8, ink & 0xFF, n, "old" if old else "new"),
+               [dy & 0xFF, ink >> 8, ink & 0xFF])
+    a.comment("spring constants (Q16): K2, K1 (position), K4, K3 (velocity), see hn_sp_lin")
+    a.L("sp_kt")
+    for k in (SPRING_K2, SPRING_K1, SPRING_K4, SPRING_K3):
+        a.data("dw %d" % k, [k >> 8, k & 0xFF])
     a.comment("home_draw_input_name's strings for inputs 1..8 (0: none, the buffer is drawn as it is)")
     a.L("names8")
     tab = {inp: addr for inp, addr, _ in INPUT_NAMES}
@@ -342,15 +439,19 @@ ret
 
 
 def build_painter(a):
-    KIT.emit_text(a)            # uk_text only: nothing here draws with the stock fonts any more
+    assert all(f.bpp == 2 for f in PFONTS)
+    KIT.emit_text(a, one_bit=False)     # uk_text only (run-length fonts): nothing here draws with the stock fonts
 
 
 def build_volume_page(a):
     bit = {v: v.bit_length() - 1 for v in (VF_NUM, VF_LINE, VF_CAP)}
     S(a, """
 ; hn_draw_volume: replaces volpage_draw_volume 0x5936 (R7 speaker volume). Records the value
-; (HN_VOL, HN_NUM); draws the number, the line and the dB caption when no wipe runs, or when the
-; wipe has already revealed them; otherwise the wipe draws them when it reveals them.
+; (HN_VOL, HN_NUM; the text shown so far in HR_OLD). On the volume page, idle: the dB caption now,
+; and a changed number rolls in from the next tick (hn_roll); the line's spring follows HN_VOL by
+; itself (hn_spring). During a wipe: the number and the caption only if the wipe has revealed them
+; (in their final state), else the wipe draws them when it reveals them. Page not on screen and no
+; wipe: the number, the line and the caption at once (hn_dyn_now).
 hn_draw_volume:
 mov A,0x2B
 xrl A,#1
@@ -363,7 +464,26 @@ hdv_c:
 jc hdv_ok
 mov A,#60
 hdv_ok:
+mov R7,A
+mov DPTR,#0x%04X""" % HN_NUM + """
+movx A,@DPTR
+mov R2,A
+inc DPTR
+movx A,@DPTR
+mov R3,A
+mov DPTR,#0x%04X""" % HR_OLD + """
+mov A,R2
+movx @DPTR,A
+inc DPTR
+mov A,R3
+movx @DPTR,A
+inc DPTR
+clr A
+movx @DPTR,A       ; HR_OLD = the text so far (two characters at most)
 mov DPTR,#0x%04X""" % HN_VOL + """
+movx A,@DPTR
+mov R6,A           ; the volume so far
+mov A,R7
 movx @DPTR,A
 inc DPTR           ; HN_NUM
 lcall hn_dec2
@@ -372,7 +492,27 @@ mov A,#2
 movx @R0,A         ; stock leaves the digit count 2 in XDATA 0x05
 mov DPTR,#0x%04X""" % HN_MODE + """
 movx A,@DPTR
-jz hdv_all
+jnz hdv_wipe
+inc DPTR           ; HN_VF
+movx A,@DPTR
+cjne A,#%d,hn_dyn_now""" % VF_ALL + """
+; the page is on screen: the number rolls if it changed (HR_DIR 1 when it went down)
+mov A,R7
+xrl A,R6
+jz hdv_cap
+mov A,R7
+clr C
+subb A,R6
+clr A
+rlc A
+mov DPTR,#0x%04X""" % HR_DIR + """
+movx @DPTR,A
+mov DPTR,#0x%04X""" % HR_F + """
+mov A,#1
+movx @DPTR,A
+hdv_cap:
+ljmp hv_cap
+hdv_wipe:
 inc DPTR           ; HN_VF
 movx A,@DPTR
 push ACC
@@ -380,17 +520,15 @@ jnb ACC.%d,hdv_nonum""" % bit[VF_NUM] + """
 lcall hv_num
 hdv_nonum:
 pop ACC
-push ACC
-jnb ACC.%d,hdv_noline""" % bit[VF_LINE] + """
-lcall hv_line
-hdv_noline:
-pop ACC
 jnb ACC.%d,hdv_ret""" % bit[VF_CAP] + """
 ljmp hv_cap
 hdv_ret:
 ret
-hdv_all:
+
+; hn_dyn_now: the number, the line (the spring on its target) and the dB caption, at once
+hn_dyn_now:
 lcall hv_num
+lcall hn_sp_snap
 lcall hv_line
 ljmp hv_cap
 
@@ -411,56 +549,165 @@ clr A
 movx @DPTR,A
 inc DPTR
 ret
-""")
-    S(a, """
-; hv_num: the number (HN_NUM) in the volume face, white, ending at x %d (baseline %d); black from
-; x %d up to it. Measured first (empty clip), so the columns left of a narrower number are cleared
-; without blanking the number itself.
-hv_num:""" % (VNUM_RIGHT, VNUM_Y - PF_VNUM.top, VNUM_LEFT))
-    tp_setup(a, "pf_vnum", HN_NUM, 0, 0, VNUM_Y, WHITE, clip=(0x100, 0))
-    S(a, """
-lcall uk_text      ; TP_END = width - 1
-mov DPTR,#0x%04X""" % (KIT.TP["END"] + 1) + """
+
+; hn_roll: the number roll's frame for this tick (after hn_step and hn_spring): frame n of %d draws
+; one number on black in the box %d..%d x %d..%d: the old one (HR_OLD) for n <= %d, then the new
+; one (HN_NUM), shifted by ro_tab's rows (negated for a step down) in its grey; frame %d is hv_num.
+; Only on the idle page (HN_MODE 0, HN_VF all); anything else stops it.
+hn_roll:""" % (ROLL_FRAMES, ROLL_X0, ROLL_X1, ROLL_Y0, ROLL_Y1, ROLL_OLD, ROLL_FRAMES) + """
+mov DPTR,#0x%04X""" % HR_F + """
 movx A,@DPTR
-mov R1,A
-mov A,%s""" % lo(VNUM_RIGHT) + """
+jz ro_ret
+mov R7,A
+mov DPTR,#0x%04X""" % HN_MODE + """
+movx A,@DPTR
+jnz ro_stop
+inc DPTR
+movx A,@DPTR
+cjne A,#%d,ro_stop""" % VF_ALL + """
+mov A,R7
+cjne A,#%d,ro_n""" % ROLL_FRAMES + """
+ljmp hv_num        ; the last frame
+ro_n:
+jnc ro_stop        ; not a frame (XDATA after power-up)
+inc A
+mov DPTR,#0x%04X""" % HR_F + """
+movx @DPTR,A
+mov R2,%s""" % hi(HR_OLD) + """
+mov R3,%s""" % lo(HR_OLD) + """
+mov A,R7
+cjne A,#%d,ro_c""" % (ROLL_OLD + 1) + """
+ro_c:
+jc ro_str
+mov R2,%s""" % hi(HN_NUM) + """
+mov R3,%s""" % lo(HN_NUM) + """
+ro_str:
+dec A
+mov B,#3
+mul AB
+mov R5,A
+mov DPTR,#ro_tab
+movc A,@A+DPTR
+mov R4,A           ; rows, for a step up
+mov A,R5
+inc A
+movc A,@A+DPTR
+mov R6,A
+mov A,R5
+inc A
+inc A
+movc A,@A+DPTR
+mov R7,A           ; the ink
+mov DPTR,#0x%04X""" % HR_DIR + """
+movx A,@DPTR
+jz ro_up
 clr C
-subb A,R1
-mov R3,A
-mov A,%s""" % hi(VNUM_RIGHT) + """
-subb A,#0
-mov R2,A           ; the text's first column
-mov DPTR,#0x%04X""" % KIT.TP["X"] + """
+clr A
+subb A,R4
+mov R4,A
+ro_up:
+mov A,R4
+add A,#%d""" % VNUM_Y + """
+mov R4,A
+sjmp hn_num_at
+ro_stop:
+clr A
+mov DPTR,#0x%04X""" % HR_F + """
+movx @DPTR,A
+ro_ret:
+ret
+
+; hv_num: the number (HN_NUM) in the volume face, white, ending at x %d, cell top row %d (baseline
+; %d), the rest of the box black; ends a roll
+hv_num:""" % (VNUM_RIGHT, VNUM_Y, VNUM_Y - PF_VNUM.top) + """
+clr A
+mov DPTR,#0x%04X""" % HR_F + """
+movx @DPTR,A
+mov R2,%s""" % hi(HN_NUM) + """
+mov R3,%s""" % lo(HN_NUM) + """
+mov R4,#%d""" % VNUM_Y + """
+mov R6,#0xFF
+mov R7,#0xFF
+; hn_num_at: the string at XDATA R2:R3 in the volume face, ink R6:R7 on black, right-aligned to end at
+; x %d, cell top row R4, only inside the box %d..%d x %d..%d; then black in the rest of the box:
+; columns %d up to the number over all its rows, the rows above and below the cell over the number's
+hn_num_at:""" % (VNUM_RIGHT, ROLL_X0, ROLL_X1, ROLL_Y0, ROLL_Y1, ROLL_X0))
+    tp_setup(a, "pf_vnum", None, 0, VNUM_RIGHT, 0, 0, clip=(ROLL_X0, ROLL_X1), align=1)
+    S(a, """
+mov DPTR,#0x%04X""" % KIT.TP["STR"] + """
+mov A,R2
 movx @DPTR,A
 inc DPTR
 mov A,R3
 movx @DPTR,A
+mov DPTR,#0x%04X""" % KIT.TP["Y"] + """
+mov A,R4
+movx @DPTR,A
+inc DPTR
+mov A,R6
+movx @DPTR,A
+inc DPTR
+mov A,R7
+movx @DPTR,A       ; TP_INK
+mov DPTR,#0x%04X""" % KIT.TP["YC0"] + """
+mov A,#%d""" % ROLL_Y0 + """
+movx @DPTR,A
+inc DPTR
+mov A,#%d""" % ROLL_Y1 + """
+movx @DPTR,A
+lcall uk_textc     ; TP_X = the number's first column
+; columns %d .. TP_X - 1, every row of the box""" % ROLL_X0 + """
+mov DPTR,#0x%04X""" % (KIT.TP["X"] + 1) + """
+movx A,@DPTR
 clr C
-subb A,%s""" % lo(VNUM_LEFT) + """
-jz hvn_draw        ; (the low byte of the difference: it is under 256)
-mov R1,A           ; columns to clear
-mov R2,%s""" % hi(VNUM_LEFT) + """
-mov R3,%s""" % lo(VNUM_LEFT) + """
-mov R5,#%d""" % VNUM_Y + """
-mov R4,#%d""" % PF_VNUM.H + """
+subb A,%s""" % lo(ROLL_X0) + """
+mov R1,A
+mov R2,%s""" % hi(ROLL_X0) + """
+mov R3,%s""" % lo(ROLL_X0) + """
+mov R5,#%d""" % ROLL_Y0 + """
+mov R4,#%d""" % (ROLL_Y1 - ROLL_Y0 + 1) + """
+lcall hn_blk
+; the rows above the cell: %d .. TP_Y - 1""" % ROLL_Y0 + """
+mov DPTR,#0x%04X""" % KIT.TP["Y"] + """
+movx A,@DPTR
+clr C
+subb A,#%d""" % ROLL_Y0 + """
+jz hna_below
+jc hna_below
+mov R4,A
+mov R5,#%d""" % ROLL_Y0 + """
+lcall hna_fill
+hna_below:
+; the rows below it: TP_Y + H .. %d""" % ROLL_Y1 + """
+mov DPTR,#0x%04X""" % KIT.TP["Y"] + """
+movx A,@DPTR
+add A,#%d""" % PF_VNUM.H + """
+mov R5,A
+mov A,#%d""" % (ROLL_Y1 + 1) + """
+clr C
+subb A,R5
+jz hna_ret
+jc hna_ret
+mov R4,A
+; hna_fill: black from TP_X to x %d, R4 rows from R5""" % ROLL_X1 + """
+hna_fill:
+mov DPTR,#0x%04X""" % KIT.TP["X"] + """
+movx A,@DPTR
+mov R2,A
+inc DPTR
+movx A,@DPTR
+mov R3,A
+mov A,%s""" % lo(ROLL_X1 + 1) + """
+clr C
+subb A,R3
+mov R1,A           ; x %d - TP_X (under 256)""" % (ROLL_X1 + 1) + """
+; hn_blk: uk_fill in black
+hn_blk:
 mov R6,#0
 mov R7,#0
-lcall uk_fill
-hvn_draw:""")
-    st_imm16(a, KIT.TP["STR"], HN_NUM)         # uk_text consumed it while measuring
-    S(a, """
-mov DPTR,#0x%04X""" % KIT.TP["CX0"] + """
-clr A
-movx @DPTR,A
-inc DPTR
-movx @DPTR,A
-inc DPTR
-inc A
-movx @DPTR,A
-inc DPTR
-mov A,#0x3F
-movx @DPTR,A       ; clip 0..319
-ljmp uk_text
+ljmp uk_fill
+hna_ret:
+ret
 """)
     S(a, "; hv_name: the input name (inputs 1..6), display face at 36 px, white, at %d, baseline %d\nhv_name:"
          "\nlcall hn_name_ptr\njnc hvn_go\nret\nhvn_go:" % (VNAME_X, VNAME_Y - PF_VNAME.top))
@@ -620,29 +867,10 @@ ljmp uk_text
     S(a, "lcall hn_line_seg")
     st_imm16(a, HN_S0, VLINE_MID)
     st_imm16(a, HN_S1, VLINE_X + VLINE_W - 1)
-    split_hi_from = min(v for v in range(61) if VLINE_SPLIT[v] >= 256)
-    assert all((VLINE_SPLIT[v] >= 256) == (v >= split_hi_from) for v in range(61)) and VLINE_SPLIT[60] < 512
     S(a, """
 ; hn_line_seg: the columns HN_S0..HN_S1 of the %d x %d position line at %d,%d: accent up to the split
-; (vsplit[volume], HN_SPL), the track colour from it
-hn_line_seg:
-mov DPTR,#0x%04X""" % (VLINE_W, VLINE_H, VLINE_X, VLINE_Y, HN_VOL) + """
-movx A,@DPTR
-mov R7,A
-mov DPTR,#vsplit
-movc A,@A+DPTR
-mov R6,A           ; split lo
-mov A,R7
-clr C
-subb A,#%d""" % split_hi_from + """
-cpl C
-clr A
-rlc A              ; split hi: 1 from volume %d""" % split_hi_from + """
-mov DPTR,#0x%04X""" % HN_SPL + """
-movx @DPTR,A
-inc DPTR
-mov A,R6
-movx @DPTR,A
+; on screen (HN_SPL, the spring's), the track colour from it
+hn_line_seg:""" % (VLINE_W, VLINE_H, VLINE_X, VLINE_Y) + """
 ; accent part: max(S0, %d) .. min(S1, split - 1)""" % VLINE_X + """
 mov DPTR,#0x%04X""" % HN_S0 + """
 movx A,@DPTR
@@ -743,11 +971,14 @@ lcall hv_div
 lcall hv_vol
 ljmp hv_capr
 
-; hn_volpage: page 2 renderer (replaces 0x2167). During a wipe it only records the volume.
+; hn_volpage: page 2 renderer (replaces 0x2167). During a wipe it only records the volume. Idle: the
+; whole page, the number and the line in their final state (no roll, the spring on its target).
 hn_volpage:
 mov DPTR,#0x%04X""" % HN_MODE + """
 movx A,@DPTR
 jnz hvp_wipe
+inc DPTR
+movx @DPTR,A       ; HN_VF 0: hn_draw_volume draws at once (hn_dyn_now)
 lcall hn_vol_static
 mov R7,0x31
 lcall hn_draw_volume
@@ -759,6 +990,446 @@ hvp_wipe:
 mov R7,0x31
 lcall hn_draw_volume
 ljmp 0x22FA
+""")
+    S(a, """
+; hn_spring: the line's spring, one tick (after hn_step): on the idle page (HN_MODE 0, HN_VF all)
+; and during the entry towards the volume's fill (hn_sp_t6), during the exit towards 0. Position SP_P
+; and velocity SP_V in pixels * 64; the tick is the mock's integrator over 10 ms as a matrix
+; (hn_sp_lin, constants sp_kt); |error| < %d and |velocity| < %d settle on the target. Then the
+; columns between the split on screen (HN_SPL) and the new one are redrawn (hn_line_seg); during a
+; wipe only right of the edge (x + 2 on): the band's own draw uses HN_SPL.
+hn_spring:""" % (SPRING_SE, SPRING_SV) + """
+mov DPTR,#0x%04X""" % HN_MODE + """
+movx A,@DPTR
+jnz sp_w
+inc DPTR
+movx A,@DPTR
+cjne A,#%d,sp_r""" % VF_ALL + """
+sjmp sp_vol
+sp_w:
+cjne A,#2,sp_n2
+mov R4,#0          ; exit: towards 0
+mov R5,#0
+sjmp sp_go
+sp_r:
+ret
+sp_n2:
+cjne A,#1,sp_r
+sp_vol:
+lcall hn_sp_t6
+sp_go:
+mov DPTR,#0x%04X""" % SP_T + """
+mov A,R4
+movx @DPTR,A
+inc DPTR
+mov A,R5
+movx @DPTR,A
+; SP_E = SP_P - target; nothing to do when it and SP_V are 0
+mov DPTR,#0x%04X""" % SP_P + """
+movx A,@DPTR
+mov R2,A
+inc DPTR
+movx A,@DPTR
+clr C
+subb A,R5
+mov R3,A
+mov A,R2
+subb A,R4
+mov R2,A
+mov DPTR,#0x%04X""" % SP_E + """
+movx @DPTR,A
+inc DPTR
+mov A,R3
+movx @DPTR,A
+orl A,R2
+mov R0,A
+mov DPTR,#0x%04X""" % SP_V + """
+movx A,@DPTR
+orl A,R0
+mov R0,A
+inc DPTR
+movx A,@DPTR
+orl A,R0
+jz sp_r
+; the position's step (V K2 - e K1), then the new velocity (V K4 - e K3)
+mov R0,#0
+lcall hn_sp_lin
+push 0x02
+push 0x03
+lcall hn_sp_lin
+mov DPTR,#0x%04X""" % SP_V + """
+mov A,R2
+movx @DPTR,A
+inc DPTR
+mov A,R3
+movx @DPTR,A
+; F0: |V| < %d""" % SPRING_SV + """
+clr F0
+add A,#%d""" % (SPRING_SV - 1) + """
+mov A,R2
+addc A,#0
+jnz sp_vbig
+mov A,R3
+add A,#%d""" % (SPRING_SV - 1) + """
+clr C
+subb A,#%d""" % (2 * SPRING_SV - 1) + """
+jnc sp_vbig
+setb F0
+sp_vbig:
+pop 0x03
+pop 0x02
+mov DPTR,#0x%04X""" % (SP_P + 1) + """
+movx A,@DPTR
+add A,R3
+movx @DPTR,A
+mov DPTR,#0x%04X""" % SP_P + """
+movx A,@DPTR
+addc A,R2
+movx @DPTR,A       ; SP_P += step
+; the new error, e + step: settled when |e| < %d and F0""" % SPRING_SE + """
+mov DPTR,#0x%04X""" % (SP_E + 1) + """
+movx A,@DPTR
+add A,R3
+mov R3,A
+mov DPTR,#0x%04X""" % SP_E + """
+movx A,@DPTR
+addc A,R2
+mov R2,A
+mov A,R3
+add A,#%d""" % (SPRING_SE - 1) + """
+mov R3,A
+mov A,R2
+addc A,#0
+jnz sp_draw
+mov A,R3
+clr C
+subb A,#%d""" % (2 * SPRING_SE - 1) + """
+jnc sp_draw
+jnb F0,sp_draw
+mov DPTR,#0x%04X""" % SP_T + """
+movx A,@DPTR
+mov R2,A
+inc DPTR
+movx A,@DPTR
+mov DPTR,#0x%04X""" % (SP_P + 1) + """
+movx @DPTR,A
+mov DPTR,#0x%04X""" % SP_P + """
+mov A,R2
+movx @DPTR,A       ; on the target
+inc DPTR
+inc DPTR
+clr A
+movx @DPTR,A
+inc DPTR
+movx @DPTR,A       ; SP_V 0
+sp_draw:
+clr F0
+mov DPTR,#0x%04X""" % SP_P + """
+movx A,@DPTR
+mov R2,A
+inc DPTR
+movx A,@DPTR
+mov R3,A
+lcall hn_sp_split     ; R6:R7 the new split
+mov DPTR,#0x%04X""" % HN_SPL + """
+movx A,@DPTR
+mov R4,A
+inc DPTR
+movx A,@DPTR
+mov R5,A           ; the split on screen
+mov DPTR,#0x%04X""" % HN_SPL + """
+mov A,R6
+movx @DPTR,A
+inc DPTR
+mov A,R7
+movx @DPTR,A
+; the columns from the lower split to the higher one - 1
+clr C
+mov A,R7
+subb A,R5
+mov A,R6
+subb A,R4
+jnc sp_up
+mov A,R6
+xch A,R4
+mov R6,A
+mov A,R7
+xch A,R5
+mov R7,A
+sp_up:
+mov A,R4
+mov R2,A
+mov A,R5
+mov R3,A           ; R2:R3 from
+mov A,R7
+clr C
+subb A,#1
+mov R7,A
+mov A,R6
+subb A,#0
+mov R6,A           ; R6:R7 to
+mov DPTR,#0x%04X""" % HN_MODE + """
+movx A,@DPTR
+jz sp_seg
+; during a wipe from the edge's x + 2 on
+mov DPTR,#0x%04X""" % HN_X + """
+movx A,@DPTR
+mov R4,A
+inc DPTR
+movx A,@DPTR
+add A,#2
+mov R5,A
+clr A
+addc A,R4
+mov R4,A
+clr C
+mov A,R3
+subb A,R5
+mov A,R2
+subb A,R4
+jnc sp_seg
+mov A,R4
+mov R2,A
+mov A,R5
+mov R3,A
+sp_seg:
+clr C
+mov A,R7
+subb A,R3
+mov A,R6
+subb A,R2
+jc sp_ret         ; nothing to draw
+mov DPTR,#0x%04X""" % HN_S0 + """
+mov A,R2
+movx @DPTR,A
+inc DPTR
+mov A,R3
+movx @DPTR,A
+inc DPTR
+mov A,R6
+movx @DPTR,A
+inc DPTR
+mov A,R7
+movx @DPTR,A
+ljmp hn_line_seg
+sp_ret:
+ret
+
+; hn_sp_lin: R2:R3 = SP_V * k[R0] - SP_E * k[R0 + 1] (sp_kt, Q16), R0 += 4
+hn_sp_lin:
+lcall hn_sp_k
+mov DPTR,#0x%04X""" % SP_V + """
+lcall hn_sp_mulx
+mov DPTR,#0x%04X""" % SP_W + """
+mov A,R2
+movx @DPTR,A
+inc DPTR
+mov A,R3
+movx @DPTR,A
+lcall hn_sp_k
+mov DPTR,#0x%04X""" % SP_E + """
+lcall hn_sp_mulx
+mov DPTR,#0x%04X""" % (SP_W + 1) + """
+movx A,@DPTR
+clr C
+subb A,R3
+mov R3,A
+mov DPTR,#0x%04X""" % SP_W + """
+movx A,@DPTR
+subb A,R2
+mov R2,A
+ret
+; hn_sp_k: R4:R5 = the constant at sp_kt + R0, R0 += 2
+hn_sp_k:
+mov DPTR,#sp_kt
+mov A,R0
+movc A,@A+DPTR
+mov R4,A
+inc R0
+mov A,R0
+movc A,@A+DPTR
+mov R5,A
+inc R0
+ret
+; hn_sp_mulx: R2:R3 = the signed word at DPTR * R4:R5 / 65536, rounded half away from 0; keeps R0
+hn_sp_mulx:
+movx A,@DPTR
+mov R2,A
+inc DPTR
+movx A,@DPTR
+mov R3,A
+mov A,R2
+mov C,ACC.7
+mov F1,C
+jnc spm_pos
+clr C
+clr A
+subb A,R3
+mov R3,A
+clr A
+subb A,R2
+mov R2,A
+spm_pos:
+mov A,R3
+mov B,R5
+mul AB
+mov R6,B           ; bits 8..15
+mov A,R2
+mov B,R5
+mul AB
+add A,R6
+mov R6,A
+mov A,B
+addc A,#0
+mov R7,A           ; bits 16..23
+mov A,R3
+mov B,R4
+mul AB
+add A,R6
+mov R6,A
+mov A,B
+addc A,R7
+mov R7,A
+clr A
+addc A,#0
+mov R1,A           ; bits 24..31
+mov A,R2
+mov B,R4
+mul AB
+add A,R7
+mov R7,A
+mov A,B
+addc A,R1
+mov R1,A
+mov A,R6
+rlc A              ; C = bit 15: round
+mov A,R7
+addc A,#0
+mov R3,A
+mov A,R1
+addc A,#0
+mov R2,A
+jnb F1,spm_ret
+clr C
+clr A
+subb A,R3
+mov R3,A
+clr A
+subb A,R2
+mov R2,A
+spm_ret:
+clr F1
+ret
+
+; hn_sp_t6: R4:R5 = 64 * the line's fill for HN_VOL (4v + (4v + 2) / 5 = round(4.8 v))
+hn_sp_t6:
+mov DPTR,#0x%04X""" % HN_VOL + """
+movx A,@DPTR
+rl A
+rl A
+mov R7,A
+add A,#2
+mov B,#5
+div AB
+add A,R7
+mov R5,A
+clr A
+rlc A
+mov R4,A
+mov R1,#6
+spt_sh:
+mov A,R5
+add A,R5
+mov R5,A
+mov A,R4
+rlc A
+mov R4,A
+djnz R1,spt_sh
+ret
+
+; hn_sp_split: R6:R7 = the split column for position R2:R3: 16 + round(position / 64), 0..288 px
+hn_sp_split:
+mov A,R3
+add A,#%d""" % (1 << (SPRING_Q - 1)) + """
+mov R3,A
+mov A,R2
+addc A,#0
+jb ACC.7,sps_0
+mov R2,A
+mov A,R3
+add A,R3
+mov R3,A
+mov A,R2
+rlc A
+mov R2,A
+mov A,R3
+add A,R3
+mov A,R2
+rlc A
+mov R7,A
+clr A
+rlc A
+mov R6,A           ; position / 64
+clr C
+mov A,%s""" % lo(VLINE_W) + """
+subb A,R7
+mov A,%s""" % hi(VLINE_W) + """
+subb A,R6
+jnc sps_ok
+mov R6,%s""" % hi(VLINE_W) + """
+mov R7,%s""" % lo(VLINE_W) + """
+sps_ok:
+mov A,R7
+add A,#%d""" % VLINE_X + """
+mov R7,A
+mov A,R6
+addc A,#0
+mov R6,A
+ret
+sps_0:
+mov R6,#0
+mov R7,#%d""" % VLINE_X + """
+ret
+
+; hn_sp_snap: the spring on its target, still (SP_P, SP_V, HN_SPL); nothing drawn
+hn_sp_snap:
+lcall hn_sp_t6
+mov DPTR,#0x%04X""" % SP_P + """
+mov A,R4
+mov R2,A
+movx @DPTR,A
+inc DPTR
+mov A,R5
+mov R3,A
+movx @DPTR,A
+inc DPTR
+clr A
+movx @DPTR,A
+inc DPTR
+movx @DPTR,A
+lcall hn_sp_split
+sjmp hn_sp_spl
+; hn_sp_reset: the spring at 0, still, the line's split at x %d (the home: nothing of the line shown)""" % VLINE_X + """
+hn_sp_reset:
+mov DPTR,#0x%04X""" % SP_P + """
+clr A
+movx @DPTR,A
+inc DPTR
+movx @DPTR,A
+inc DPTR
+movx @DPTR,A
+inc DPTR
+movx @DPTR,A
+mov R6,A
+mov R7,#%d""" % VLINE_X + """
+hn_sp_spl:
+mov DPTR,#0x%04X""" % HN_SPL + """
+mov A,R6
+movx @DPTR,A
+inc DPTR
+mov A,R7
+movx @DPTR,A
+ret
 """)
 
 
@@ -779,6 +1450,8 @@ movx A,@DPTR
 cjne A,#%d,he_start""" % VF_ALL + """
 ret                ; the page is on screen
 he_start:
+lcall hn_sp_reset  ; the line's fill grows from 0
+mov DPTR,#0x%04X""" % HN_VF + """
 clr A
 movx @DPTR,A       ; nothing of the page drawn yet
 mov DPTR,#0x%04X""" % HN_STEP + """
@@ -841,7 +1514,12 @@ jnz hc_rev         ; entering: turn round
 inc DPTR           ; HN_VF
 movx A,@DPTR
 cjne A,#%d,hc_stock""" % VF_ALL + """
-; the volume page is on screen: wipe back home from x 0
+; the volume page is on screen: wipe back home from x 0; a roll ends on its last frame first
+mov DPTR,#0x%04X""" % HR_F + """
+movx A,@DPTR
+jz hc_noroll
+lcall hv_num
+hc_noroll:
 mov DPTR,#0x%04X""" % HN_STEP + """
 clr A
 movx @DPTR,A
@@ -885,15 +1563,22 @@ ret
 hc_stock:
 ljmp 0x5D42        ; ui_clear_screen (hn_cancel first)
 
-; hn_cancel: ui_clear_screen's first instruction; every stock clear stops a wipe first
-hn_cancel:
-mov DPTR,#0x%04X""" % HN_MODE + """
+; hn_stop: no wipe, no page drawn (HN_MODE, HN_VF, HN_HF 0), no roll, the spring at home
+hn_stop:
+mov DPTR,#0x%04X""" % HR_F + """
 clr A
+movx @DPTR,A
+mov DPTR,#0x%04X""" % HN_MODE + """
 movx @DPTR,A       ; HN_MODE
 inc DPTR
 movx @DPTR,A       ; HN_VF
 inc DPTR
 movx @DPTR,A       ; HN_HF
+ljmp hn_sp_reset
+
+; hn_cancel: ui_clear_screen's first instruction; every stock clear stops a wipe (and a roll) first
+hn_cancel:
+lcall hn_stop
 lcall 0x5CBC       ; the instruction the hook replaced
 ljmp 0x5D45
 
@@ -937,13 +1622,7 @@ ljmp 0x4A88
 ; hn_home_now: stop the wipe, black screen, then home_refresh and the status line from XDATA 0x50
 ; as home_refresh_periodic draws them (the text buffers are kept: the status line is the stock one)
 hn_home_now:
-mov DPTR,#0x%04X""" % HN_MODE + """
-clr A
-movx @DPTR,A       ; HN_MODE (so the name draw inside home_refresh passes the guard)
-inc DPTR
-movx @DPTR,A       ; HN_VF
-inc DPTR
-movx @DPTR,A       ; HN_HF
+lcall hn_stop      ; HN_MODE 0 first, so the name draw inside home_refresh passes the guard
 lcall 0x51EE       ; lcd_clear_black
 lcall 0x5C8B       ; home_refresh
 mov R7,#0x87
@@ -1018,16 +1697,20 @@ ljmp hm_name
     # ---- the step ----
     KIT.emit_tick_driver(a, "hs_ret")        # uk_tasks falls through into hn_step
     S(a, """
-; hn_step: one step of the running wipe
+; hn_step: one step of the running wipe; then, in every tick, the spring and the roll (hn_after).
+; Order in a tick: the stock tick work (uk_tasks), the wipe step, the line's spring (it redraws only
+; right of the edge the step has just drawn), the roll (idle page only: never in a wipe's tick).
 hn_step:
 mov DPTR,#0x%04X""" % HN_MODE + """
 movx A,@DPTR
-jz hs_ret
+jz hs_idle
 cjne A,#3,hs_mc
 hs_mc:
 jc hs_mok
 clr A              ; not a mode: stop
 movx @DPTR,A
+hs_idle:
+ljmp hn_after
 hs_ret:
 ret
 hs_mok:
@@ -1458,8 +2141,12 @@ movx @DPTR,A
 inc DPTR           ; HN_VF
 cjne R7,#2,hs_done
 movx @DPTR,A       ; home: the volume page is gone
+lcall hn_sp_reset     ; and the spring with it
 hs_done:
-ret
+; hn_after: the line's spring, then the number roll
+hn_after:
+lcall hn_spring
+ljmp hn_roll
 
 ; step helpers
 hs_xp:             ; R4:R5 = previous x
@@ -1969,6 +2656,9 @@ def main():
         (0x4A88, bytes.fromhex("b40800"), "home_draw_input_name's cjne moved"),
         (0x3FF8, bytes.fromhex("c20bc206c209"), "home_refresh_periodic's flag path moved"),
         (0x4A9B + 3 * 6, bytes.fromhex("024aef"), "input 7 draws the buffer as it is"),
+        # uk_tasks does main_tick_tasks' re-mute part itself and returns when no tick is due
+        (0x3325, bytes.fromhex("300c07c20cc2141258d320070302345b"), "main_tick_tasks' re-mute request part moved"),
+        (0x345B, b"\x22", "main_tick_tasks without a tick no longer only returns"),
     ]
     # home_draw_input_name's table (0x4A9B) loads the strings INPUT_NAMES lists
     for inp, addr, text in INPUT_NAMES:

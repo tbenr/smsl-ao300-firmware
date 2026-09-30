@@ -2,9 +2,29 @@
 
 A reduced build of study 3 ("House Numerals", after SMSL's SU and DO series screens) from
 `features/ui-theme/ui_themes.html`. Built on top of fast-lcd, with fix-auto-off included. The RESET page shows
-`v1.4 tbenr hn8`.
+`v1.4 tbenr hn9`.
 
-This is image hn8 (sha256 `122a963c…`). It is hn7 with the mock's volume page and two home
+This is image hn9 (sha256 `b45331a8…`). It is hn8 with the volume page's two animations from
+the mock:
+- **Number roll.** On the open page a volume step rolls the number: the old one slides out and
+  fades, the new one slides in from the other side, 14 frames over 0.14 s (the mock's `this.k`,
+  cubic ease, 20 px). The panel is write-only and `uk_text` streams its cells, so two
+  translucent numbers cannot be mixed: each frame draws **one** number on black, the old one
+  while the mock's ease is below 0.5 (frames 1 and 2), then the new one, at the mock's offset
+  for it and in the mock's alpha as a grey, clipped to a box between "VOL" and the line. The
+  box is `uk_text`'s new row clip (`uk_textc`, in the kit). See "The number roll".
+- **Spring on the line.** The position line's fill follows the volume with the mock's spring
+  (k 200, damping 28): it grows from 0 when the page opens, follows each step, and retracts
+  while the edge wipes back home. One fixed-point tick per 10 ms, within 1.05 px of the mock's
+  float integrator, never past the target, still on the exact split at the end. See "The spring
+  on the line".
+- **Tick driver.** `uk_tasks` now serves `main_tick_tasks`' re-mute request itself before it
+  looks at the tick flag, so a tick that arrives meanwhile is no longer consumed without the
+  step (in the emulator 3 of the 17 ticks after a volume key went by without one; see "Driver").
+- Not in this build (as hn8): the MUTE state of the volume page, a dB ↔ steps switch, sizing
+  for the volume page, the mock's wipe timings and per-column reveal.
+
+hn8 (`v1.4 tbenr hn8`, sha256 `122a963c…`) is hn7 with the mock's volume page and two home
 details:
 - **The volume page in the mock's typefaces**, with the elements hn7 lacked: the input name at
   36 px and the status line under it (loaded as the periodic refresh loads it, since page 2
@@ -13,7 +33,7 @@ details:
   stock NJW1194 code table) and "max 60". See "The volume page".
 - **Home:** the tag boxes have corners of radius 2 as the mock strokes them, and the status
   line turns reddish when the input has no signal (the mock's `M(dim, '#ff5040', .5)`).
-- Not in this build: the mock's MUTE state on the volume page (the firmware never shows the
+- Not in hn8: the mock's MUTE state on the volume page (the firmware never shows the
   page muted: the mute key goes home and the volume keys unmute first), a dB ↔ steps switch,
   the number roll, the spring on the line, sizing for the volume page.
 
@@ -54,6 +74,9 @@ Earlier images:
 
 ## Status
 
+hn9: emulator-verified (all tests pass, including "fix-auto-off in house-numerals"). Not yet
+tried on the amp.
+
 hn8: emulator-verified (all tests pass, including "fix-auto-off in house-numerals"). Tried on
 the amp on 2026-09-30: works. One thing to look into (see `TODO.md`): after a Source change
 from an input whose status was reddish ("No Connected"), the next input's status shows reddish
@@ -91,8 +114,10 @@ is still to come.
 | Volume page: status line | IBM Plex Mono 16 px (the tag face), grey (reddish without a signal), at x 18, baseline 90; loaded by the stock status loader when the page is drawn |
 | Volume page: divider | 1 x 92 at 150,24, colour 0x2104 (#222) |
 | Volume page: label | "VOL" in the accent, Plex Mono 16 px letter-spaced 3, at x 164, baseline 38 |
-| Volume page: number | Barlow Condensed 84 px, white, right-aligned to end at x 304, baseline 112; black from x 156 up to it |
-| Volume page: position line | 288 x 3 at 16,136: accent up to 16 + round(4.8 · step), 0x18E3 (#1d1d1d) after it |
+| Volume page: number | Barlow Condensed 84 px, white, right-aligned to end at x 304, baseline 112; the rest of the box 156..304 x 42..119 black |
+| Volume page: number roll | a step on the open page: 14 frames, one per tick, one number each in the box: the old one (frames 1, 2), then the new one, shifted and grey (see "The number roll") |
+| Volume page: position line | 288 x 3 at 16,136: accent up to the spring's split, 0x18E3 (#1d1d1d) after it; at rest the split is 16 + round(4.8 · step) |
+| Volume page: spring | the split follows the volume (k 200, c 28, 10 ms ticks, fixed point); from 0 when the page opens, towards 0 during the exit |
 | Volume page: dB caption | Plex Mono 16 px, grey, at x 16, baseline 160: the level below step 60 from the NJW1194 code table, "−39.5 dB" (8 cells; "−∞ dB" at step 0) |
 | Volume page: max | "max 60", Plex Mono 16 px, #4d5257, ending at x 304, baseline 160 |
 | (hn7) | volume page: name in the stock small font at 16,30, divider 1 x 104 at 140,14, "VOL" small font at 158,14, stock big digits at 2x at 184,42, line 240 x 3 at 40,136 |
@@ -100,10 +125,10 @@ is still to come.
 | Wipe out | the same from x 0 to 318; the home elements appear once the edge has passed them |
 | Accent | theme colour (RAM 0x48:0x49); SMSL orange 0xFC43 when the theme is White (0xFFFF) |
 
-Still cut from the mockup: the number roll (the new number sliding in over 0.14 s), the spring
-on the position line, the dB ↔ steps switch (and the dB mode's other captions), the mock's wipe
-timings (0.32 s in, 0.42 s out) and per-column reveal. The MUTE state of the volume page is
-unreachable in this firmware (see above).
+Still cut from the mockup: the dB ↔ steps switch (and the dB mode's other captions), the mock's
+wipe timings (0.32 s in, 0.42 s out) and per-column reveal. The MUTE state of the volume page is
+unreachable in this firmware (see above). The roll shows one number per frame where the mock
+crossfades two (see "The number roll").
 
 ## The home screen
 
@@ -192,9 +217,28 @@ calls `main_tick_tasks` (0x3325) at 0x5B2A:
 - if the 10 ms tick flag 0x20.7 is set, it runs `main_tick_10ms` (0x3335): countdowns,
   page renders, the periodic home refresh, format poll, unmute.
 
-The `lcall 0x3325` at 0x5B2A becomes `lcall uk_tasks`. `uk_tasks` looks at the tick flag first.
-- No tick: it tail-jumps to 0x3325, which does exactly what it did before.
-- Tick: it calls 0x3325, then, if RAM 0x4F is 1 (amp on), runs `hn_step`.
+The `lcall 0x3325` at 0x5B2A becomes `lcall uk_tasks`.
+- First it serves the re-mute request as 0x3325..0x332E do (0x21.4 set: clear it and 0x22.4,
+  `lcall volume_apply` 0x58D3), then it looks at the tick flag.
+- No tick: it returns (0x3325 would find no request and no tick, and return at 0x345B).
+- Tick: it calls 0x3325, then, if RAM 0x4F is 1 (amp on), runs `hn_step`, which ends in
+  `hn_after`: `hn_spring`, then `hn_roll`.
+
+Up to hn8 the no-tick path tail-jumped to 0x3325. A tick that the Timer0 ISR flagged between
+`uk_tasks`' test and 0x3325's own (at 0x332F) was then handled by the stock without a step. In
+the emulator that happened on 3 of the 17 ticks after a volume key on the open page; the wipes
+lost steps the same way (the tests counted steps, not ticks). Now such a tick is seen on the
+next pass of the main loop, and the frames of a roll come on consecutive ticks (tested). The
+stock bytes of 0x3325..0x3331 and the `ret` at 0x345B are asserted by the build, and a unit test
+compares `uk_tasks` with `main_tick_tasks` for every combination of request and tick.
+
+Order within a tick, all after the tick's stock work:
+1. the wipe step (`hn_step`), as in hn8;
+2. the line's spring (`hn_spring`): during a wipe it redraws only columns right of the edge the
+   step has just drawn, and the step's own draw of the line inside the band uses the split on
+   screen (`HN_SPL`), so right of the edge the line always reads: accent up to the spring's
+   split, track after it;
+3. the number roll (`hn_roll`): only on the idle page, so never in the same tick as a wipe step.
 
 The step comes after all of that tick's stock work. A page render in the same tick (for
 example the Timer0 return home) has already started the wipe, and the unmute and format
@@ -223,7 +267,8 @@ Each step:
    filled first.
 4. Marks as "not on screen" every element of either page that the band or the edge
    columns touched.
-5. On the way in, redraws the part of the position line inside the band.
+5. On the way in, redraws the part of the position line inside the band, at the split on
+   screen (the spring's, `HN_SPL`).
 6. Draws every element of the new page that is not on screen and that the edge has fully
    passed:
    - on the way in, when its left edge is right of the edge (x0 >= x + 2);
@@ -281,11 +326,14 @@ running, it does nothing. If an exit is running, it turns it round.
 The key handler's common tail (0x0F48) still writes the volume to the NJW1194 first, then
 calls 0x5936 (`hn_draw_volume`).
 - During a wipe, `hn_draw_volume` only records the value (`HN_VOL`, `HN_NUM`, `HV_DB`). It
-  draws the number, the line and the dB caption only if the wipe has already revealed them.
+  draws the number (in its final state, no roll) and the dB caption only if the wipe has already
+  revealed them. The line is the spring's: it follows `HN_VOL` by itself.
 - The wipe draws them with the latest value when it reaches them.
-- Without a wipe, a volume change redraws the number, the line and the caption.
+- Without a wipe, on the page: the caption at once, and the number rolls from the next tick
+  (see "The number roll"). Without a wipe and the page not on screen: the number, the line (the
+  spring snapped to its target) and the caption at once (`hn_dyn_now`, as hn8 drew them).
 - The page-2 renderer (0x2143, `hn_volpage`) does the same during a wipe, and draws the whole
-  page when idle.
+  page when idle, the number and the line in their final state.
 
 In the emulator the volume write comes 0.2 to 15 ms before the first step. Nothing is drawn
 in between.
@@ -319,9 +367,13 @@ is the hn3 home screen.
 
 - **Any stock clear cancels.** The first instruction of `ui_clear_screen` (0x5D42, 16
   callers: menu, Source, standby, the other pages, `post_power_on`, "go home" on page 2)
-  becomes `ljmp hn_cancel`. `hn_cancel` sets mode, the volume-page flags and the home flags
-  to 0, then runs the stock clear (`lcall 0x5CBC ; ljmp 0x5D45`). `hn_clear` for any other
-  page, and for page 1 while an exit already runs, goes the same way.
+  becomes `ljmp hn_cancel`. `hn_cancel` (through `hn_stop`) sets mode, the volume-page flags and
+  the home flags to 0, stops a roll and puts the spring at home (0, still, split 16), then runs
+  the stock clear (`lcall 0x5CBC ; ljmp 0x5D45`). `hn_clear` for any other page, and for page 1
+  while an exit already runs, goes the same way.
+- **The exit's start during a roll** (the return home comes 2 s after the last key, the roll
+  takes 0.14 s, so only in theory): `hn_clear` draws the roll's last frame first (`hv_num`),
+  then starts the exit.
 - **Volume key during the entry:** the value is recorded and drawn when revealed (or at once
   if its box already is).
 - **Volume key during the exit:** the key handler sets page 2. `hn_enter_vol` turns the wipe
@@ -393,19 +445,24 @@ in `build_patch.py`, `V*`). Everything is drawn with `uk_text`; the kit's stock-
   it clears the flag and returns to `hn_stat_load`'s caller instead. The text is exactly what
   the home shows (tested against the base image's loader for every input, with and without a
   signal). The page shows the status as of when it was drawn; the stock shows nothing there.
-- **Number.** `hv_num` measures the text first (empty clip), fills black from x 156 to where
-  the number starts, then draws it ending at x 304. A step from 10 to 9 therefore clears the
-  tens digit's columns without blanking the number; the digits themselves redraw in place
-  (each cell carries its background), so nothing flickers.
+- **Number.** `hv_num` is `hn_num_at` with the new text, no offset, in white: it draws the
+  number right-aligned to end at x 304 (`uk_textc`, which leaves the number's first column in
+  `TP_X`), clipped to the roll box 156..304 x 42..119, then fills black the rest of the box:
+  columns 156 up to the number over all its rows, and the rows above and below the cell over the
+  number's columns. A step from 10 to 9 therefore clears the tens digit's columns without
+  blanking the number; the digits themselves redraw in place (each cell carries its background),
+  so nothing flickers.
 - **dB caption.** The NJW1194 code table at 0x9289 (`code = table[60 - step]`, see the main
   README, "Volume scale") gives the level below step 60 in half-dB: `code - 35`. `hv_cap`
   formats it as `_75.5 dB` .. ` _0.5 dB`, `  0.0 dB` (no sign at step 60), always 8 cells so
   a shorter value draws its own background; `_` and `~` are the minus sign and the infinity of
   the mono raster (`MONO_ALIAS`), and step 0 shows `  _~ dB ` from code. This is the mock's
   `fmtDb`; the test computes it from the mock's copy of the table.
-- **Redraws.** `hn_draw_volume` (0x5936, every knob or remote step) redraws the number, the
-  line and the caption: 5.5 ms (the stock's 2-digit draw: about 40). `hn_volpage` draws the
-  whole page in 10.5 ms.
+- **Redraws.** On the open page `hn_draw_volume` (0x5936, every knob or remote step) draws the
+  dB caption, arms the roll and moves the spring's target; the number and the line follow over
+  the next ticks. With the page not on screen it draws the number, the line and the caption at
+  once: 6.4 ms (the stock's 2-digit draw: about 40). `hn_volpage` draws the whole page in 11.5 ms
+  (hn8: 10.5; `hv_num` now also blacks the rows of the box around the number).
 - **Entry order.** Right to left: "max 60" appears at step 7, "VOL" at 10, the divider and the
   number at 11, the name, the line and the caption at 18, the status line at 19: if the name
   was drawn in a step, the status line (with its load, an I2C read on BT and HDMI) waits for
@@ -413,24 +470,103 @@ in `build_patch.py`, `V*`). Everything is drawn with `uk_text`; the kit's stock-
   is left. An exit turned back into an entry loads and draws the status line again (the exit
   had cleared its buffer; `hn_reverse` marks it not drawn), black up to x 147 after the text.
 
+### The number roll
+
+The mock (`update`, `drawVol`): on a new label, `prev = cur`, `k = 0`, and for 0.14 s
+(`k += dt / 0.14`) with `e = 1 - (1 - k)^3` and `shift = 20 * dir` (dir 1 when the volume went
+up), it draws in the clip rectangle 146, 38, 164 x 82: the old label at alpha `1 - e`, baseline
+`112 - shift * e`, and the new one at alpha `e`, baseline `112 + shift * (1 - e)`.
+
+The panel is write-only and `uk_text` streams its cells with their background, so two
+translucent numbers cannot be mixed. The reduction: 14 frames, one per executed 10 ms tick,
+frame n at `k = n / 14`; each frame draws **one** number on black: the old one while `e < 0.5`,
+the new one from then on, at the mock's offset for it rounded to rows, with its alpha as the ink
+(white × alpha as an RGB565 grey; the 1/4 and 3/4 anti-aliasing colours follow from ink and
+background as `uk_text` computes them). A step down is the mirror image (the offsets negated).
+The table is generated by `build_patch.py` from the formula (`roll_frames`, `ro_tab`):
+
+| Frame | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12..14 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Number | old | old | new | new | new | new | new | new | new | new | new | new |
+| Rows (a step up) | −4 | −7 | +10 | +7 | +5 | +4 | +3 | +2 | +1 | 0 | 0 | 0 |
+| Ink | CE59 | A514 | 8410 | A514 | BDD7 | CE79 | DEFB | EF5D | F79E | F7DE | FFDF | FFFF |
+
+Frame 14 is `hv_num` itself, so the page ends pixel-identical to the static page (frames 12 and
+13 draw the same; the table keeps the mock's 14 steps). The old number shows for two frames only:
+the mock's cubic ease is past 0.5 by frame 3.
+
+- **Clip box.** Columns 156..304 (`VNUM_LEFT`..`VNUM_RIGHT`), rows 42..119: the mock's 38..119,
+  cut below "VOL"'s cell (rows 25..41, whose columns overlap the number's) and above the line
+  (136). The build asserts that the box holds the number at rest (rows 51..112) and touches no
+  other element. Every frame draws the number clipped to the box (`uk_textc`, the kit's row
+  clip, and the box's columns as the x clip), then blacks the rest of the box, so after each
+  frame the box is exactly that one number, shifted, clipped, dimmed, on black, whatever the
+  previous frame left (a wider number, the other direction), and nothing outside it changes.
+- **When.** A volume change with no wipe running (`HN_MODE` 0), the page on screen (`HN_VF`
+  all) and the text changed: `hn_draw_volume` keeps the text shown so far in `HR_OLD`, sets
+  `HR_DIR` (1 when the volume went down) and `HR_F` 1, and draws the dB caption at once; the
+  frames come from the tick driver (`hn_roll`). A change during a roll restarts it with the
+  previous target's text as the old one (the mock's `prev = cur`).
+- **Not during a wipe.** A key during the entry or the turned-round exit draws the number in its
+  final state when it is revealed (or at once if it is), as in hn8. `hn_volpage` idle and
+  `hn_dyn_now` draw it at once; so does `hn_clear` at the exit's start if a roll runs.
+- **Stops.** `hv_num` ends a roll (`HR_F` 0). Every stock clear (`hn_cancel`) stops it;
+  `hn_roll` also stops, drawing nothing, when the mode is not 0, the page not on screen or
+  `HR_F` is not a frame (XDATA after a cold start).
+- **Cost.** 6.1 ms for the worst frame in the unit test (a 2-digit number shifted, its left
+  columns and the uncovered rows blacked), 5.8 ms in the whole firmware including the spring.
+
+### The spring on the line
+
+The mock: `spring(this.s, show ? vol / 60 : 0, dt, 200, 28)`, integrated at 240 Hz (3 substeps
+of 1/300 s per 10 ms frame), fill `round(288 * s.x)`.
+
+- **State** in XDATA: position `SP_P` and velocity `SP_V` in pixels × 64 (signed 16 bits),
+  velocity per tick. With the target fixed the integrator is linear, so one tick of it (the 3
+  substeps) is a 2 x 2 matrix on (position − target, velocity); `build_patch.py` composes it
+  from k, c and dt and keeps it as four Q16 fractions (`sp_kt`: 819, 53878, 1188, 48474):
+  `e' = e − e·K1 + V·K2`, `V' = V·K4 − e·K3`, each product rounded half away from 0
+  (`hn_sp_mulx`, a 16 x 16 multiply). A tick with |e'| < 0.5 px and |V'| < 6/64 px per tick
+  settles on the target and stops.
+- **Target** (`hn_sp_t6`): `4v + (4v + 2) / 5 = round(4.8 v)` pixels for volume v on the idle
+  page and during the entry, 0 during the exit (the mock's `c.show`). A volume key only changes
+  `HN_VOL`; an exit turned round by a volume key gets the volume as target again and goes on
+  from where position and velocity are.
+- **Home** (exit ended, `hn_cancel`, `hn_home_now`, and a fresh entry from home): position 0,
+  velocity 0, split 16 (`hn_sp_reset`), so the fill grows from 0 as the page opens.
+  `hn_volpage` idle and `hn_dyn_now` put it on its target, still (`hn_sp_snap`).
+- **Drawing.** The split on screen is `HN_SPL` = 16 + round(position / 64), clamped to the line
+  (`hn_sp_split`). Each tick only the columns between the old and the new split are drawn,
+  through `hn_line_seg` (accent when growing, track when shrinking): everything on the idle
+  page, during either wipe only right of the edge (x + 2 on); the wipe's own draw of the band
+  and `hv_line` use `HN_SPL` too.
+- **Accuracy** (Python model of the 8051 arithmetic, `spring_model` in the test, against the
+  mock's float integrator, every volume pair 0..60 -> 0..60 and 1287 target changes in flight):
+  at most 1.05 px off the mock at any tick, never past the target, ends exactly on the split of
+  the volume, and still after at most 63 ticks (0 -> 60). The 8051 code equals the model tick
+  by tick (0 -> 60, 60 -> 0, ±1 steps, target changes mid-flight, entry and exit).
+- **Cost.** At most 0.07 ms a tick (the fill of a few columns of 3 rows).
+
 ## Timing
 
-Worst step measured: **5.96 ms**, on the entry's step 18 (the name, the line and the dB
-caption; the status line follows on step 19). The budget is 8 ms, inside the 10 ms tick.
-Unit test, worst step per wipe:
+Worst tick measured (hn9): **6.90 ms**, on the entry's step 11 (the divider and the number,
+whose box fill is new in hn9, plus the spring's columns). The budget is 8 ms, inside the 10 ms
+tick. A tick is timed from `hn_step`'s entry to `uk_tasks`' return: the wipe step, the spring
+and the roll. Unit test:
 
-| Wipe | Worst |
+| Tick | Worst |
 |---|---|
-| Entry | 5.96 ms (name, line, dB caption) |
-| Exit, OPTICAL, "No signal" | 5.65 ms |
-| Exit, USB, "2.8224MHz" | 4.63 ms |
-| Exit, BT, "Searching..." | 5.21 ms |
+| Entry step (+ spring) | 6.90 ms (step 11: divider, number; hn8: 5.96 on step 18) |
+| Exit step (+ spring), OPTICAL, "No signal" | 5.68 ms |
+| Exit step, USB, "2.8224MHz" | 4.67 ms |
+| Exit step, BT, "Searching..." | 5.25 ms |
+| Roll frame (alone; the spring adds at most 0.07) | 6.13 ms |
+| Spring tick | 0.07 ms |
 
-In the whole firmware the worst step seen is 5.96 ms (entries; 5.58 in the per-input scenarios).
-That includes the `timer3_isr` calls that land inside a step, about 5 µs every 0.5 ms. Before the
-split of the status line onto its own entry step, the HDMI entry took 7.84 ms on step 18 (the
-status load reads the expander over I2C).
-For comparison, a whole hn8 home takes 13.9 ms, the whole volume page 10.5 ms, and the stock
+In the whole firmware, including the `timer3_isr` calls that land inside a tick (about 5 µs
+every 0.5 ms): wipes 6.54 ms at worst (tour 6.53; hn8: 5.96 / 5.58), roll frames with the
+spring 5.45 ms for single steps and 5.76 ms at knob speed (the page at 9..15).
+For comparison, a whole hn8 home takes 13.9 ms, the whole volume page 11.5 ms, and the stock
 periodic home refresh blocks the main loop for about 45 ms every 0.5 s.
 
 ## Per input (emulator, Vol+ from home, whole firmware against fast-lcd)
@@ -445,18 +581,22 @@ ticks while the unmute counts down.
 | Bluetooth, no stream (countdown held at 40..50) | both wipe | no unmute in either image |
 | Optical without signal (held at 100) | both wipe | none in either |
 | Headphone output, P2.6 low (held at 300) | both wipe | none in either |
-| USB, 7.4 s after power-on | both wipe | 0.03 s earlier |
-| HDMI, 0.5 s after the switch | both wipe | 0.03 s earlier |
-| USB, 0.05 s after switching from HDMI | both wipe | 0.03 s earlier |
-| USB, unmute due within the wipe | both wipe | 0.02 s earlier |
-| Vol+ during the power-on logo | wipe starts, `post_power_on` cancels it | 0.03 s earlier |
+| USB, 7.4 s after power-on | both wipe | 0.08 s earlier |
+| HDMI, 0.5 s after the switch | both wipe | 0.06 s earlier |
+| USB, 0.05 s after switching from HDMI | both wipe | 0.05 s earlier |
+| USB, unmute due within the wipe | both wipe | 0.14 s earlier |
+| Vol+ during the power-on logo | wipe starts, `post_power_on` cancels it | 0.18 s earlier |
 
-Earlier, because fast-lcd's own 40 ms volume draw loses ticks and the wipe does not.
+Earlier, because fast-lcd's own 40 ms volume draw loses ticks and the wipe does not, and the
+faster home refreshes after power-on (see above). Measured on hn9, and on hn8 rebuilt from its
+commit: the same values (the table showed 0.02 to 0.03 s, from before hn5).
 
 ## Hooks
 
 Twenty-three hook sites: eighteen 3-byte hooks of the theme, fix-auto-off's, plus the four
-places the volume keys open the volume page. Every stock byte is asserted by `build_patch.py`.
+places the volume keys open the volume page (hn9 adds none). Every stock byte is asserted by
+`build_patch.py`, and so are the bytes `uk_tasks` relies on: `main_tick_tasks`' re-mute part
+0x3325..0x3331 and its `ret` at 0x345B.
 
 | Address | Stock bytes | Now | What |
 |---|---|---|---|
@@ -472,7 +612,7 @@ places the volume keys open the volume page. Every stock byte is asserted by `bu
 | 0x425D | `12 4F 20` lcall `small_text_at` | lcall `hm_fmt` | the format tag |
 | 0x41E8 | `02 00 26` ljmp `tag_box_clear` | ljmp `hm_fmt_clear` | no format (BT, ARC, AUX, PHONO): the tag's area black |
 | 0x41FC | `12 00 26` lcall `tag_box_clear` | lcall `hm_fmt_clear` | the format changed: the same |
-| 0x5B2A | `12 33 25` lcall `main_tick_tasks` | lcall `uk_tasks` | the driver: one wipe step after each tick |
+| 0x5B2A | `12 33 25` lcall `main_tick_tasks` | lcall `uk_tasks` | the driver: the re-mute request, then after each tick a wipe step, the spring, the roll |
 | 0x4081 | `12 5C 8B` lcall `home_refresh` | ljmp `hn_hold` | periodic refresh held back during a wipe; returns to `hn_stat_load` when the volume page runs the status loader |
 | 0x4016 | `12 52 32` lcall `signal_check` | lcall `hn_signal` | the status loader's signal check: its result kept in `HN_SIG` for the status colour |
 | 0x5D42 | `12 5C BC` (`ui_clear_screen`'s first call) | ljmp `hn_cancel` | every stock clear cancels a wipe |
@@ -483,11 +623,15 @@ places the volume keys open the volume page. Every stock byte is asserted by `bu
 
 ## Memory
 
-- **Code:** 21317 bytes at 0x9800..0xEB44 (15271 of them fonts, fix-auto-off's 14 at the
-  end), plus the version string at 0xEB45. Image length 60244 bytes; 2220 bytes are left under
-  the 0xF400 split. `house_numerals.asm` is the generated listing.
-- **XDATA** 0x0100..0x01B2. The EEPROM sectors and everything fast-lcd/direct-select use
-  stay untouched.
+- **Code:** 22306 bytes at 0x9800..0xEF21 (15271 of them fonts, fix-auto-off's 14 at the
+  end), plus the version string at 0xEF22. Image length 61233 bytes; 1231 bytes are left under
+  the 0xF400 split (hn8: 2220). hn9 added 989 bytes: the kit's row clip (`uk_textc`, the
+  row-clipped decoder `tx_yclip`, format 2 only here: about 190), the roll (about 250 with its
+  39-byte frame table), the spring (about 480 with its multiply and constants), less hn8's
+  61-byte split table (`vsplit`, now computed). `house_numerals.asm` is the generated listing.
+- **XDATA** 0x0100..0x01C1. The EEPROM sectors and everything fast-lcd/direct-select use
+  stay untouched. hn9 added 0x01B3..0x01C1, and `uk_text`'s block grew by 5 bytes (the row clip)
+  and now starts at 0x015B, in what was free below it.
 
 | Address | Name | Holds |
 |---|---|---|
@@ -504,9 +648,10 @@ places the volume keys open the volume page. Every stock byte is asserted by `bu
 | 0x0113, 0x0115 | `HN_D0`, `HN_D1` | damaged columns (band and edge) |
 | 0x0117, 0x0119 | `HN_B0`, `HN_B1` | the band |
 | 0x011B, 0x0123 | `HN_NAMER`, `HN_STATR` | right end of the home name / status line |
-| 0x011D, 0x011F, 0x0121 | `HN_S0`, `HN_S1`, `HN_SPL` | `hn_line_seg`: columns, the line's split column |
+| 0x011D, 0x011F | `HN_S0`, `HN_S1` | `hn_line_seg`: columns |
+| 0x0121 | `HN_SPL` | the line's split column on screen (the spring's, 16..304) |
 | 0x0130..0x0155 | | free (hn7's `uk_paint` block; the kit still reserves it) |
-| 0x0160..0x0191 | `TP_*` | `uk_text`'s parameters and work area |
+| 0x015B..0x0191 | `TP_*` | `uk_text`'s parameters and work area; `TP_YC0`, `TP_YC1` the row clip, `TP_YA`, `TP_YN`, `TP_YZ` the cell's rows above, in and below it |
 | 0x0192 | `HM_VS` | the home volume as text |
 | 0x0196 | `HM_TAG` | a tag's text, trailing spaces cut |
 | 0x019C..0x019E | `HM_TX`, `HM_TW`, `HM_TWD` | `hm_tag`: box x (- 192), box width, text width |
@@ -516,6 +661,11 @@ places the volume keys open the volume page. Every stock byte is asserted by `bu
 | 0x01A8 | `HN_SLD` | `hn_stat_load` is running the status loader: `hn_hold` returns |
 | 0x01A9..0x01B1 | `HV_DB` | the dB caption, 8 characters and a NUL |
 | 0x01B2 | `HN_SIG` | the status loader's signal check: 1 = signal (`hn_signal`) |
+| 0x01B3, 0x01B5 | `SP_P`, `SP_V` | the spring: position (pixels × 64) and velocity (pixels × 64 per tick), signed |
+| 0x01B7, 0x01B9, 0x01BB | `SP_T`, `SP_E`, `SP_W` | a spring tick's target × 64, error, first product |
+| 0x01BD | `HR_F` | the roll's next frame 1..14, 0 idle |
+| 0x01BE | `HR_DIR` | the roll's direction: 0 up, 1 down |
+| 0x01BF..0x01C1 | `HR_OLD` | the roll's old text (the previous target's) and a NUL |
 
 - **Stack:** the tour (with two entries and two exits) was run with a canary above SP. The
   deepest idata used is 0xB3, the same as fast-lcd. That is stock's own peak: the delay
@@ -524,9 +674,9 @@ places the volume keys open the volume page. Every stock byte is asserted by `bu
 
 ## Emulator results
 
-`python3 tools/run_tests.py` gives **ALL PASS** for every feature, 116 s wall (house-numerals
-116 s, most of it the sweep). `emu_test.py` has four groups: `unit`, `tour`, `int1`, `sweep`;
-`unit tour` alone runs in about 50 s.
+`python3 tools/run_tests.py` gives **ALL PASS** for every feature (hn9: 137 s wall,
+house-numerals 137 s, most of it the sweep). `emu_test.py` has four groups: `unit`, `tour`,
+`int1`, `sweep`; `unit tour` alone runs in about a minute.
 
 - **Image diff:** only the fifteen hook sites (plus the version pointer) differ from
   fast-lcd inside the base image. The labels in `SmslAo300Labels.java` match this build.
@@ -543,26 +693,49 @@ places the volume keys open the volume page. Every stock byte is asserted by `bu
   - The name hand-over leaves 0x22.4 as the stock scan does. During a wipe nothing is cleared
     after a shorter text.
 - **Painter:** see the kit test. `uk_fill` runs at 9.0 clocks per pixel.
-- **`hn_draw_volume`:** every value 0..60 in three themes. It records and skips drawing
-  during a wipe unless the box or line is revealed.
+- **`hn_draw_volume`:** every value 0..60 in three themes (page not on screen: all at once).
+  During a wipe it records and draws only the revealed number and caption, never a roll.
+- **Number roll, unit** (`test_roll`, against `roll_frame` / `roll_box`, written from the mock's
+  formula independently of the build's table, and the table checked equal to it): 25↔26, 9↔10,
+  60↔59, 0↔1, 5↔47, both ways. The key draws only the caption and arms the roll; each of the
+  14 frames leaves the box exactly `roll_box` (one number, shifted, clipped, dimmed, on black)
+  and nothing outside it changed; frame 14 = the static page; then idle. A key during a roll
+  restarts it from the previous target (26 during 25 -> 26; 10 -> 9 turned back at frame 2);
+  the same value again: no roll. Stopped at frame 4 by `ui_clear_screen`, by `hn_volpage` (the
+  final number at once) and by the exit's start (the final number first). No roll during a
+  wipe; a bogus `HR_F`, mode or page flag stops it without drawing. Worst frame 6.13 ms.
+- **Spring** (`test_spring`): `spring_model` (the 8051 arithmetic in Python) against the mock's
+  float integrator for all 61 x 61 volume pairs and 1287 target changes in flight: within
+  1.05 px at every tick, at most 0 px past the target, exact end, at most 63 ticks. Then the
+  8051: `hn_sp_t6` for every volume, `hn_sp_mulx` on 2163 products, `hn_sp_split` on 407
+  positions, and `hn_spring` tick by tick against the model with the line on screen checked at
+  each tick (0 -> 60, 60 -> 0, ±1 steps, changes mid-flight); during a wipe it draws only right
+  of the edge; `ui_clear_screen` and an entry from home put it at 0; at rest it draws nothing.
 - **`hn_step`, unit:** starting from a pattern screen, each of the 20 entry steps checks:
   - x from the table;
   - the old page left of the edge, then the accent edge;
-  - the volume page right of it with only the passed elements (and the line in parts);
-  - the element flags.
+  - the volume page right of it with only the passed elements, and the line right of the edge
+    at `spring_model`'s split (the spring grows from 0 during the entry);
+  - the element flags, and the spring's state against the model.
 
-  The same for the exit on three inputs, including the status-buffer rule. Both end
-  pixel-identical to `hn_volpage` / the stock home refresh. Reversals after steps 1, 5, 10
-  and 19 each way end on the right page; the exit reversal redraws with the new volume.
+  The same for the exit on three inputs, including the status-buffer rule, with the line right
+  of the edge retracting as the model says. The entry ends as the page with the line at the
+  spring's split; the spring then settles tick by tick as the model (35 more ticks) and the page
+  is pixel-identical to `hn_volpage`. The exit ends pixel-identical to the stock home refresh,
+  the spring at home. Reversals after steps 1, 5, 10 and 19 each way end on the right page;
+  the exit reversal redraws with the new volume.
 - **Logic:** `hn_enter_vol` and `hn_clear` in every mode; `hn_cancel` from both modes;
   `hn_hold` in each mode; `hn_name_guard`; `uk_tasks` (a step only after a tick, only with
-  0x4F = 1); a bogus mode stops.
+  0x4F = 1; the re-mute request and the tick as `main_tick_tasks` runs them, for all four
+  combinations against the base image; a tick set during the request's `volume_apply` gets its
+  step); a bogus mode stops.
 - **Tour** (whole firmware, lockstep with fast-lcd, real Timer0 ISR):
   - each step lands on the same page, power, volumes, input and output;
   - home screens equal to `home_model`; volume pages exactly as `hn_volpage`; menus and
     standby identical to fast-lcd;
   - both entries and both exits take 20 steps with the table's x, and the screen at entry
-    step 10 is checked;
+    step 10 is checked (the line right of the edge at the split on screen);
+  - after a key from home the page is checked 0.8 s later (hn8: 0.5), once the spring rests;
   - the volume write comes before the first step;
   - the home refresh is held during the exit and resumes 0.41 s after it, drawing the same
     pixels;
@@ -585,22 +758,31 @@ places the volume keys open the volume page. Every stock byte is asserted by `bu
 - **Source, then Vol+ 0.2, 1.0 or 2.0 s later** (the refresh's flags still set, so its flag
   path runs mid-exit): 20 + 20 steps. Two ticks after the exit the screen is a whole home,
   and later it matches fast-lcd.
+- **Keys on the open page** (`roll_scenarios`, whole firmware, lockstep with fast-lcd, the
+  page at 9): Vol+ 9 -> 10, Vol- 10 -> 9, 9 -> 8, 8 -> 9: the 14 frames come on 14 consecutive
+  Timer0 ticks, each frame's box = `roll_box`, the line's split moves monotonically to the
+  volume's over 27 ticks, then the page is the static one and the state as fast-lcd's; worst
+  tick 5.45 ms. Knob speed (6 keys 60 ms apart, each way): 6 rolls, the page at rest = the
+  static page, worst tick 5.76 ms. Audio as fast-lcd. A roll cut at frame 6 by Menu (home, as
+  `read_key` makes it on page 2), Source (home) and Power (standby identical to fast-lcd):
+  no roll left, same state and audio as fast-lcd.
 - **Panel scan:** see "A step" above.
 - **INT1** (`int1`, 100 whole-firmware runs per image, 7 s):
   - Setup: USB, settled, Vol+ from home with INT1's RAM effects injected at the press
     (0x21.4, 0x43:0x44 = 30, 0x4E = 0xFF), the press moved in 1 ms steps across one
     10-tick format-poll period.
   - Results: the DAC reconfiguration (0x46A0) always comes before the unmute, and the unmute
-    is 0.02-0.03 s earlier than fast-lcd.
+    is 0.12 s earlier to 0.02 s later than fast-lcd (hn8 rebuilt: the same).
   - Near a format poll the main loop takes the key's volume write or the poll's DAC
     reconfiguration first, depending on where in the loop and in the 10-tick poll period the
     press is seen. Both orders are stock behaviour. hn5's poll period is shifted against
     fast-lcd's, because fast-lcd's slower home refreshes after power-on lose more ticks, so
-    at 13 offsets (65..72, 86..92 ms) the two images take the two in a different order. At
+    at 10 offsets in hn9 (0..2, 45..52 ms; hn8 rebuilt: 9, the same without 45) the two images
+    take the two in a different order. At
     those offsets the test requires the same number of audio states, the same final state
     and the DAC reconfiguration no later than fast-lcd's + 0.10 s (hn5's is up to 100 ms
     earlier). At every other offset the audio states match in order and time.
-- **IR sweep:** 256 commands x 5 states, against fast-lcd, 63 s. Page-1 screens must equal
+- **IR sweep:** 256 commands x 5 states, against fast-lcd, 72 s. Page-1 screens must equal
   `home_model` 0.5 s after the command. Four commands leave a home the stock sequence has
   not finished at that point: in standby 0x01 (power on, the logo, identical to fast-lcd) and
   on home 0x13, 0x14, 0x15 (direct-select BT, ARC, AUX: the input switch postpones the refresh
@@ -642,9 +824,14 @@ places the volume keys open the volume page. Every stock byte is asserted by `bu
 
 - **Panel timing: same as fast-lcd.** `uk_fill` and `uk_text` use fast-lcd's byte timing (the
   WR pulse the blit-test build proved on the panel; see fast-lcd's README, Bus timing).
-- **The main loop now runs during the wipes.** A step is at most 6 ms, after the tick's own
-  work. The volume keys, format poll, unmute and re-mute run as on fast-lcd (tested
+- **The main loop now runs during the wipes.** A tick's step, spring and roll take at most
+  6.9 ms, after the tick's own work. The volume keys, format poll, unmute and re-mute run as on fast-lcd (tested
   against it, including the INT1 case the hn3 review raised).
+- **The tick driver's re-mute part** (hn9): `uk_tasks` runs `main_tick_tasks`' first
+  instructions itself (0x21.4 set: clear it and 0x22.4, `lcall volume_apply`), so the stock
+  code at 0x3325 is duplicated in ours; the build asserts those bytes, and a unit test compares
+  the two for every combination of request and tick. The INT1 sweep and the audio comparisons
+  against fast-lcd pass as before.
 - **Stock routines called from a step** (`home_draw_output_icon`, `home_draw_volume`,
   `home_draw_format_tag`, `home_draw_eq_tag`, `big_text_load`, the status loader 0x4016 with
   its signal check and I2C reads) run in the main loop, as they do from
@@ -654,6 +841,19 @@ places the volume keys open the volume page. Every stock byte is asserted by `bu
   `read_key`'s Source-in-standby jump to the bootloader (0x3DB8) are untouched.
 
 ## What to look for on the amp
+
+hn9, the animations:
+- Vol+/Vol- on the open page: the old number slides out (up on Vol+, down on Vol-) and the new
+  one slides in from the other side, getting brighter, in about 0.14 s. Is one number per frame
+  enough, or does it read as a flicker? Is the old one's two frames (20 ms) visible at all?
+- Nothing of the number shows over "VOL" or the line while it slides, and nothing is left
+  behind (a step from 10 to 9, 9 to 10, fast knob turns).
+- The line's fill glides to the new position (about 0.3 s for a step, 0.6 s for 0 to 60)
+  without overshooting; opening the page, it grows from the left while the edge wipes in; on
+  the way home it shrinks while the edge wipes back.
+- Knob turned fast: the number keeps rolling to the latest value and the page ends clean.
+- Menu, Source or Power right after a volume step: the page goes as before, no half-drawn
+  number.
 
 hn8, the volume page:
 - Vol+/Vol- on home: the page is the mock's: input name and status line left, "VOL" and the

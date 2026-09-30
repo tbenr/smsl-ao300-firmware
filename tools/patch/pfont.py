@@ -148,10 +148,11 @@ class PFont:
         return 9 + (self.last - self.first + 1) + 5 * len(self.order) + \
             sum(len(self.glyph_bytes(c)) for c in self.glyphs)
 
-    def render(self, fb, text, x, y, ink, bg, clip=(0, 319), align=0, spacing=0):
+    def render(self, fb, text, x, y, ink, bg, clip=(0, 319), align=0, spacing=0, rows=(0, 255)):
         """Draw as uk_text does into fb (a dict or 2-D list indexed fb[y][x], 320 x 170).
         align 0: x is the first column; 1: x is the last column; 2: x is the centre
-        (the first column is x - width // 2). Returns the last column of the last cell."""
+        (the first column is x - width // 2); rows: only the rows rows[0]..rows[1] (uk_textc's
+        TP_YC0..TP_YC1). Returns the last column of the last cell."""
         wd = self.width(text, spacing)
         if align == 1:
             x = x - wd + 1
@@ -168,7 +169,8 @@ class PFont:
                     continue
                 col = gcols[r - off] if off <= r < off + w else None
                 for k in range(self.H):
-                    fb[y + k][cx] = cols[col[k]] if col else bg
+                    if rows[0] <= y + k <= rows[1]:
+                        fb[y + k][cx] = cols[col[k]] if col else bg
             x += adv + spacing
         return x - 1
 

@@ -148,9 +148,11 @@ def tp_end(e, kit):
     return (e.xram[kit.TP["END"]] << 8) | e.xram[kit.TP["END"] + 1]
 
 
-def text(e, labels, kit, *args, **kw):
-    """set_tp, then uk_text; returns the clocks it took."""
+def text(e, labels, kit, *args, rows=None, **kw):
+    """set_tp, then uk_text (rows=(y0, y1): uk_textc with that row clip); returns the clocks it took."""
     set_tp(e, labels, kit, *args, **kw)
+    if rows is not None:
+        e.xram[kit.TP["YC0"]], e.xram[kit.TP["YC1"]] = rows
     c0 = e.cycles
-    e.call(labels["uk_text"])
+    e.call(labels["uk_text" if rows is None else "uk_textc"])
     return e.cycles - c0

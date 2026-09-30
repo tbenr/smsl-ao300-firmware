@@ -62,12 +62,13 @@ features/
                                   direct-select; emulator-verified, see its README
     build_patch.py, emu_test.py   build build/flash_fastlcd.bin, lockstep UI tour vs stock
   house-numerals/                 House Numerals home and volume page, on top of fast-lcd,
-                                  built with tools/patch/uikit.py; hn4.1 tried on the amp
-                                  on 2026-09-29, hn5 emulator-verified; see its README
-    build_patch.py, emu_test.py   build build/flash_house_numerals.bin (hn5: the mock's home
-                                   in its own typefaces, non-blocking eased wipes in and out
-                                   of the volume page), home model, lockstep UI tour, keys
-                                   during wipes, INT1 sweep, 256-command sweep vs fast-lcd
+                                  built with tools/patch/uikit.py; hn8 tried on the amp
+                                  on 2026-09-30, hn9 emulator-verified; see its README
+    build_patch.py, emu_test.py   build build/flash_house_numerals.bin (hn9: the mock's home
+                                   and volume page in its own typefaces, non-blocking eased
+                                   wipes, the number roll and the line's spring), home and
+                                   page models, lockstep UI tour, keys during wipes and on the
+                                   page, INT1 sweep, 256-command sweep vs fast-lcd
     layout.json, sizing.html      the home layout the build reads, and the page that edits it
                                    (preview exact to the firmware; served by tools/fonts/rasterize.py)
     house_numerals.asm            annotated listing of the patch code at 0x9800
@@ -177,7 +178,7 @@ INCLUDES (a fix linked into that image):
 stock                         85e8ac50…
 └── direct-select             'v1.4 tbenr'        0x9400..0x9442  bb468b29… known
     ├── fast-lcd              'v1.4 tbenr fast'   0x9700..0x977B  b292a648… known
-    │   └── house-numerals    'v1.4 tbenr hn8'    0x9800..0xEB53  122a963c… known
+    │   └── house-numerals    'v1.4 tbenr hn9'    0x9800..0xEF30  b45331a8… known
     │         + fix-auto-off  fix linked into house-numerals
     └── fix-auto-off          'v1.4 tbenr aof1'   0x9680..0x969D  f9b5d14d… known  [fix, hook 0x55B9; included by house-numerals]
 ```
@@ -276,7 +277,9 @@ the amp on 2026-09-29: it looks good, and Auto OFF times out after a cold power-
 (`v1.4 tbenr hn8`) adds the mock's volume page (name, status line, "VOL", 84-px numerals, a
 288-px line, the level in dB and "max 60"), rounded tag corners and a reddish status line
 without a signal; tried on the amp on 2026-09-30, works (an open question on the reddish
-status after a Source change is in `features/house-numerals/TODO.md`).
+status after a Source change is in `features/house-numerals/TODO.md`). hn9 (`v1.4 tbenr hn9`)
+adds the volume page's two animations from the mock, the number roll and the spring on the
+position line; emulator-verified, not yet tried on the amp.
 
 Verified on the amp on 2026-09-29, as part of hn7: the Auto OFF fix (`features/fix-auto-off`). With
 Dimmer on Auto OFF the display goes dark after a cold power-up. Its standalone image
@@ -323,11 +326,16 @@ The parts every theme needs live in `tools/patch/uikit.py`, extracted from house
     stored run-length (background, 1/4, 3/4 and ink colour, mixed on the amp by `uk_avg`).
     It takes left, right or centred alignment, letter spacing and an x clip window, and
     reports the last column drawn. About 12 clocks per pixel on the 84 px numerals.
+    `uk_textc` is the same with a row clip (`TP_YC0`..`TP_YC1`, for text that slides): cells cut
+    by it go through a separate decoder (`tx_yclip`, both formats, or format 2 only with
+    `emit_text(one_bit=False)`), about 20 clocks per drawn pixel; `uk_text` itself sets every
+    row and stays on the fast decoders (a few clocks more per call).
   - `uk_acc`: the accent colour (the COLOR tint, or the theme's own colour on White).
   - `uk_tasks`: the per-tick driver. It is hooked on `main_tasks_on`'s call to
     `main_tick_tasks` (0x5B2A) and runs the theme's step routine once per 10 ms tick,
     after the stock tick work and only while the amp is on. Animations never block the
-    main loop.
+    main loop. It serves `main_tick_tasks`' re-mute request itself before it tests the tick
+    flag, so no tick is handled without the step.
 - **Fonts:** descriptors and character maps of the two stock fonts for `uk_paint`; for
   `uk_text`, a `pfont.PFont` cuts a rasterised face down to the characters a theme needs and
   emits it. Sizes, for example: the 84 px numerals (digits) about 2.2 KB, the 52 px display face
@@ -343,13 +351,14 @@ The parts every theme needs live in `tools/patch/uikit.py`, extracted from house
 compares `uk_paint` against the stock glyph painters and text renderers for every character
 and every string in the firmware, and `uk_text` against `PFont.render` (every glyph of five
 test fonts in both formats, alignment, spacing, tints, clip windows through the middle of
-glyphs and runs). `tools/emu/uitest.py` holds the helpers theme tests share.
+glyphs and runs, and `uk_textc`'s row clips: above, below, both, one row, outside, empty,
+combined with x clips). `tools/emu/uitest.py` holds the helpers theme tests share.
 `tools/emu/panel_video.py` renders what the glass shows, with the panel's 60 Hz line-by-line
 refresh, for checking animations.
 
 Not in the kit yet: the wipe's step engine and page-element model (still in house-numerals),
-shapes (dots, arcs, 7-segment), per-pixel transitions, and a y clip for `uk_text` (for text
-that slides).
+shapes (dots, arcs, 7-segment) and per-pixel transitions. House Numerals' spring (a fixed-point
+spring as a per-tick matrix) and its roll could move to the kit when a second theme needs them.
 
 ### Sizing a theme's home screen
 
@@ -472,7 +481,7 @@ The number on screen is a step count; the dB value behind it is fixed by a table
   0xFF is mute.
 - **Display.** Stock only ever shows the step, as two digits: at 48,9 on the home screen
   (0x5916) and at 130,75 on the volume page (0x5936). There is no dB text anywhere in
-  the firmware. House Numerals hn8 shows the level below step 60 as a caption on its volume
+  the firmware. House Numerals (from hn8) shows the level below step 60 as a caption on its volume
   page ("−39.5 dB"), computed from the code table: `code − 35` half-dB steps.
 
 The stock curve:
@@ -521,7 +530,7 @@ Measured from the images; the code/EEPROM split is the chip's own setting (0xF40
 
 | Region | Size | Used | Free |
 |---|---|---|---|
-| Code flash, 0x0000..0xF3FF | 62464 bytes | 60244 bytes (features/house-numerals hn8) | ~2.2 KB |
+| Code flash, 0x0000..0xF3FF | 62464 bytes | 61233 bytes (features/house-numerals hn9) | ~1.2 KB |
 | EEPROM area, 0xF400..0xFDFF | 2560 bytes, 5 sectors of 512 | sectors at offsets 0x0000, 0x0200, 0x0400 | 2 sectors, 1 KB |
 | Internal direct RAM, 0x00..0x7F | 128 bytes | all (registers, bit flags, variables up to 0x7F) | none |
 | Internal indirect RAM, 0x80..0xFF | 128 bytes | stack from 0x88 (`mov SP,#0x88` at 0x44A5) | stack headroom only |

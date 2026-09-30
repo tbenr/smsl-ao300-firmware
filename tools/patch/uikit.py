@@ -176,12 +176,13 @@ class Kit:
                       FP_VX0=33, FP_VX1=35, FP_OFF=37)
     FP_SIZE = 38
 
-    # uk_text's block: parameters (tp_setup) up to SPACING, then its work area
+    # uk_text's block: parameters (tp_setup) up to SPACING, then its work area; YC0, YC1: the row clip
+    # (uk_textc only: uk_text sets 0..255), YA, YN, YZ: the cell rows above, inside and below it
     TP_OFFSETS = dict(FONT=0, STR=2, SPC=4, X=5, Y=7, INK=8, BG=10, CX0=12, CX1=14, ALIGN=16, SPACING=17,
                       H=18, BPC=19, FMT=20, FIRST=21, N=22, MAP=23, TAB=25, CUR=27, END=29, ADV=31,
                       GOFF=32, GW=33, GLY=34, VX0=36, VX1=38, C1=40, C2=42, L=44, S=45, I=46, T=47,
-                      CNT=48)
-    TP_SIZE = 50
+                      CNT=48, YC0=50, YC1=51, YA=52, YN=53, YZ=54)
+    TP_SIZE = 55
 
     def __init__(self, fill_ws=0x0100, fp_base=0x0130, tp_base=None):
         self.fill_n = fill_ws           # pixel count (hi, lo) ...
@@ -199,7 +200,7 @@ class Kit:
                 self.tp[k + "1"] = "0x%04X" % (addr[k] + 1)
             for k in ("VX0", "VX1"):
                 self.tp[k + "1"] = "0x%04X" % (addr[k] + 1)
-            for k in ("ADV", "H"):
+            for k in ("ADV", "H", "INK", "BG", "C1", "C2", "YA", "YN", "YZ"):
                 self.tp[k + "_LO"] = "0x%02X" % (addr[k] & 0xFF)
                 self.tp[k + "_HI"] = "0x%02X" % (addr[k] >> 8)
 
@@ -879,8 +880,10 @@ ret
             S(a, "mov A,%s\nmovx @DPTR,A\ninc DPTR\nmov A,%s\nmovx @DPTR,A\ninc DPTR" % (hi(v), lo(v)))
         S(a, "mov A,#%d\nmovx @DPTR,A\ninc DPTR\nmov A,#%d\nmovx @DPTR,A" % (align, spacing))
 
-    def emit_text(self, a):
-        """uk_text (with uk_tfetch, uk_avg): the proportional text painter; needs tp_base."""
+    def emit_text(self, a, one_bit=True):
+        """uk_text and uk_textc (with uk_tfetch, uk_avg, tx_yclip): the proportional text painter; needs
+        tp_base. one_bit False: the row clip handles format-2 fonts only (a theme without 1-bit fonts
+        saves its format-1 path)."""
         T = self.tp
         S(a, """
 ; uk_avg: R6:R7 = the per-channel average of the RGB565 colours R2:R3 and R4:R5 (rounded down);
@@ -1018,7 +1021,16 @@ ret
 ; ink TP_INK on TP_BG, TP_SPACING extra columns per character, only the columns TP_CX0..TP_CX1.
 ; Each character is a cell of its advance (+ spacing) columns, background included. TP_END is the
 ; last column of the last cell (x - 1 for an empty string). TP_CX0 > TP_CX1: a measurement.
+; With TP_ALIGN 1 or 2, TP_X is the first column afterwards.
 uk_text:
+mov DPTR,#{YC0}
+clr A
+movx @DPTR,A
+inc DPTR
+cpl A
+movx @DPTR,A       ; every row
+; uk_textc: uk_text, drawing only the rows TP_YC0..TP_YC1 of the cells (set both before every call)
+uk_textc:
 mov DPTR,#{FONT}
 movx A,@DPTR
 mov R6,A
@@ -1040,6 +1052,56 @@ mov A,B
 movx @DPTR,A
 inc R4
 cjne R4,#9,ut_desc
+; the cell's rows: TP_YA above the clip, TP_YN inside it, TP_YZ below it (no clip: 0, H, 0)
+mov DPTR,#{H}
+movx A,@DPTR
+mov R5,A
+mov DPTR,#{Y}
+movx A,@DPTR
+mov R2,A
+mov DPTR,#{YC0}
+movx A,@DPTR
+clr C
+subb A,R2
+jnc ut_ya
+clr A
+ut_ya:
+mov R3,A           ; YA = max(YC0 - y, 0)
+inc DPTR
+movx A,@DPTR
+clr C
+subb A,R2
+jc ut_yn0          ; YC1 above the cell
+mov R4,A
+clr C
+subb A,R5
+jnc ut_yh
+mov A,R4
+inc A              ; YC1 - y + 1 < H
+sjmp ut_ye
+ut_yh:
+mov A,R5           ; to the cell's last row
+ut_ye:
+clr C
+subb A,R3
+jnc ut_yst
+ut_yn0:
+clr A
+ut_yst:
+mov R6,A           ; YN
+mov DPTR,#{YA}
+mov A,R3
+movx @DPTR,A
+inc DPTR
+mov A,R6
+movx @DPTR,A
+inc DPTR
+mov A,R5
+clr C
+subb A,R3
+clr C
+subb A,R6
+movx @DPTR,A       ; YZ = H - YA - YN
 ; 4-level fonts: TP_C1 = 1/4 ink, TP_C2 = 3/4 ink
 mov DPTR,#{FMT}
 movx A,@DPTR
@@ -1217,6 +1279,9 @@ subb A,R3
 mov A,R4
 subb A,R2
 jc ut_next
+mov DPTR,#{YN}
+movx A,@DPTR
+jz ut_next         ; no row inside the row clip
 mov DPTR,#{VX0}
 mov A,R2
 movx @DPTR,A
@@ -1328,7 +1393,7 @@ clr A
 tc_t2:
 mov DPTR,#{T}
 movx @DPTR,A
-; window: x vx0..vx1, y TP_Y .. TP_Y + H - 1
+; window: x vx0..vx1, y TP_Y + YA .. TP_Y + YA + YN - 1 (no row clip: TP_Y .. TP_Y + H - 1)
 mov DPTR,#{VX1}
 movx A,@DPTR
 mov R0,#0x2F
@@ -1337,14 +1402,17 @@ inc DPTR
 movx A,@DPTR
 inc R0
 movx @R0,A
-mov DPTR,#{H}
-movx A,@DPTR
-dec A
-mov R5,A
 mov DPTR,#{Y}
 movx A,@DPTR
 mov R7,A
-add A,R5
+mov DPTR,#{YA}
+movx A,@DPTR
+add A,R7
+mov R7,A
+inc DPTR
+movx A,@DPTR       ; YN
+dec A
+add A,R7
 mov R5,A
 clr A
 addc A,#0
@@ -1364,6 +1432,16 @@ lcall tx_bgcols
 mov DPTR,#{I}
 movx A,@DPTR
 jz tc_trail
+mov DPTR,#{YN}
+movx A,@DPTR
+mov R0,A
+mov DPTR,#{H}
+movx A,@DPTR
+xrl A,R0
+jz tc_rows         ; every row: the fast decoders
+lcall tx_yclip
+sjmp tc_trail
+tc_rows:
 mov DPTR,#{FMT}
 movx A,@DPTR
 cjne A,#1,tc_rle
@@ -1377,12 +1455,12 @@ lcall tx_bgcols
 setb P0.7          ; CS high
 ret
 
-; tx_bgcols: (@DPTR) * H pixels of TP_BG
+; tx_bgcols: (@DPTR) * YN pixels of TP_BG
 tx_bgcols:
 movx A,@DPTR
 jz tb_ret
 mov B,A
-mov DPTR,#{H}
+mov DPTR,#{YN}
 movx A,@DPTR
 mul AB
 mov R0,A           ; count lo
@@ -1672,18 +1750,210 @@ push DPL
         ld16(a, "R6", "R7", self.TP["C2"])
         ld16(a, "B", "R1", self.TP["C1"])
         S(a, "pop DPL\npop DPH\nret")
+        self.emit_yclip(a, one_bit)
 
+    def emit_yclip(self, a, one_bit):
+        """tx_yclip: uk_text's decoder for cells cut by the row clip (TP_YN < H), either format."""
+        T = dict(self.tp, TPHI="0x%02X" % (self.TP["FONT"] >> 8))
+        S(a, """
+; tx_yclip: the glyph columns TP_S .. TP_S + TP_I - 1, of each only the rows TP_YA .. TP_YA + TP_YN - 1
+; (the window). Walks the glyph's pixels from its first column: R4 columns still to skip, B columns
+; to draw, R3 the phase of the column (0: the TP_YA rows above, 1: the TP_YN drawn, 2: the TP_YZ
+; below), R2 its pixels left, R5 the pixels left of the run R1 (level in bits 7..6).%s
+tx_yclip:
+mov DPTR,#{I}
+movx A,@DPTR
+mov B,A
+mov DPTR,#{S}
+movx A,@DPTR
+mov R4,A""".format(**T) % (" Format 1: runs of one\n; pixel, F0 set; the byte and its bits left in TP_CNT." if one_bit else " Format 2 only."))
+        if one_bit:
+            S(a, """
+clr F0
+mov DPTR,#{FMT}
+movx A,@DPTR
+cjne A,#1,yc_f2
+setb F0
+yc_f2:
+mov DPTR,#{CNT1}
+clr A
+movx @DPTR,A       ; no bits left""".format(**T))
+        S(a, """
+mov DPTR,#{GLY}
+movx A,@DPTR
+mov R6,A
+inc DPTR
+movx A,@DPTR
+mov DPL,A
+mov DPH,R6
+mov R5,#0
+sjmp yc_col
+yc_loop:
+mov A,R5
+jnz yc_have""".format(**T))
+        if one_bit:
+            S(a, """
+jnb F0,yc_run
+; format 1: the next pixel as a run of one (level 0 or 3)
+push DPH
+push DPL
+mov DPTR,#{CNT1}
+movx A,@DPTR
+jnz yc_b1
+pop DPL
+pop DPH
+clr A
+movc A,@A+DPTR
+inc DPTR
+push DPH
+push DPL
+mov DPTR,#{CNT}
+movx @DPTR,A
+inc DPTR
+mov A,#8
+yc_b1:
+dec A
+movx @DPTR,A       ; bits left (TP_CNT1)
+mov DPTR,#{CNT}
+movx A,@DPTR
+rlc A
+movx @DPTR,A
+clr A
+jnc yc_b0
+mov A,#0xC0
+yc_b0:
+mov R1,A
+mov R5,#1
+pop DPL
+pop DPH
+sjmp yc_have
+yc_run:""".format(**T))
+        S(a, """
+clr A
+movc A,@A+DPTR
+inc DPTR
+mov R1,A
+anl A,#0x3F
+mov R5,A
+yc_have:
+; m = min(R5, R2) pixels: drawn in phase 1 of a column not skipped
+mov A,R2
+clr C
+subb A,R5
+mov A,R5
+jnc yc_m
+mov A,R2
+yc_m:
+mov R0,A
+mov A,R5
+clr C
+subb A,R0
+mov R5,A
+mov A,R2
+clr C
+subb A,R0
+mov R2,A
+cjne R3,#1,yc_skip
+mov A,R4
+jnz yc_skip
+lcall yc_send
+yc_skip:
+mov A,R2
+jnz yc_loop
+; the phase is over: the next one, or the next column
+inc R3
+cjne R3,#1,yc_ph2
+mov A,#{YN_LO}
+sjmp yc_q
+yc_ph2:
+cjne R3,#2,yc_next
+mov A,#{YZ_LO}
+yc_q:
+lcall yc_rd
+mov R2,A
+jz yc_skip         ; an empty phase
+sjmp yc_loop
+yc_next:
+mov A,R4
+jz yc_vis
+dec R4
+sjmp yc_col
+yc_vis:
+djnz B,yc_col
+clr F0
+ret
+yc_col:
+mov R3,#0
+mov A,#{YA_LO}
+sjmp yc_q
+
+; yc_rd: A = the byte of uk_text's block at low address A; keeps DPTR
+yc_rd:
+push DPH
+push DPL
+mov DPL,A
+mov DPH,#{TPHI}
+movx A,@DPTR
+pop DPL
+pop DPH
+ret
+
+; yc_send: R0 pixels of level R1 (bits 7..6): background, 1/4, 3/4, ink
+yc_send:
+mov A,R1
+jb ACC.7,ys_hi
+jb ACC.6,ys_1
+mov A,#{BG_LO}
+sjmp ys_c
+ys_1:
+mov A,#{C1_LO}
+sjmp ys_c
+ys_hi:
+jb ACC.6,ys_3
+mov A,#{C2_LO}
+sjmp ys_c
+ys_3:
+mov A,#{INK_LO}
+ys_c:
+push DPH
+push DPL
+mov DPL,A
+mov DPH,#{TPHI}
+movx A,@DPTR
+mov R6,A
+inc DPTR
+movx A,@DPTR
+mov R7,A
+pop DPL
+pop DPH
+ys_px:
+mov P1,R6
+clr P0.5
+setb P0.5
+mov P1,R7
+clr P0.5
+setb P0.5
+djnz R0,ys_px
+ret""".format(**T))
     def emit_tick_driver(self, a, ret_label):
         """uk_tasks: hook it on STOCK_SITES["tick"] (lcall). On a tick it runs main_tick_tasks, then,
         if the amp is on (RAM 0x4F = 1), falls through into the code emitted right after it (the
         theme's step routine, ending in ret); ret_label must be a ret in that routine."""
         S(a, """
-; uk_tasks: replaces main_tasks_on's lcall main_tick_tasks (0x5B2A). When a 10 ms tick is pending,
-; main_tick_tasks handles it (countdowns, renders, the periodic refresh) and then, with the amp on,
-; the step routine that follows runs once.
+; uk_tasks: replaces main_tasks_on's lcall main_tick_tasks (0x5B2A). main_tick_tasks (0x3325) first
+; serves the re-mute request 0x21.4 (volume_apply, I2C: milliseconds), then the 10 ms tick if 0x20.7
+; is set. uk_tasks does the first part itself, as 0x3325..0x332E do, then looks at the tick flag:
+; a tick set meanwhile is seen here, not consumed by main_tick_tasks without the step. When a tick
+; is pending, main_tick_tasks handles it (countdowns, renders, the periodic refresh) and then, with
+; the amp on, the step routine that follows runs once. No tick: main_tick_tasks would only return.
 uk_tasks:
+jnb 0x21.4,ht_flag
+clr 0x21.4
+clr 0x22.4
+lcall 0x58D3       ; volume_apply
+ht_flag:
 jb 0x20.7,ht_tick
-ljmp 0x3325
+ret
 ht_tick:
 lcall 0x3325
 mov A,0x4F
