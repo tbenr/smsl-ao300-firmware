@@ -102,8 +102,8 @@ Earlier images:
 
 ## Status
 
-hn10.1: emulator-verified (all tests pass, including "fix-auto-off in house-numerals"). Not
-yet tried on the amp.
+hn10.1: emulator-verified (all tests pass, including "fix-auto-off in house-numerals" and
+"strings in house-numerals"). Tried on the amp on 2026-09-30: works.
 
 hn10: emulator-verified (all tests pass, including "fix-auto-off in house-numerals"). Tried on
 the amp on 2026-09-30: looks good.

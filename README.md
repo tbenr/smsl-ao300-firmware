@@ -63,7 +63,7 @@ features/
     build_patch.py, emu_test.py   build build/flash_fastlcd.bin, lockstep UI tour vs stock
   house-numerals/                 House Numerals home and volume page, on top of fast-lcd,
                                   built with tools/patch/uikit.py; hn10 tried on the amp
-                                  on 2026-09-30, hn10.1 emulator-verified; see its README
+                                  on 2026-09-30, hn10.1 too; see its README
     build_patch.py, emu_test.py   build build/flash_house_numerals.bin (hn10: the mock's home
                                    and volume page in its own typefaces, non-blocking wipes
                                    with the mock's cubic ease, the number roll and the line's spring), home and
@@ -289,8 +289,8 @@ adds the volume page's two animations from the mock, the number roll and the spr
 position line; hn10 (`v1.4 tbenr hn10`) gives both wipes the mock's cubic ease, 0.32 s each
 way. Both were tried on the amp on 2026-09-30: good. hn10.1 (`v1.4 tbenr hn10.1`) fixes the
 status tint after an input change (only the status loader's own text is reddish) and links
-in `features/strings` ("Disconnected" for ARC's "No Connected"); emulator-verified, not yet
-tried on the amp.
+in `features/strings` ("Disconnected" for ARC's "No Connected"); tried on the amp on
+2026-09-30: works.
 
 Verified on the amp on 2026-09-29, as part of hn7: the Auto OFF fix (`features/fix-auto-off`). With
 Dimmer on Auto OFF the display goes dark after a cold power-up. Its standalone image

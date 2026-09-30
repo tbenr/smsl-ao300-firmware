@@ -8,7 +8,9 @@ page shows `v1.4 tbenr str1`.
 
 ## Status
 
-Emulator-verified (standalone, and as "strings in house-numerals"). Not yet tried on the amp.
+Emulator-verified (standalone, and as "strings in house-numerals"). Tried on the amp on
+2026-09-30 as part of house-numerals hn10.1: works. The standalone image itself has not been
+flashed.
 
 ## How it works
 

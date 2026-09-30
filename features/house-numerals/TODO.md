@@ -1,8 +1,7 @@
 # House Numerals: what is left
 
-State as of hn10.1 (`v1.4 tbenr hn10.1`: hn10, tried on the amp on 2026-09-30, plus the fix for
-the reddish status after an input change, emulator-verified only). The reference is study 3 in
-`features/ui-theme/ui_themes.html`.
+State as of hn10.1 (`v1.4 tbenr hn10.1`, tried on the amp on 2026-09-30, works). The reference is
+study 3 in `features/ui-theme/ui_themes.html`.
 
 ## Missing against the mock
 
