@@ -75,6 +75,9 @@ STOCK_SITES = {
     "ui_clear_screen": (0x5D42, bytes([0x12, 0x5C, 0xBC])),  # lcall ui_clear_small_buf; 0x5D45 follows
     "home_draw_input_name": (0x4A85, bytes([0xE5, 0x47, 0x14])),  # mov A,0x47; dec A; 0x4A88 follows
     "home_refresh_flag_path": (0x3FF8, bytes([0xC2, 0x0B, 0xC2])),  # clr 0x21.3; clr 0x20.6; ...
+    "status_signal_check": (0x4016, bytes([0x12, 0x52, 0x32])),  # the status loader's lcall signal_check
+    #   (0x5232 -> C = signal present); the loader (0x4016..0x407E) then fills XDATA 0x50 and runs on
+    #   into 0x4081. RAM 0x22.5 is not a signal flag afterwards: volume_apply 0x58D3 reuses it.
     # the home elements' painters (page 1); a theme that replaces one draws the element itself
     "home_draw_output_icon": (0x5744, bytes([0x30, 0x11, 0x0B])),  # jnb 0x22.1 (muted, red icon 1); icon 3
     #   speakers (g_output 0x2B = 1), 2 headphones; x 15, y 8; ends with ret (XDATA 6 = the icon)
@@ -112,11 +115,12 @@ def ease_in_out(steps, span):
 
 # ---- asm text helpers ---------------------------------------------------------------------------
 def hi(v):
-    return "#0x%02X" % (v >> 8)
+    """Immediate high byte of an int, or of a label (resolved by the assembler)."""
+    return "#hi(%s)" % v if isinstance(v, str) else "#0x%02X" % (v >> 8)
 
 
 def lo(v):
-    return "#0x%02X" % (v & 0xFF)
+    return "#lo(%s)" % v if isinstance(v, str) else "#0x%02X" % (v & 0xFF)
 
 
 def S(a, text):

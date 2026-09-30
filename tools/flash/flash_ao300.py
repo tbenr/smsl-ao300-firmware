@@ -70,6 +70,7 @@ KNOWN_IMAGES = {
     "8f0ab9b208ebe95519c31319e9db08501c7f910aa6766746031e35bfae67df7d": "fast-lcd + House Numerals v6.1 (hn6 + fix-auto-off: Dimmer Auto OFF armed after power-on), 'v1.4 tbenr hn6.1' (features/house-numerals/build/flash_house_numerals.bin)",
     "41ce98074fcedf7f18497b856c26aea4d55f92660584c38f70273fb882250015": "fast-lcd + House Numerals v7 (hn6.1 with new sizes: status 28, name 54, tags 16; name and status in separate exit steps), 'v1.4 tbenr hn7' (features/house-numerals/build/flash_house_numerals.bin)",
     "f9b5d14d39a2437e5a7b92089101eb9c71e166df5fb37960abb370ebf420eb01": "direct-select + Auto OFF armed after power-on (AO300 PRO V1.2 fix), 'v1.4 tbenr aof1' (features/fix-auto-off/build/flash_fixautooff.bin)",
+    "122a963c35cf4d64e01e8534b301e4d86e2d1b74a336e24e15a9e19b18bcebcd": "fast-lcd + House Numerals v8 (hn7 with the mock's volume page: name, status, VOL, 84-px number, 288-px line, dB caption, max 60; rounded tag corners; reddish status without a signal), 'v1.4 tbenr hn8' (features/house-numerals/build/flash_house_numerals.bin)",
 }
 
 

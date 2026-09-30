@@ -177,7 +177,7 @@ INCLUDES (a fix linked into that image):
 stock                         85e8ac50…
 └── direct-select             'v1.4 tbenr'        0x9400..0x9442  bb468b29… known
     ├── fast-lcd              'v1.4 tbenr fast'   0x9700..0x977B  b292a648… known
-    │   └── house-numerals    'v1.4 tbenr hn7'    0x9800..0xD879  41ce9807… known
+    │   └── house-numerals    'v1.4 tbenr hn8'    0x9800..0xEB53  122a963c… known
     │         + fix-auto-off  fix linked into house-numerals
     └── fix-auto-off          'v1.4 tbenr aof1'   0x9680..0x969D  f9b5d14d… known  [fix, hook 0x55B9; included by house-numerals]
 ```
@@ -272,7 +272,10 @@ emulator-verified and not yet tried on the amp. hn6.1 (`v1.4 tbenr hn6.1`) is hn
 fix-auto-off included, so Dimmer Auto OFF also times out after a cold power-up. hn7
 (`v1.4 tbenr hn7`) is hn6.1 with the sizes redone in `sizing.html` (status line 28 px, name
 54, tags 16). Both are emulator-verified, including the fix's integration test. hn7 was tried on
-the amp on 2026-09-29: it looks good, and Auto OFF times out after a cold power-up.
+the amp on 2026-09-29: it looks good, and Auto OFF times out after a cold power-up. hn8
+(`v1.4 tbenr hn8`) adds the mock's volume page (name, status line, "VOL", 84-px numerals, a
+288-px line, the level in dB and "max 60"), rounded tag corners and a reddish status line
+without a signal; emulator-verified, not yet tried on the amp.
 
 Verified on the amp on 2026-09-29, as part of hn7: the Auto OFF fix (`features/fix-auto-off`). With
 Dimmer on Auto OFF the display goes dark after a cold power-up. Its standalone image
@@ -468,7 +471,8 @@ The number on screen is a step count; the dB value behind it is fixed by a table
   0xFF is mute.
 - **Display.** Stock only ever shows the step, as two digits: at 48,9 on the home screen
   (0x5916) and at 130,75 on the volume page (0x5936). There is no dB text anywhere in
-  the firmware.
+  the firmware. House Numerals hn8 shows the level below step 60 as a caption on its volume
+  page ("−39.5 dB"), computed from the code table: `code − 35` half-dB steps.
 
 The stock curve:
 
@@ -516,7 +520,7 @@ Measured from the images; the code/EEPROM split is the chip's own setting (0xF40
 
 | Region | Size | Used | Free |
 |---|---|---|---|
-| Code flash, 0x0000..0xF3FF | 62464 bytes | 55418 bytes (features/house-numerals hn7) | ~6.9 KB |
+| Code flash, 0x0000..0xF3FF | 62464 bytes | 60244 bytes (features/house-numerals hn8) | ~2.2 KB |
 | EEPROM area, 0xF400..0xFDFF | 2560 bytes, 5 sectors of 512 | sectors at offsets 0x0000, 0x0200, 0x0400 | 2 sectors, 1 KB |
 | Internal direct RAM, 0x00..0x7F | 128 bytes | all (registers, bit flags, variables up to 0x7F) | none |
 | Internal indirect RAM, 0x80..0xFF | 128 bytes | stack from 0x88 (`mov SP,#0x88` at 0x44A5) | stack headroom only |

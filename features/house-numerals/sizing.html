@@ -85,7 +85,7 @@ label.chk{display:flex;gap:8px;align-items:center;font-size:14px}
         <tfoot><tr><td>Home fonts</td><td></td><td></td><td id="leftlab"></td><td id="total"></td></tr></tfoot>
       </table>
     </div>
-    <p class="note">Flash is exact: each font packed as the build packs it. About 17 KB of the image is free for fonts, the volume page's included. hn5 on the amp had the volume at 22 px, the tags at 10 px and the status line at 12 px.</p>
+    <p class="note">Flash is exact: each font packed as the build packs it. The tag face also sets the volume page's small texts (status line, VOL, captions), so it carries the status character set. hn5 on the amp had the volume at 22 px, the tags at 10 px and the status line at 12 px; hn7 has 33, 16 and 28.</p>
   </div>
 
   <aside>
@@ -96,7 +96,7 @@ label.chk{display:flex;gap:8px;align-items:center;font-size:14px}
     <fieldset>
       <legend>What the amp shows</legend>
       <div class="row"><span>Input</span><select id="s_input"><option>USB</option><option selected>OPTICAL</option><option>COAXIAL</option><option>BT</option><option>ARC</option><option>AUX</option><option>PHONO</option></select></div>
-      <div class="row"><span>Status</span><select id="s_status"><option>96kHz</option><option>44.1kHz</option><option selected>2.8224MHz</option><option>22.5792MHz</option><option>352.8kHz</option><option>No signal</option><option>Searching...</option><option>Analog input</option></select></div>
+      <div class="row"><span>Status</span><select id="s_status"><option>96kHz</option><option>44.1kHz</option><option selected>2.8224MHz</option><option>22.5792MHz</option><option>352.8kHz</option><option>No signal</option><option>Searching...</option><option>No Connected</option><option>Analog input</option></select></div>
       <div class="row"><span>Format tag</span><select id="s_fmt"><option>PCM</option><option>DSD</option><option selected>DoP</option><option>MQA</option><option>MQA.</option><option value="">none</option></select></div>
       <div class="row"><span>EQ tag</span><select id="s_eq"><option selected>DIR</option><option>CUS</option><option>BAS</option><option>SBA</option><option>RCK</option><option>SFT</option><option>CLR</option><option>SDB</option></select></div>
       <div class="row"><span>Volume</span><input type="range" id="s_vol" min="0" max="60" value="38"><output id="o_vol"></output></div>
@@ -121,11 +121,12 @@ python3 tools/run_tests.py house-numerals</pre>
 <script>
 (() => {
 const G = window.Glyphs, W = 320, H = 170, PITCH = 0.1335;   // 1.9" 170 x 320 IPS: 22.70 x 42.72 mm
-// the characters the build keeps (build_patch.py: NAME_CHARS, TAG_CHARS, the status set)
+// the characters the build keeps (build_patch.py: NAME_CHARS, STATUS_CHARS, MONO_CHARS for the tag face,
+// which the volume page's small texts share)
 const CHARS = {
   name: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ .-',
   status: " !'-.0123456789ABCDEFGHIKLMNOPQRSTUVXabcdeghiklmnoprstuvwyz",
-  tag: 'ABCDFIKLMPQRSTUo. ', volume: '0123456789', icon: 'SMH',
+  tag: " !'-.0123456789ABCDEFGHIKLMNOPQRSTUVXabcdeghiklmnoprstuvwyzx_~", volume: '0123456789', icon: 'SMH',
 };
 const ORANGE = 0xFC43, RED = G.hex565('#ff0000'), WHITE = 0xFFFF;
 const TONES = {grey: '#8a9096', light: '#c3c8cc', white: '#ffffff'};
@@ -147,17 +148,17 @@ const $ = id => document.getElementById(id);
 
 // ---- fonts, made in the page exactly as the build makes them ----
 const rasters = {}, fonts = {};
-function font(kind, px, chars){
+function font(kind, px, chars, alias = {}){
   const id = kind + px;
   if (!rasters[id]) rasters[id] = G.raster(G.spec(kind, px));
   const key = id + '|' + chars;
-  if (!fonts[key]) fonts[key] = G.makeFont(rasters[id], chars, 2);
+  if (!fonts[key]) fonts[key] = G.makeFont(rasters[id], chars, 2, alias);
   return fonts[key];
 }
 function fontsFor(p){
   return {
     icon: font('icons', p.icon, CHARS.icon), volume: font('num', p.vol, CHARS.volume),
-    tag: font('mono', p.tag, CHARS.tag), name: font('disp', p.name, CHARS.name),
+    tag: font('mono', p.tag, CHARS.tag, {'_': '−', '~': '∞'}), name: font('disp', p.name, CHARS.name),
     status: font('mono', p.stat, CHARS.status),
   };
 }
@@ -182,9 +183,16 @@ function layout(p, F){
 // ---- drawing, as the firmware (and home_model in emu_test.py) does ----
 function rect(fb, x, y, w, h, c){ for (let yy = y; yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) if (xx >= 0 && xx < W && yy >= 0 && yy < H) fb[yy * W + xx] = c; }
 function tag(fb, F, L, t, right, acc){
+  // a 1-px box with corners of radius 2 as the build draws it (pfont.box_edges: the corner pixel 1/4
+  // ink, its two neighbours 3/4, the pixel inside the corner 1/4), the text L.tags.pad in from the edges
   t = t.slice(0, 5).replace(/ +$/, '');
   const w = F.tag.width(t) + 2 * L.tags.pad, x = right - w, y0 = L.tags.top, y1 = y0 + L.tags.height - 1;
-  rect(fb, x, y0, w, 1, acc); rect(fb, x, y1, w, 1, acc); rect(fb, x, y0 + 1, 1, y1 - y0 - 1, acc); rect(fb, x + w - 1, y0 + 1, 1, y1 - y0 - 1, acc);
+  const q = G.ramp(acc, 0);
+  rect(fb, x + 2, y0, w - 4, 1, acc); rect(fb, x + 2, y1, w - 4, 1, acc);
+  rect(fb, x, y0 + 2, 1, y1 - y0 - 3, acc); rect(fb, x + w - 1, y0 + 2, 1, y1 - y0 - 3, acc);
+  for (const [cx, dx] of [[x, 1], [x + w - 1, -1]]) for (const [cy, dy] of [[y0, 1], [y1, -1]]){
+    rect(fb, cx, cy, 1, 1, q[1]); rect(fb, cx + dx, cy, 1, 1, q[2]); rect(fb, cx, cy + dy, 1, 1, q[2]); rect(fb, cx + dx, cy + dy, 1, 1, q[1]);
+  }
   F.tag.render(fb, t, x + L.tags.pad, L.tags.baseline + F.tag.top, acc, 0);
   return x;
 }
@@ -209,7 +217,10 @@ function draw(){
     fmtLeft = $('s_fmt').value ? tag(fb, F, L, $('s_fmt').value, eqX - L.tags.gap, acc) : eqX;
   });
   parts.name = layer(fb => F.name.render(fb, $('s_input').value, L.name.x, L.name.baseline + F.name.top, WHITE, 0, 0, L.name.spacing));
-  parts.status = layer(fb => F.status.render(fb, $('s_status').value, L.status.x, L.status.baseline + F.status.top, G.hex565(L.status.colour), 0, 0, L.status.spacing));
+  // the status colour: the layout's grey, mixed half with #ff5040 (as the mock) when the firmware found no signal
+  const st = $('s_status').value, lost = ['No signal', 'Searching...', 'No Connected'].includes(st);
+  const dim = G.hex565(L.status.colour), dimLost = G.avg565(dim, G.hex565('#ff5040'));
+  parts.status = layer(fb => F.status.render(fb, st, L.status.x, L.status.baseline + F.status.top, lost ? dimLost : dim, 0, 0, L.status.spacing));
   parts.bar = layer(fb => rect(fb, L.bar.x, L.bar.y, L.bar.width, L.bar.height, acc));
   const fb = new Uint16Array(W * H);
   for (const p of Object.values(parts)) for (let i = 0; i < fb.length; i++) if (p[i]) fb[i] = p[i];
@@ -245,7 +256,8 @@ function check(F, L, parts, fmtLeft){
   $('save').dataset.ok = w.length ? '' : '1';
 }
 
-const BUDGET = 16976;     // bytes for fonts: the 0xF400 split minus hn5's image without its fonts
+const BUDGET = 14405;     // bytes for these fonts: the 0xF400 split minus hn8's image without them (the
+                          // volume page's own faces, disp36 and num84, count as code here)
 function readout(F){
   const rows = [['Input name', F.name, 'H'], ['Status line', F.status, 'H'], ['Volume', F.volume, '0'],
                 ['Tags', F.tag, 'D'], ['Speaker', F.icon, 'S']];
@@ -257,8 +269,8 @@ function readout(F){
   }).join('');
   const left = BUDGET - total;
   $('total').textContent = (total / 1024).toFixed(1) + ' KB';
-  $('leftlab').textContent = (left / 1024).toFixed(1) + ' KB left for the volume page';
-  $('leftlab').className = left < 7000 ? 'over' : '';
+  $('leftlab').textContent = (left / 1024).toFixed(1) + ' KB left in the image';
+  $('leftlab').className = left < 0 ? 'over' : '';
 }
 
 // ---- controls ----

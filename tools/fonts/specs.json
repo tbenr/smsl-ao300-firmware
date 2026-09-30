@@ -2,6 +2,7 @@
   "_": "Faces and sizes the themes draw with (tools/fonts/glyphs.js: disp, num, mono, icons). raster.html renders a spec's characters to raster/<id>.json; a sizing page adds the sizes it saves.",
   "specs": [
     {"id": "disp30", "font": "800 30px \"Big Shoulders Display\"", "chars": "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .-"},
+    {"id": "disp36", "font": "800 36px \"Big Shoulders Display\"", "chars": "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .-"},
     {"id": "disp52", "font": "800 52px \"Big Shoulders Display\"", "chars": "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .-"},
     {"id": "disp54", "font": "800 54px \"Big Shoulders Display\"", "chars": "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .-"},
     {"id": "icons16", "draw": "icons", "size": 16, "chars": "SMH"},

@@ -2,9 +2,22 @@
 
 A reduced build of study 3 ("House Numerals", after SMSL's SU and DO series screens) from
 `features/ui-theme/ui_themes.html`. Built on top of fast-lcd, with fix-auto-off included. The RESET page shows
-`v1.4 tbenr hn7`.
+`v1.4 tbenr hn8`.
 
-This is image hn7 (sha256 `41ce9807…`). It is hn6.1 with the sizes redone in `sizing.html`: icon 22 px, volume 33, tags 16 in 22-px boxes, name 54, status line 28,
+This is image hn8 (sha256 `122a963c…`). It is hn7 with the mock's volume page and two home
+details:
+- **The volume page in the mock's typefaces**, with the elements hn7 lacked: the input name at
+  36 px and the status line under it (loaded as the periodic refresh loads it, since page 2
+  never refreshes it), "VOL" letter-spaced in the accent, the volume right-aligned in 84-px
+  numerals, the position line 288 px wide, the level in dB below step 60 ("−39.5 dB", from the
+  stock NJW1194 code table) and "max 60". See "The volume page".
+- **Home:** the tag boxes have corners of radius 2 as the mock strokes them, and the status
+  line turns reddish when the input has no signal (the mock's `M(dim, '#ff5040', .5)`).
+- Not in this build: the mock's MUTE state on the volume page (the firmware never shows the
+  page muted: the mute key goes home and the volume keys unmute first), a dB ↔ steps switch,
+  the number roll, the spring on the line, sizing for the volume page.
+
+hn7 (`v1.4 tbenr hn7`, sha256 `41ce9807…`) is hn6.1 with the sizes redone in `sizing.html`: icon 22 px, volume 33, tags 16 in 22-px boxes, name 54, status line 28,
 bar at y 156. The name and the wider status line no longer share a step of the wipe back home.
 Together they took 8.4 ms, over the 8 ms budget per 10 ms tick, so the status line now comes
 one step after the name (the last step still draws whatever is left).
@@ -41,6 +54,9 @@ Earlier images:
 
 ## Status
 
+hn8: emulator-verified (all tests pass, including "fix-auto-off in house-numerals"), not yet
+tried on the amp.
+
 hn7: emulator-verified (all tests pass, including "fix-auto-off in house-numerals"). Tried on
 the amp on 2026-09-29: looks good, and with Dimmer on Auto OFF the display goes dark after a cold
 power-up.
@@ -63,24 +79,29 @@ is still to come.
 |---|---|
 | Home: icon | the mock's speaker at 22 px, 12,10, white; red with an X when muted (bit 0x22.1); headphones on the headphone output |
 | Home: volume | Barlow Condensed 33 px, white, at x 46, baseline 31, no leading zero |
-| Home: tags | IBM Plex Mono 16 px in the accent, in 1-px accent boxes 10 px wider than the text, rows 10..31: the EQ box 270..309, the format box ending at 263 |
+| Home: tags | IBM Plex Mono 16 px in the accent, in 1-px accent boxes 10 px wider than the text with corners of radius 2, rows 10..31: the EQ box 270..309, the format box ending at 263 |
 | Home: input name | Big Shoulders Display 54 px, white, at x 16, baseline 101, 1 px letter spacing |
-| Home: status line | IBM Plex Mono 28 px, grey #8a9096, at x 18, baseline 147, 1 px letter spacing |
+| Home: status line | IBM Plex Mono 28 px, grey #8a9096, at x 18, baseline 147, 1 px letter spacing; #c4706b (the grey mixed half with #ff5040) when the status loader's signal check found none on a digital input |
 | Home: accent bar | 28 x 3 at 18,156 |
 | (hn6) | speaker 23 px, volume 36, tags 13 in 21-px boxes, name 52 at baseline 104, status 20 at baseline 140, bar at y 150 |
 | (hn5) | speaker 16 px, volume 22, tags 10 in 17-px boxes, status 12 at baseline 132, bar at y 144 |
-| Volume page: name | small font, white, at 16,30 |
-| Volume page: divider | 1 x 104 at 140,14, colour 0x2104 |
-| Volume page: label | "VOL" in accent, small font, at 158,14 |
-| Volume page: number | stock big digits at 2x (60 x 64 each), white, at 184,42 and 244,42; leading zero blank |
-| Volume page: position line | 240 x 3 at 40,136: accent for 4 px per step, 0x18E3 for the rest |
+| Volume page: name | Big Shoulders Display 36 px, white, at x 16, baseline 64, 1 px letter spacing (inputs 1..6) |
+| Volume page: status line | IBM Plex Mono 16 px (the tag face), grey (reddish without a signal), at x 18, baseline 90; loaded by the stock status loader when the page is drawn |
+| Volume page: divider | 1 x 92 at 150,24, colour 0x2104 (#222) |
+| Volume page: label | "VOL" in the accent, Plex Mono 16 px letter-spaced 3, at x 164, baseline 38 |
+| Volume page: number | Barlow Condensed 84 px, white, right-aligned to end at x 304, baseline 112; black from x 156 up to it |
+| Volume page: position line | 288 x 3 at 16,136: accent up to 16 + round(4.8 · step), 0x18E3 (#1d1d1d) after it |
+| Volume page: dB caption | Plex Mono 16 px, grey, at x 16, baseline 160: the level below step 60 from the NJW1194 code table, "−39.5 dB" (8 cells; "−∞ dB" at step 0) |
+| Volume page: max | "max 60", Plex Mono 16 px, #4d5257, ending at x 304, baseline 160 |
+| (hn7) | volume page: name in the stock small font at 16,30, divider 1 x 104 at 140,14, "VOL" small font at 158,14, stock big digits at 2x at 184,42, line 240 x 3 at 40,136 |
 | Wipe in | 2-px accent edge from x 318 to 0 over 20 ticks (about 200 ms), ease-in-out; black behind it; each element appears once the edge has passed it |
 | Wipe out | the same from x 0 to 318; the home elements appear once the edge has passed them |
 | Accent | theme colour (RAM 0x48:0x49); SMSL orange 0xFC43 when the theme is White (0xFFFF) |
 
-Still cut from the mockup: the volume page in the mock's typefaces, number roll, spring on the
-line, dB readout and captions, MUTE state and status text on the volume page, and the reddish
-status line without a signal on the home screen.
+Still cut from the mockup: the number roll (the new number sliding in over 0.14 s), the spring
+on the position line, the dB ↔ steps switch (and the dB mode's other captions), the mock's wipe
+timings (0.32 s in, 0.42 s out) and per-column reveal. The MUTE state of the volume page is
+unreachable in this firmware (see above).
 
 ## The home screen
 
@@ -113,17 +134,28 @@ EQ key and the rest all call these painters in their own order, so they all draw
   the pixels don't change. During a wipe `hm_rest` does nothing: the wipe's band is black and
   the element is only drawn once the edge has passed it.
 - **Tags.** The stock strings are copied without trailing spaces ("PCM ", "DoP ", "MQA."). The
-  EQ tags are all three letters, so the EQ box has one width (x 276..309); the format box ends
-  at x 269 and is 34 or 42 px wide; the format tag's area is x 228..269 and is cleared up to the
-  box. The tag arithmetic keeps x - 192 in 8 bits (the EQ box ends past x 255).
+  EQ tags are all three letters, so the EQ box has one width (x 270..309); the format box ends
+  at x 263 and is 40 or 50 px wide; the format tag's area is cleared up to the box. The tag
+  arithmetic keeps x - 192 in 8 bits (the EQ box ends past x 255). The box's corners have
+  radius 2 as the mock strokes them: its two edge columns are glyphs of a tiny font (`pf_box`,
+  `pfont.box_edges`, drawn with `uk_text` in the accent) whose corners quantise a 1-px stroke of
+  radius 2 to 1/4, 3/4, 3/4 and 1/4 ink; the top and bottom rows run between them.
 - **Colours.** Name and volume white, status grey, tags and bar in the accent (the COLOR tint;
-  SMSL orange on White), the muted icon red. The stock tinted all of it.
+  SMSL orange on White), the muted icon red. The stock tinted all of it. Without a signal the
+  status line is the grey mixed half with #ff5040 (`DIM_LOST`), as the mock's home: the status
+  loader's `lcall signal_check` at 0x4016 is `hn_signal`, which keeps the check's result in
+  XDATA `HN_SIG` next to the text it decides (RAM 0x22.5, which `signal_check` sets, is reused
+  by `volume_apply` 0x58D3 for the mute state, so it cannot be read back at draw time). The
+  analogue inputs (6, 8) show "Analog input" either way and stay grey.
 - **Speed.** A whole home (home_refresh and the status line) takes 12.4 ms; the stock refresh
   took about 45 ms. The main loop now loses fewer ticks at the refreshes after power-on, so
   the first unmute comes 0.12 to 0.18 s earlier than on fast-lcd (see "Per input").
-- **Fonts** (8997 bytes): the name face 3164 (A-Z, space, `.`, `-`), the status mono 3681 (the 59
-  characters of every firmware string), the volume digits 992, the tag mono 769, the three
-  icons 391, all 4-level anti-aliased run-length.
+- **Fonts** (15271 bytes, all 4-level anti-aliased run-length): the home name face disp54 2954
+  (A-Z, space, `.`, `-`), the status mono28 4738 (the 59 characters of every firmware string),
+  the tag mono16 3122 (the same set plus `x`, and the caption's minus sign and infinity as `_`
+  and `~`: it is also the volume page's small face), the home volume num33 906, the three
+  icons 403, the box edges 44; the volume page's name disp36 943 (the letters of the six input
+  names) and its numerals num84 2161.
 
 ### Layout: `layout.json` and `sizing.html`
 
@@ -209,10 +241,12 @@ directions, at four frame phases. Every frame between the first and last step ha
 
 | Way in: element | Columns | Appears at step (edge x) |
 |---|---|---|
-| number box | 184..303 | 10 (159) |
-| "VOL", divider | 158..199, 140 | 11 (134) |
-| position line | 40..279 | drawn in parts inside each band; in full at 16 (30) |
-| name | 16.. | 18 (8) |
+| "max 60" | 245..304 | 7 (231) |
+| "VOL" | 164..202 | 10 (159) |
+| number, divider | 156..304, 150 | 11 (134) |
+| position line | 16..303 | drawn in parts inside each band; in full at 18 (8) |
+| name, dB caption | 16..125, 16..96 | 18 (8) |
+| status line | 18..147 | 19 (2): the step after the name's |
 
 | Way out: element | Drawn by | Appears (OPTICAL, "No signal") |
 |---|---|---|
@@ -244,10 +278,10 @@ running, it does nothing. If an exit is running, it turns it round.
 
 The key handler's common tail (0x0F48) still writes the volume to the NJW1194 first, then
 calls 0x5936 (`hn_draw_volume`).
-- During a wipe, `hn_draw_volume` only records the value (`HN_VOL`, `HN_NUM`). It draws the
-  number and the line only if the wipe has already revealed them.
+- During a wipe, `hn_draw_volume` only records the value (`HN_VOL`, `HN_NUM`, `HV_DB`). It
+  draws the number, the line and the dB caption only if the wipe has already revealed them.
 - The wipe draws them with the latest value when it reaches them.
-- Without a wipe, a volume change redraws the number and the line, as before.
+- Without a wipe, a volume change redraws the number, the line and the caption.
 - The page-2 renderer (0x2143, `hn_volpage`) does the same during a wipe, and draws the whole
   page when idle.
 
@@ -332,72 +366,70 @@ is the hn3 home screen.
   Its entry wipe starts, then `post_power_on`'s clear cancels it, and home comes up as
   stock.
 
-## The text painter (`uk_paint`)
+## The volume page
 
-`uk_paint` is the kit's painter for the stock fonts (`tools/patch/uikit.py`, tested in
-`tools/patch/uikit_test.py`). In hn5 it draws the volume page's name, "VOL" and number; the
-home screen uses the kit's `uk_text` for the mock's typefaces (see "The home screen" and the
-main README's "UI themes").
+The mock's volume page, with the small texts in the tag size (16 px) and the name at 36 px,
+sizes chosen by eye against hn7's home (not yet in `sizing.html`; the positions are constants
+in `build_patch.py`, `V*`). Everything is drawn with `uk_text`; the kit's stock-font painter
+`uk_paint` is no longer linked into the image.
 
-- **Parameters.** An XDATA block at 0x0130:
+| Element | Routine | Columns |
+|---|---|---|
+| input name | `hv_name`: the name for inputs 1..6 (`hn_name_ptr`), disp36 | 16..125 (the widest, COAXIAL) |
+| status line | `hv_status`: `hn_stat_load`, then XDATA 0x50 in mono16, grey or reddish (`hn_dim_ink`), black up to x 147 after it | 18..147 ("Digital input") |
+| divider | `hv_div` | 150 |
+| "VOL" | `hv_vol`, letter-spaced 3, accent | 164..202 |
+| number | `hv_num`, num84, right-aligned | 156..304 |
+| position line | `hv_line` → `hn_line_seg` twice (halves of 144 px: `uk_fill` takes widths up to 255) | 16..303 |
+| dB caption | `hv_cap` | 16..96 |
+| "max 60" | `hv_capr`, #4d5257, right-aligned | 245..304 |
 
-  | Parameter | Meaning |
-  |---|---|
-  | font | pointer to a font descriptor in code |
-  | string | pointer and space (0 XDATA, e.g. the stock buffers 0x35 / 0x50; 1 code) |
-  | x, y | position |
-  | ink, background | RGB565 colours |
-  | clip x0..x1 | x clip window: only those columns are drawn |
-  | scale | 1 or 2 |
-
-- **Result.** `FP_END` is the last column of the last cell. An empty clip window measures
-  without drawing.
-- **Font descriptor.** Glyph width, bytes per column, bytes per glyph, glyph data, a
-  96-entry character map (0x20..0x7F -> glyph index, bit 7 = narrow) and the narrow advance.
-  - Small font: 0x5DAB, 14 x 24, 42 bytes per glyph. It maps the characters
-    `small_glyph_paint` 0x2DF8 maps: space . : - + = 0-9 A-Z a-z < > { } ( ) ! '.
-  - Big font: 0x6A23, 30 x 32, 120 bytes per glyph. It maps space . : - + = 0-9 A-Z, and
-    space . - + = I advance 17 px (big_text_render 0x2A9E).
-  - Characters the stock painters do not map (they reuse the previous glyph) draw blank.
-- **Drawing.** Every cell is drawn in full (background included), and cells may overlap as
-  in stock. At scale 2 each glyph column and row is doubled; this replaces hn3's
-  `hn_digit2x`. Pixels are streamed on the fast-lcd bus pattern, unrolled per bit:
-  3.68 ms for OPTICAL (6720 px, 13.1 clocks per pixel), 3.04 ms for two 2x digits (7680 px,
-  9.5), 1.84 ms for "2.8224MHz".
-- **Layout.** `uk_home_x` computes where the stock renderer starts a text on page 1:
-  - centred, `(320 - n*w) / 2`, or `(333 - n*w) / 2` when a big text has a narrow character;
-  - then x 16 as `hn_align_*` do, unless the text is wider than 288 px.
-- **Tested against stock.** Every mapped character in both fonts, and 38 big-font and 85
-  small-font strings, in two themes:
-  - all input names (USB, OPTICAL, COAXIAL, BT, ARC, AUX, PHONO);
-  - every printable string in the firmware's string area;
-  - every sample-rate text `status_rate_text` 0x3CDC produces;
-  - a 294-px string that stays centred.
-
-  The painter's output is pixel-identical to `big_text_render` / `small_text_render` on
-  page 1. Clip windows at both scales, with odd edges and empty windows, give exactly the
-  columns of a full paint.
-- **Number blank.** The number's blank tens digit is 0x7F, which maps to the blank glyph at
-  full width; a space would be narrow.
+- **Status line.** The stock only loads XDATA 0x50 in the page-1 periodic refresh, and the entry
+  clears the buffers, so the page loads it itself: `hn_stat_load` sets `HN_SLD` and jumps into
+  the stock loader at 0x4016 (signal check, then the input's string or its sample rate). That
+  code runs on into the `lcall home_refresh` at 0x4081, which is `hn_hold`: with `HN_SLD` set
+  it clears the flag and returns to `hn_stat_load`'s caller instead. The text is exactly what
+  the home shows (tested against the base image's loader for every input, with and without a
+  signal). The page shows the status as of when it was drawn; the stock shows nothing there.
+- **Number.** `hv_num` measures the text first (empty clip), fills black from x 156 to where
+  the number starts, then draws it ending at x 304. A step from 10 to 9 therefore clears the
+  tens digit's columns without blanking the number; the digits themselves redraw in place
+  (each cell carries its background), so nothing flickers.
+- **dB caption.** The NJW1194 code table at 0x9289 (`code = table[60 - step]`, see the main
+  README, "Volume scale") gives the level below step 60 in half-dB: `code - 35`. `hv_cap`
+  formats it as `_75.5 dB` .. ` _0.5 dB`, `  0.0 dB` (no sign at step 60), always 8 cells so
+  a shorter value draws its own background; `_` and `~` are the minus sign and the infinity of
+  the mono raster (`MONO_ALIAS`), and step 0 shows `  _~ dB ` from code. This is the mock's
+  `fmtDb`; the test computes it from the mock's copy of the table.
+- **Redraws.** `hn_draw_volume` (0x5936, every knob or remote step) redraws the number, the
+  line and the caption: 5.5 ms (the stock's 2-digit draw: about 40). `hn_volpage` draws the
+  whole page in 10.5 ms.
+- **Entry order.** Right to left: "max 60" appears at step 7, "VOL" at 10, the divider and the
+  number at 11, the name, the line and the caption at 18, the status line at 19: if the name
+  was drawn in a step, the status line (with its load, an I2C read on BT and HDMI) waits for
+  the next one, as the exit does for the home's name and status line; step 20 draws whatever
+  is left. An exit turned back into an entry loads and draws the status line again (the exit
+  had cleared its buffer; `hn_reverse` marks it not drawn), black up to x 147 after the text.
 
 ## Timing
 
-Worst step measured: **7.28 ms**, on the exit with the OPTICAL name and "No signal", which
-the edge passes on the same step (step 11). The budget is 8 ms, inside the 10 ms tick.
+Worst step measured: **5.96 ms**, on the entry's step 18 (the name, the line and the dB
+caption; the status line follows on step 19). The budget is 8 ms, inside the 10 ms tick.
 Unit test, worst step per wipe:
 
 | Wipe | Worst |
 |---|---|
-| Entry | 4.87 ms (number box) |
-| Exit, OPTICAL, "No signal" | 7.28 ms (name and status line together) |
-| Exit, USB, "2.8224MHz" | 3.69 ms |
-| Exit, BT, "Searching..." | 4.23 ms |
+| Entry | 5.96 ms (name, line, dB caption) |
+| Exit, OPTICAL, "No signal" | 5.65 ms |
+| Exit, USB, "2.8224MHz" | 4.63 ms |
+| Exit, BT, "Searching..." | 5.21 ms |
 
-In the whole firmware the worst step seen is 4.96 ms (entries) and 7.37 ms (optical exit).
-That includes the `timer3_isr` calls that land inside a step, about 5 µs every 0.5 ms (before
-`Amp` ran Timer3: 4.91 and 7.28 ms).
-For comparison, a whole hn6 home takes 12.4 ms and the stock periodic home refresh blocks the
-main loop for about 45 ms every 0.5 s.
+In the whole firmware the worst step seen is 5.96 ms (entries; 5.58 in the per-input scenarios).
+That includes the `timer3_isr` calls that land inside a step, about 5 µs every 0.5 ms. Before the
+split of the status line onto its own entry step, the HDMI entry took 7.84 ms on step 18 (the
+status load reads the expander over I2C).
+For comparison, a whole hn8 home takes 13.9 ms, the whole volume page 10.5 ms, and the stock
+periodic home refresh blocks the main loop for about 45 ms every 0.5 s.
 
 ## Per input (emulator, Vol+ from home, whole firmware against fast-lcd)
 
@@ -421,14 +453,14 @@ Earlier, because fast-lcd's own 40 ms volume draw loses ticks and the wipe does 
 
 ## Hooks
 
-Twenty-one hook sites: seventeen 3-byte hooks, plus the four places the volume keys open the
-volume page. Every stock byte is asserted by `build_patch.py`.
+Twenty-three hook sites: eighteen 3-byte hooks of the theme, fix-auto-off's, plus the four
+places the volume keys open the volume page. Every stock byte is asserted by `build_patch.py`.
 
 | Address | Stock bytes | Now | What |
 |---|---|---|---|
 | 0x2106 | `12 5D 42` lcall `ui_clear_screen` | lcall `hn_clear` | `ui_render_page`'s clear: page 2 starts the entry, page 1 with the volume page on screen starts the exit; otherwise cancel + stock clear |
 | 0x2143 | `02 21 67` ljmp `volpage_render` | ljmp `hn_volpage` | page-2 jump-table entry |
-| 0x5936 | `AB 07 E5` | ljmp `hn_draw_volume` | number and line; only recorded during a wipe |
+| 0x5936 | `AB 07 E5` | ljmp `hn_draw_volume` | number, line and dB caption; only recorded during a wipe |
 | 0x2A25 | `E4 78 02` | ljmp `hn_align_big` | page 1: at y 75 `hm_name` draws and returns; other texts start at x 16 |
 | 0x3A82 | `E4 78 02` | ljmp `hn_align_small` | page 1: at y 135 `hm_status` draws and returns; other texts start at x 16 |
 | 0x5C99 | `02 59 16` | ljmp `hn_home_tail` | `home_refresh`'s tail: the volume, then the accent bar |
@@ -439,27 +471,29 @@ volume page. Every stock byte is asserted by `build_patch.py`.
 | 0x41E8 | `02 00 26` ljmp `tag_box_clear` | ljmp `hm_fmt_clear` | no format (BT, ARC, AUX, PHONO): the tag's area black |
 | 0x41FC | `12 00 26` lcall `tag_box_clear` | lcall `hm_fmt_clear` | the format changed: the same |
 | 0x5B2A | `12 33 25` lcall `main_tick_tasks` | lcall `uk_tasks` | the driver: one wipe step after each tick |
-| 0x4081 | `12 5C 8B` lcall `home_refresh` | ljmp `hn_hold` | periodic refresh held back during a wipe |
+| 0x4081 | `12 5C 8B` lcall `home_refresh` | ljmp `hn_hold` | periodic refresh held back during a wipe; returns to `hn_stat_load` when the volume page runs the status loader |
+| 0x4016 | `12 52 32` lcall `signal_check` | lcall `hn_signal` | the status loader's signal check: its result kept in `HN_SIG` for the status colour |
 | 0x5D42 | `12 5C BC` (`ui_clear_screen`'s first call) | ljmp `hn_cancel` | every stock clear cancels a wipe |
 | 0x4A85 | `E5 47 14` (`home_draw_input_name`) | ljmp `hn_name_guard` | a name drawn during an exit: the whole home first, then the name |
 | 0x3FF8 | `C2 0B C2` (`clr 0x21.3; clr 0x20.6`) | ljmp `hn_flag_path` | the refresh's flag path during a wipe: flags and page as stock, the 0x412F fill skipped |
-| 0x0D33, 0x0DB3, 0x0E5A, 0x0F02 | `12 5D 42 7B FF …` | `12 A0 B8 80 11` (lcall `hn_enter_vol` ; sjmp site+0x16) | volume-key entry sites A-D |
+| 0x55B9 | `02 5D 42` ljmp `ui_clear_screen` | ljmp `fx_auto_off` | fix-auto-off (`INCLUDES`) |
+| 0x0D33, 0x0DB3, 0x0E5A, 0x0F02 | `12 5D 42 7B FF …` | `12 DE 54 80 11` (lcall `hn_enter_vol` ; sjmp site+0x16) | volume-key entry sites A-D |
 
 ## Memory
 
-- **Code:** 15558 bytes at 0x9800..0xD4C5 (8997 of them fonts), plus the version string at
-  0xD4C6. Image length 54485 bytes; 7979 bytes are left under the 0xF400 split.
-  `house_numerals.asm` is the generated listing.
-- **XDATA** 0x0100..0x01A6. The EEPROM sectors and everything fast-lcd/direct-select use
+- **Code:** 21317 bytes at 0x9800..0xEB44 (15271 of them fonts, fix-auto-off's 14 at the
+  end), plus the version string at 0xEB45. Image length 60244 bytes; 2220 bytes are left under
+  the 0xF400 split. `house_numerals.asm` is the generated listing.
+- **XDATA** 0x0100..0x01B2. The EEPROM sectors and everything fast-lcd/direct-select use
   stay untouched.
 
 | Address | Name | Holds |
 |---|---|---|
 | 0x0100, 0x0102 | `HN_N`, `HN_C` | `uk_fill`'s pixel count and colour |
 | 0x0104 | `HN_VOL` | the volume shown (0..60) |
-| 0x0105..0x0107 | `HN_NUM` | its two characters and a NUL (tens blank: 0x7F) |
+| 0x0105..0x0107 | `HN_NUM` | its decimal text (no leading zero) and a NUL |
 | 0x0108 | `HN_MODE` | 0 idle, 1 wipe in, 2 wipe out |
-| 0x0109 | `HN_VF` | volume-page elements on screen (name, divider, VOL, number, line) |
+| 0x0109 | `HN_VF` | volume-page elements on screen (name, status, divider, VOL, number, line, dB, max) |
 | 0x010A | `HN_HF` | home elements drawn by the exit (icon, volume, bar, name, format, EQ, status) |
 | 0x010B | `HN_STEP` | step 0..20 |
 | 0x010C | `HN_SBUF` | the stock refresh has loaded the status buffer during this exit |
@@ -468,15 +502,18 @@ volume page. Every stock byte is asserted by `build_patch.py`.
 | 0x0113, 0x0115 | `HN_D0`, `HN_D1` | damaged columns (band and edge) |
 | 0x0117, 0x0119 | `HN_B0`, `HN_B1` | the band |
 | 0x011B, 0x0123 | `HN_NAMER`, `HN_STATR` | right end of the home name / status line |
-| 0x011D, 0x011F, 0x0121 | `HN_S0`, `HN_S1`, `HN_SPL` | `hn_line_seg`: columns, 40 + 4 * volume |
-| 0x0130..0x0140 | `FP_*` | `uk_paint`'s parameters |
-| 0x0141..0x0155 | `FP_*` | `uk_paint`'s work area |
+| 0x011D, 0x011F, 0x0121 | `HN_S0`, `HN_S1`, `HN_SPL` | `hn_line_seg`: columns, the line's split column |
+| 0x0130..0x0155 | | free (hn7's `uk_paint` block; the kit still reserves it) |
 | 0x0160..0x0191 | `TP_*` | `uk_text`'s parameters and work area |
 | 0x0192 | `HM_VS` | the home volume as text |
 | 0x0196 | `HM_TAG` | a tag's text, trailing spaces cut |
 | 0x019C..0x019E | `HM_TX`, `HM_TW`, `HM_TWD` | `hm_tag`: box x (- 192), box width, text width |
 | 0x019F..0x01A4 | `HM_RL`, `HM_RY`, `HM_RH`, `HM_RX` | `hm_rest`: last column, rows, next column |
 | 0x01A5, 0x01A6 | `HM_TR`, `HM_TL` | `hm_tag`: where the box ends, where the tag's area starts (- 192) |
+| 0x01A7 | `HN_HF0` | a step's `HN_HF` / `HN_VF` at its start (the name and the status line don't share a step) |
+| 0x01A8 | `HN_SLD` | `hn_stat_load` is running the status loader: `hn_hold` returns |
+| 0x01A9..0x01B1 | `HV_DB` | the dB caption, 8 characters and a NUL |
+| 0x01B2 | `HN_SIG` | the status loader's signal check: 1 = signal (`hn_signal`) |
 
 - **Stack:** the tour (with two entries and two exits) was run with a canary above SP. The
   deepest idata used is 0xB3, the same as fast-lcd. That is stock's own peak: the delay
@@ -601,19 +638,33 @@ volume page. Every stock byte is asserted by `build_patch.py`.
 
 ## Risks
 
-- **Panel timing: same as fast-lcd.** `uk_fill` and `uk_paint` use fast-lcd's byte timing (the
+- **Panel timing: same as fast-lcd.** `uk_fill` and `uk_text` use fast-lcd's byte timing (the
   WR pulse the blit-test build proved on the panel; see fast-lcd's README, Bus timing).
-- **The main loop now runs during the wipes.** A step is at most 5.4 ms, after the tick's own
+- **The main loop now runs during the wipes.** A step is at most 6 ms, after the tick's own
   work. The volume keys, format poll, unmute and re-mute run as on fast-lcd (tested
   against it, including the INT1 case the hn3 review raised).
 - **Stock routines called from a step** (`home_draw_output_icon`, `home_draw_volume`,
-  `home_draw_format_tag`, `home_draw_eq_tag`, `big_text_load`) run in the main loop, as
-  they do from `home_refresh_periodic`. The stack peak is unchanged (0xAF with Timer0
+  `home_draw_format_tag`, `home_draw_eq_tag`, `big_text_load`, the status loader 0x4016 with
+  its signal check and I2C reads) run in the main loop, as they do from
+  `home_refresh_periodic`. The stack peak is unchanged (0xAF with Timer0
   only, 0xB3 with Timer3; see Stack above).
 - **Recovery: unchanged.** The reset vector, the standby key handler (0x59B2) and
   `read_key`'s Source-in-standby jump to the bootloader (0x3DB8) are untouched.
 
 ## What to look for on the amp
+
+hn8, the volume page:
+- Vol+/Vol- on home: the page is the mock's: input name and status line left, "VOL" and the
+  large number right, the line with the dB level and "max 60" under it. Are 36 px for the
+  name and 16 px for the small texts right next to hn7's home? (Sizing by eye is not in
+  `sizing.html` for this page yet.)
+- Turn the volume: only the number, the line and the dB value change; a step from 10 to 9 or
+  from 60 to 59 leaves nothing behind and nothing flickers.
+- The status line on the page is the one the home showed (sample rate, "No signal", ...),
+  reddish when there is no signal. On BT it shows "Searching..." / the codec.
+- Home: the tag boxes have soft corners; without a signal (optical with nothing connected)
+  the status line is reddish, grey again once the signal is back.
+- Vol+ while the edge is going back: the page comes back with the status line redrawn.
 
 hn6: the volume, the tags and the status line larger than hn5's (36, 13 and 20 px against 22,
 10 and 12), the speaker larger with them, the bar 6 px lower. Readable at arm's length?
@@ -634,7 +685,8 @@ From hn4.1, the wipes:
 
 - Vol+/Vol- on home: the volume changes at once. The accent edge sweeps in from the right,
   slow at the ends and fast in the middle, about 200 ms. The number appears when the edge
-  has passed it, then VOL and the divider, then the line and the name.
+  has passed it, then VOL and the divider, then the line, the name and the captions, the
+  status line last.
 - 2 s after the last key: the edge sweeps back to the right. The icon, volume and bar
   appear first, then the status line and name, the format tag, and the EQ tag last. The
   finished screen must not change when the periodic refresh comes about 0.4 s later.
@@ -644,8 +696,8 @@ From hn4.1, the wipes:
   stock screen follows, without leftovers of the volume page.
 - On Bluetooth, optical without signal, headphones, right after power-on or an input
   switch: the same wipes; the unmute comes at the same moment as without a key.
-- Digits sharp at 2x, no torn columns or colour shifts (a dropped bus byte shows as a
-  colour shift, see fast-lcd's README, Bus timing).
+- Digits sharp, no torn columns or colour shifts (a dropped bus byte shows as a colour
+  shift, see fast-lcd's README, Bus timing).
 - Accent: SMSL orange on the White theme, the theme colour otherwise.
 
 ## How to go back

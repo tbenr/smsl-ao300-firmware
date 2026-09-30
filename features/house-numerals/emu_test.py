@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Emulator tests for House Numerals hn5 (see README.md).
+"""Emulator tests for House Numerals hn8 (see README.md).
 
   python3 emu_test.py unit    image diff, then every routine at its hook: the home screen against
-                              home_model, a wipe step by step, entry/exit/reversal/cancel logic
+                              home_model, the volume page against vol_model, a wipe step by step,
+                              entry/exit/reversal/cancel logic
   python3 emu_test.py tour    whole firmware from reset, lockstep with fast-lcd: the tour, a volume
                               key per input, keys during the wipes, the stack check
   python3 emu_test.py int1    INT1 receiver event at a Vol+ press, 100 offsets, against fast-lcd
@@ -22,6 +23,8 @@ import uitest as ut                                             # noqa: E402
 from ao300 import Amp, CLOCK_HZ, NEC_POWER, NEC_DOWN, NEC_SOURCE, \
     NEC_VOL_UP, NEC_VOL_DOWN, STATE_KEY                          # noqa: E402
 import build_patch as bp                                         # noqa: E402
+sys.path.insert(0, os.path.join(ROOT, "tools", "patch"))
+import pfont                                                     # noqa: E402
 
 BASE = open(bp.BASE_IMAGE, "rb").read()
 NEW = open(bp.OUT_IMAGE, "rb").read()
@@ -43,21 +46,6 @@ def emu(theme=(0xFF, 0xFF), img=NEW):
 
 
 px, screen, fill_screen, ink_in, stray = ut.px, ut.screen, ut.fill_screen, ut.ink_in, ut.stray
-stock_small, stock_big, scaled_match = ut.stock_small, ut.stock_big, ut.scaled_match
-
-
-def stock_glyph(ch, theme=(0xFF, 0xFF)):
-    return ut.stock_glyph(NEW, ch, theme)
-
-
-_GLYPHS = {}
-
-
-def glyphs():
-    if not _GLYPHS:
-        _GLYPHS.update({d: stock_glyph(str(d)) for d in range(10)})
-    return _GLYPHS
-
 
 def image_diff():
     print("Image diff vs fast-lcd")
@@ -84,8 +72,7 @@ def image_diff():
     import re
     java = open(os.path.join(ROOT, "tools", "disasm", "SmslAo300Labels.java")).read()
     named = {n: int(a, 16) for a, n in re.findall(r'\{0x([0-9A-F]{4}), "((?:h[nvhm]|uk|pf)_\w+)"\}', java)}
-    lab = dict(LAB, hn_ease=LAB["ease"], hn_font_small=LAB["font_small"], hn_font_big=LAB["font_big"],
-               hn_map_small=LAB["map_small"], hn_map_big=LAB["map_big"])
+    lab = dict(LAB, hn_ease=LAB["ease"], hn_vsplit=LAB["vsplit"], hn_names=LAB["names"], hn_names8=LAB["names8"])
     wrong = sorted(k for k in named if named[k] != lab.get(k))
     check("SmslAo300Labels.java: the %d hn_/hv_/hh_/hm_/uk_/pf_ labels match this build" % len(named), not wrong, str(wrong))
 
@@ -164,15 +151,32 @@ def buffer_text(e, addr, n=25):
     return raw.split(b"\0")[0].decode("latin-1")
 
 
+def status_ink(e):
+    """The status line's colour: grey, or the reddish mix when the status loader's signal check
+    (0x5232 at 0x4016, kept in HN_SIG) found none on a digital input (analogue inputs 6 and 8 show
+    "Analog input")."""
+    return bp.DIM if e.xram[bp.HN_SIG] or e.iram[0x47] in (6, 8) else bp.DIM_LOST
+
+
 def model_tag(fb, text, right, acc):
+    """A tag as the mock strokes it: a 1-px box with corners of radius 2 (the corner pixel 1/4 ink,
+    its two neighbours 3/4, the pixel inside the corner 1/4), the text TAG_PAD in from its edges."""
     t = text[:5].rstrip(" ")
     wd = bp.PF_TAG.width(t)
     w = wd + 2 * bp.TAG_PAD
     x = right - w
-    for xx in range(x, x + w):
+    q = pfont.ramp(acc, 0)                    # background, 1/4, 3/4, ink
+    for xx in range(x + 2, x + w - 2):
         fb[bp.TAG_Y0][xx] = fb[bp.TAG_Y1][xx] = acc
-    for yy in range(bp.TAG_Y0 + 1, bp.TAG_Y1):
+    for yy in range(bp.TAG_Y0 + 2, bp.TAG_Y1 - 1):
         fb[yy][x] = fb[yy][x + w - 1] = acc
+    for cx, cy in ((x, bp.TAG_Y0), (x + w - 1, bp.TAG_Y0), (x, bp.TAG_Y1), (x + w - 1, bp.TAG_Y1)):
+        dx, dy = (1 if cx == x else -1), (1 if cy == bp.TAG_Y0 else -1)
+        fb[cy][cx], fb[cy][cx + dx], fb[cy + dy][cx], fb[cy + dy][cx + dx] = q[1], q[2], q[2], q[1]
+    for yy in range(bp.TAG_Y0 + 1, bp.TAG_Y1):          # the inside, black (the text cell draws its own)
+        for xx in range(x + 1, x + w - 1):
+            if fb[yy][xx] is None:
+                fb[yy][xx] = 0
     bp.PF_TAG.render(fb, t, x + bp.TAG_PAD, bp.TAG_TY, acc, 0)
 
 
@@ -198,7 +202,7 @@ def home_parts(e):
     part(bp.HF_NAME, lambda fb: bp.PF_NAME.render(fb, buffer_text(e, bp.BIG_BUF), bp.HNAME_X, bp.HNAME_Y,
                                                   bp.WHITE, 0, spacing=bp.NAME_SP))
     part(bp.HF_STAT, lambda fb: bp.PF_STATUS.render(fb, buffer_text(e, bp.SMALL_BUF), bp.STAT_X, bp.STAT_Y,
-                                                    bp.DIM, 0, spacing=bp.STAT_SP))
+                                                    status_ink(e), 0, spacing=bp.STAT_SP))
     part(bp.HF_BAR, lambda fb: [fb[y].__setitem__(x, acc) for y in range(bp.BAR_Y, bp.BAR_Y + bp.BAR_H)
                                 for x in range(bp.BAR_X, bp.BAR_X + bp.BAR_W)])
     return parts
@@ -226,9 +230,10 @@ def home_diff(e):
     return ""
 
 
-def home_state(e, inp=1, out=1, vol=32, hp=20, mute=False, eq=1, fmt=2, sub=2, status="96kHz", theme=None):
+def home_state(e, inp=1, out=1, vol=32, hp=20, mute=False, eq=1, fmt=2, sub=2, status="96kHz", theme=None, sig=True):
     ir = e.iram
     ir[0x45], ir[0x4F] = 1, 1
+    e.xram[bp.HN_SIG] = 1 if sig else 0
     ir[0x47], ir[0x2B], ir[0x31], ir[0x52], ir[0x39], ir[0x3D], ir[0x75] = inp, out, vol, hp, eq, fmt, sub
     ir[0x7E] = fmt
     ir[0x22] = (ir[0x22] & ~0x02) | (0x02 if mute else 0)
@@ -254,6 +259,8 @@ def test_home():
     cases += [dict(fmt=f, sub=u) for f in (0, 1, 3, 4, 5, 6) for u in (2, 3, 4, 5)]
     cases += [dict(vol=v) for v in (0, 5, 9, 10, 47, 60)]
     cases += [dict(status=t) for t in ("No signal", "Searching...", "2.8224MHz", "Analog input", "")]
+    cases += [dict(status="No signal", sig=False), dict(inp=4, status="Searching...", sig=False),
+              dict(inp=6, status="Analog input", sig=False), dict(inp=8, status="Analog input", sig=False)]
     bad, worst = [], 0
     for c in cases:
         for theme in ((0xFF, 0xFF), (0x07, 0xE0)):
@@ -262,7 +269,7 @@ def test_home():
             worst = max(worst, home_draw(e))
             if not home_ok(e):
                 bad.append((c, theme, home_diff(e)))
-    check("%d states x 2 tints (inputs, outputs, mute, EQ, formats, volumes, status lines): = home_model"
+    check("%d states x 2 tints (inputs, outputs, mute, EQ, formats, volumes, status lines, no signal): = home_model"
           % len(cases), not bad, str(bad[:2]))
     check("a whole home in %.1f ms (the stock refresh: about 45)" % worst, worst < 20)
     e = emu(); home_state(e); home_draw(e)
@@ -355,16 +362,145 @@ def test_name_ptr():
         check("input %d -> no name (C=1)" % inp, e.C == 1)
 
 
-def expect_volume(e, v, acc):
-    """Number box and position line as hn_draw_volume leaves them for volume v."""
-    g = glyphs()
+# ---- the volume page: an independent model ----------------------------------------------------
+# What the volume page must look like for a firmware state, drawn in Python with the same fonts and
+# the layout constants of build_patch.py: the name (inputs 1..6), the status line as loaded into
+# XDATA 0x50 (tinted like the home's), the divider, "VOL", the number right-aligned, the position
+# line, the dB caption from the mock's copy of the stock volume table, "max 60".
+VOL_TABLE = [35, 36, 38, 40, 42, 44, 46, 48, 50, 52, 54, 56, 58, 60, 62, 64, 66, 68, 70, 72, 74, 76, 78, 80, 82,
+             84, 87, 90, 93, 96, 99, 102, 105, 108, 111, 114, 117, 120, 123, 126, 129, 132, 135, 138, 141,
+             144, 147, 150, 153, 156, 159, 162, 165, 168, 171, 174, 177, 180, 183, 186, 255]   # ui_themes.html
+
+
+def db_caption(v):
+    """The mock's fmtDb(v) + " dB" in the build's 8-cell form: "_" is the minus sign, "~" infinity."""
+    if v <= 0:
+        return "  _~ dB "
+    half = VOL_TABLE[60 - v] - 35                       # half-dB steps below step 60
+    whole, frac = divmod(half, 2)
+    return (("" if half == 0 else "_") + str(whole)).rjust(3) + "." + ("5" if frac else "0") + " dB"
+
+
+def fill(fb, x, y, w, h, c):
+    for yy in range(y, y + h):
+        for xx in range(x, x + w):
+            fb[yy][xx] = c
+
+
+def vol_parts(e, v=None):
+    """{element: its pixels} of the volume page for e's state ({(x, y): colour}, black included);
+    v: the volume shown (default: the active output's, as hn_draw_volume takes it)."""
+    ir = e.iram
+    acc = accent((ir[0x48], ir[0x49]))
+    if v is None:
+        v = ir[0x31] if ir[0x2B] == 1 else ir[0x52]
     v = min(v, 60)
-    tens, ones = divmod(v, 10)
-    ok = scaled_match(e, 244, 42, g[ones])
-    ok = ok and ((not ink_in(e, 184, 42, 60, 64)) if tens == 0 else scaled_match(e, 184, 42, g[tens]))
-    w = 4 * v
-    return ok and all(px(e, x, y) == (acc if x < 40 + w else bp.TRACK)
-                      for x in range(40, 280) for y in range(136, 139))
+    parts = {}
+
+    def part(name, draw):
+        fb = [[None] * W for _ in range(H)]
+        draw(fb)
+        parts[name] = {(x, y): fb[y][x] for y in range(H) for x in range(W) if fb[y][x] is not None}
+    name = {inp: text for inp, _, text in bp.INPUT_NAMES[:6]}.get(ir[0x47])
+    part(bp.VF_NAME, lambda fb: bp.PF_VNAME.render(fb, name, bp.VNAME_X, bp.VNAME_Y, bp.WHITE, 0, spacing=bp.VNAME_SP)
+         if name else None)
+    def status(fb):
+        fill(fb, bp.VSTAT_X, bp.VSTAT_Y, bp.VSTAT_END - bp.VSTAT_X + 1, bp.PF_MONO.H, 0)   # the rest of a longer text
+        bp.PF_MONO.render(fb, buffer_text(e, bp.SMALL_BUF), bp.VSTAT_X, bp.VSTAT_Y, status_ink(e), 0, spacing=bp.VSTAT_SP)
+    part(bp.VF_STAT, status)
+    part(bp.VF_DIV, lambda fb: fill(fb, bp.VDIV_X, bp.VDIV_Y, 1, bp.VDIV_H, bp.DIVIDER))
+    part(bp.VF_VOL, lambda fb: bp.PF_MONO.render(fb, "VOL", bp.VLBL_X, bp.VLBL_Y, acc, 0, spacing=bp.VLBL_SP))
+
+    def num(fb):
+        t = str(v)
+        x = bp.VNUM_RIGHT - bp.PF_VNUM.width(t) + 1
+        fill(fb, bp.VNUM_LEFT, bp.VNUM_Y, x - bp.VNUM_LEFT, bp.PF_VNUM.H, 0)
+        bp.PF_VNUM.render(fb, t, x, bp.VNUM_Y, bp.WHITE, 0)
+    part(bp.VF_NUM, num)
+
+    def line(fb):
+        split = bp.VLINE_X + int(round(bp.VLINE_W * v / 60))
+        fill(fb, bp.VLINE_X, bp.VLINE_Y, split - bp.VLINE_X, bp.VLINE_H, acc)
+        fill(fb, split, bp.VLINE_Y, bp.VLINE_X + bp.VLINE_W - split, bp.VLINE_H, bp.TRACK)
+    part(bp.VF_LINE, line)
+    part(bp.VF_CAP, lambda fb: bp.PF_MONO.render(fb, db_caption(v), bp.VCAP_X, bp.VCAP_Y, bp.DIM, 0))
+    part(bp.VF_CAPR, lambda fb: bp.PF_MONO.render(fb, "max 60", bp.VCAPR_RIGHT, bp.VCAP_Y, bp.FAINT, 0, align=1))
+    return parts
+
+
+def compose(parts, only=None):
+    """A screen ([x][y]) of the given parts (all of them by default) on black."""
+    s = [[0] * H for _ in range(W)]
+    for b, pix in parts.items():
+        if only is None or b in only:
+            for (x, y), c in pix.items():
+                s[x][y] = c
+    return s
+
+
+def vol_model(e, v=None, only=None):
+    return compose(vol_parts(e, v), only)
+
+
+def vol_ok(e, v=None, only=None):
+    return screen(e) == vol_model(e, v, only)
+
+
+def vol_diff(e, v=None, only=None):
+    m, s = vol_model(e, v, only), screen(e)
+    for x in range(W):
+        for y in range(H):
+            if m[x][y] != s[x][y]:
+                return "(first difference at %d,%d: %04X, model %04X)" % (x, y, s[x][y], m[x][y])
+    return ""
+
+
+def vol_boxes():
+    """x0, x1, y0, y1 of each volume-page element as the wipe reveals it (VOL_ELEMENTS' columns)."""
+    rows = {bp.VF_NAME: (bp.VNAME_Y, bp.PF_VNAME.H), bp.VF_STAT: (bp.VSTAT_Y, bp.PF_MONO.H),
+            bp.VF_DIV: (bp.VDIV_Y, bp.VDIV_H), bp.VF_VOL: (bp.VLBL_Y, bp.PF_MONO.H),
+            bp.VF_NUM: (bp.VNUM_Y, bp.PF_VNUM.H), bp.VF_LINE: (bp.VLINE_Y, bp.VLINE_H),
+            bp.VF_CAP: (bp.VCAP_Y, bp.PF_MONO.H), bp.VF_CAPR: (bp.VCAP_Y, bp.PF_MONO.H)}
+    return {b: (x0, x1, rows[b][0], rows[b][0] + rows[b][1] - 1) for b, _, x0, x1 in bp.VOL_ELEMENTS}
+
+
+VOL_NAMES = {bp.VF_NAME: "name", bp.VF_STAT: "status", bp.VF_DIV: "divider", bp.VF_VOL: "VOL", bp.VF_NUM: "number",
+             bp.VF_LINE: "line", bp.VF_CAP: "dB", bp.VF_CAPR: "max"}
+DYNAMIC = {bp.VF_NUM, bp.VF_LINE, bp.VF_CAP}         # what hn_draw_volume redraws
+
+
+def entry_screen(parts, before, x, last, acc, revealed=None):
+    """The screen after an entry step with the edge at x: the old screen left of it, the 2-px accent
+    edge, and right of it the elements the edge has passed (x0 >= x + 2; or `revealed`), the line
+    in parts."""
+    boxes = vol_boxes()
+    s = [[0] * H for _ in range(W)]
+    for b, pix in parts.items():
+        if (b in revealed) if revealed is not None else (last or boxes[b][0] >= x + 2):
+            for (xx, yy), c in pix.items():
+                s[xx][yy] = c
+        elif b == bp.VF_LINE:
+            for (xx, yy), c in pix.items():
+                if xx >= x + 2:
+                    s[xx][yy] = c
+    if not last:
+        for xx in range(W):
+            for yy in range(H):
+                if xx < x:
+                    s[xx][yy] = before[xx][yy]
+                elif xx < x + 2:
+                    s[xx][yy] = acc
+    return s
+
+
+def stock_status(e):
+    """XDATA 0x50 as the stock loader (0x4016..0x407E, the base image) fills it for e's RAM state."""
+    b = ut.emu(BASE)
+    b.iram[:] = e.iram[:]
+    b.pins[0xC0] = e.pins.get(0xC0, (0, 0))    # P4: the signal pins
+    b.hooks[0x4081] = lambda em: em.ret()
+    b.call(0x4016)
+    return buffer_text(b, bp.SMALL_BUF)
 
 
 def test_draw_volume():
@@ -376,34 +512,50 @@ def test_draw_volume():
             e.iram[0x2B] = 1
             e.setR(7, v)
             e.call(0x5936)
-            if not (expect_volume(e, v, acc) and (e.iram[0x48], e.iram[0x49]) == theme):
-                bad.append(v)
-        check("theme %02X%02X: steps 0-60, accent %04X, theme untouched" % (theme + (acc,)), not bad, str(bad[:5]))
+            if not (vol_ok(e, v, DYNAMIC) and (e.iram[0x48], e.iram[0x49]) == theme):
+                bad.append((v, vol_diff(e, v, DYNAMIC)))
+        check("theme %02X%02X: steps 0-60: number, line and dB caption = vol_model, nothing else, theme untouched"
+              % theme, not bad, str(bad[:2]))
     e = emu(); e.iram[0x2B] = 1; e.setR(7, 25); e.call(0x5936)
-    check("only the number box and the line are drawn", stray(e, [(184, 42, 120, 64), (40, 136, 240, 3)]) == 0)
-    check("XDATA 0x05 = 2 as stock; HN_VOL 25, HN_NUM \"25\"",
-          e.xram[5] == 2 and e.xram[bp.HN_VOL] == 25 and bytes(e.xram[bp.HN_NUM:bp.HN_NUM + 3]) == b"25\0")
+    check("XDATA 0x05 = 2 as stock; HN_VOL 25, HN_NUM \"25\", HV_DB \"_39.5 dB\"",
+          e.xram[5] == 2 and e.xram[bp.HN_VOL] == 25 and bytes(e.xram[bp.HN_NUM:bp.HN_NUM + 3]) == b"25\0" and
+          bytes(e.xram[bp.HV_DB:bp.HV_DB + 9]) == b"_39.5 dB\0")
+    caps = {}
+    for v in (0, 1, 9, 10, 35, 45, 59, 60):
+        e = emu(); e.iram[0x2B] = 1; e.setR(7, v); e.call(0x5936)
+        caps[v] = buffer_text(e, bp.HV_DB, 9) if v else "(str_dbinf)"
+    check("dB captions: %s" % ", ".join("%d %r" % (v, t) for v, t in caps.items()),
+          all(t == db_caption(v) for v, t in caps.items() if v) and caps[60] == "  0.0 dB" and caps[1] == "_75.5 dB")
     e = emu(); e.iram[0x2B] = 2; e.iram[0x52] = 33; e.setR(7, 10); e.call(0x5936)
-    check("headphone output draws RAM 0x52 (33), as stock", expect_volume(e, 33, bp.ORANGE))
+    check("headphone output draws RAM 0x52 (33), as stock", vol_ok(e, 33, DYNAMIC))
     e = emu(); e.iram[0x2B] = 1; e.setR(7, 75); e.call(0x5936)
-    check("a value above 60 is drawn as 60", expect_volume(e, 60, bp.ORANGE))
+    check("a value above 60 is drawn as 60", vol_ok(e, 60, DYNAMIC))
     e = emu(); e.iram[0x2B] = 1
     e.setR(7, 45); e.call(0x5936)
     e.setR(7, 44); e.call(0x5936)
-    check("redraw 45 -> 44 leaves nothing behind", expect_volume(e, 44, bp.ORANGE))
+    check("redraw 45 -> 44 leaves nothing behind", vol_ok(e, 44, DYNAMIC), vol_diff(e, 44, DYNAMIC))
     e.setR(7, 4); e.call(0x5936)
-    check("redraw 44 -> 4 blanks the tens digit", expect_volume(e, 4, bp.ORANGE))
-    # during a wipe: only recorded, unless the wipe has revealed the box / the line
-    for vf, want_num, want_line in ((0, False, False), (bp.VF_NUM, True, False),
-                                    (bp.VF_LINE, False, True), (bp.VF_ALL, True, True)):
+    check("redraw 44 -> 4 clears the tens digit's columns (the number is right-aligned)", vol_ok(e, 4, DYNAMIC),
+          vol_diff(e, 4, DYNAMIC))
+    e.setR(7, 0); e.call(0x5936)
+    check("redraw 4 -> 0: \"  _~ dB \" over \" _75.5 dB\"-wide text, nothing left of the line", vol_ok(e, 0, DYNAMIC),
+          vol_diff(e, 0, DYNAMIC))
+    e.setR(7, 60); e.call(0x5936)
+    c0 = e.cycles; e.setR(7, 59); e.call(0x5936)
+    ms = (e.cycles - c0) * 1000 / CLOCK_HZ
+    check("a volume step redraws in %.2f ms (stock: about 40)" % ms, vol_ok(e, 59, DYNAMIC) and ms < 8)
+    # during a wipe: only recorded, unless the wipe has revealed the number / the line / the caption
+    boxes = vol_boxes()
+    for vf in (0, bp.VF_NUM, bp.VF_LINE, bp.VF_CAP, bp.VF_NUM | bp.VF_LINE, bp.VF_ALL):
         e = emu(); e.iram[0x2B] = 1
         e.xram[bp.HN_MODE], e.xram[bp.HN_VF] = 1, vf
         e.setR(7, 37); e.call(0x5936)
-        num = ink_in(e, 184, 42, 120, 64)
-        line = ink_in(e, 40, 136, 240, 3)
-        check("wipe running, revealed %-10s: number %s, line %s, HN_VOL 37" %
-              (bin(vf), "drawn" if want_num else "not drawn", "drawn" if want_line else "not drawn"),
-              num == want_num and line == want_line and e.xram[bp.HN_VOL] == 37)
+        got = {b for b in DYNAMIC if ink_in(e, boxes[b][0], boxes[b][2], boxes[b][1] - boxes[b][0] + 1,
+                                            boxes[b][3] - boxes[b][2] + 1)}
+        want = {b for b in DYNAMIC if vf & b}
+        check("wipe running, revealed %-10s: drawn %-16s HN_VOL 37" %
+              (bin(vf), "+".join(VOL_NAMES[b] for b in sorted(want)) or "nothing"),
+              got == want and e.xram[bp.HN_VOL] == 37, str(sorted(got)))
 
 
 def volpage_render(inp=2, vol=25, theme=(0xFF, 0xFF), out=1, hp=0):
@@ -419,31 +571,43 @@ def test_volpage():
     e.iram[0x47], e.iram[0x2B], e.iram[0x31] = 2, 1, 25
     e.iram[0x22] |= 0x08
     e.iram[0x32] = e.iram[0x46] = 1
+    for k in range(25):
+        e.xram[bp.SMALL_BUF + k] = 0x41            # a stale status line: the page loads its own
+    c0 = e.cycles
     e.call(LAB["hn_volpage"])
-    ref = emu()
-    for k, ch in enumerate("OPTICAL"):
-        stock_small(ref, ch, 16 + 14 * k, 30)
-    check("input name in white at 16,30, as the stock small glyphs", ink_in(e, 16, 30, 98, 24) and
-          all(px(e, x, y) == px(ref, x, y) for x in range(16, 114) for y in range(30, 54)))
-    check("divider 1x104 at 140,14", all(px(e, 140, y) == bp.DIVIDER for y in range(14, 118)))
-    ref = emu((bp.ORANGE >> 8, bp.ORANGE & 0xFF))
-    for k, ch in enumerate("VOL"):
-        stock_small(ref, ch, 158 + 14 * k, 14)
-    check("VOL in the accent at 158,14, as the stock small glyphs",
-          all(px(e, x, y) == px(ref, x, y) for x in range(158, 200) for y in range(14, 38)))
-    check("number and line for 25", expect_volume(e, 25, bp.ORANGE))
-    check("nothing else drawn", stray(e, [(16, 30, 98, 24), (140, 14, 1, 104), (158, 14, 42, 24),
-                                           (184, 42, 120, 64), (40, 136, 240, 3)]) == 0)
+    ms = (e.cycles - c0) * 1000 / CLOCK_HZ
+    check("OPTICAL, 25: the whole page = vol_model (name, status, divider, VOL, number, line, captions)",
+          vol_ok(e), vol_diff(e))
+    check("status line loaded as the stock loader loads it (%r), HN_SLD clear again" % buffer_text(e, bp.SMALL_BUF),
+          buffer_text(e, bp.SMALL_BUF) == stock_status(e) and e.xram[bp.HN_SLD] == 0)
+    check("the whole page in %.1f ms" % ms, ms < 20)
     check("render flags cleared as by 0x22FA",
           not e.iram[0x22] & 0x08 and e.iram[0x32] == 0 and e.iram[0x46] == 0)
     check("theme colour untouched; the page is on screen (HN_VF all)",
           (e.iram[0x48], e.iram[0x49]) == (0xFF, 0xFF) and e.xram[bp.HN_VF] == bp.VF_ALL)
     e.lcd.save_png(os.path.join(HERE, "build", "unit_volpage.png"))
-    e = emu()
-    e.iram[0x47], e.iram[0x2B], e.iram[0x31] = 7, 1, 5
-    e.call(LAB["hn_volpage"])
-    check("input 7 (no name): name area empty, number drawn",
-          not ink_in(e, 0, 0, 140, 130) and expect_volume(e, 5, bp.ORANGE))
+    # every input, with and without a signal (P4.5 USB, P4.2 the others; BT and HDMI read the expander)
+    bad, texts = [], {}
+    for inp in range(1, 9):
+        for sig in (0, 1):
+            e = emu()
+            e.iram[0x47], e.iram[0x2B], e.iram[0x31] = inp, 1, 40
+            e.pins[0xC0] = (0x24, 0x24 ^ (0x20 if sig and inp == 1 else 0) ^ (0x04 if sig and inp != 1 else 0))
+            e.call(LAB["hn_volpage"])
+            texts[(inp, sig)] = (buffer_text(e, bp.SMALL_BUF), status_ink(e) == bp.DIM_LOST)
+            if not vol_ok(e) or buffer_text(e, bp.SMALL_BUF) != stock_status(e):
+                bad.append((inp, sig, vol_diff(e)))
+    print("    status per input (signal pin off / on), reddish marked *: " +
+          ", ".join("%d: %s%s / %s%s" % (i, texts[(i, 0)][0], "*" if texts[(i, 0)][1] else "",
+                                          texts[(i, 1)][0], "*" if texts[(i, 1)][1] else "") for i in range(1, 9)))
+    check("inputs 1-8 x signal pin: page = vol_model, status as the stock loader (inputs 7, 8: no name)",
+          not bad, str(bad[:2]))
+    check("without a signal the status is reddish on the digital inputs only (BT and HDMI read the expander, not a pin)",
+          all(texts[(i, 0)][1] == (i not in (6, 8)) for i in range(1, 9)) and
+          not any(texts[(i, 1)][1] for i in (1, 2, 3, 6, 7, 8)))
+    for theme in ((0xF8, 0x00), (0x07, 0xE0)):
+        e = volpage_render(3, 60, theme)
+        check("tint %02X%02X, COAXIAL 60: = vol_model (VOL and the full line in the tint)" % theme, vol_ok(e), vol_diff(e))
     e = emu(); e.iram[0x47], e.iram[0x2B], e.iram[0x31] = 2, 1, 25
     e.xram[bp.HN_MODE] = 1
     e.call(LAB["hn_volpage"])
@@ -451,13 +615,13 @@ def test_volpage():
 
 
 # ---- a wipe, step by step ----------------------------------------------------------------------
-VOL_BOXES = {bp.VF_NAME: (16, 30, 14 * 7, 24), bp.VF_DIV: (140, 14, 1, 104), bp.VF_VOL: (158, 14, 42, 24),
-             bp.VF_NUM: (184, 42, 120, 64), bp.VF_LINE: (40, 136, 240, 3)}
+LOST = ("No signal", "Searching...", "No Connected")     # the loader's texts when 0x5232 finds no signal
 
 
 def home_setup(e, inp=2, status="No signal"):
     e.iram[0x45] = 1
     e.iram[0x47], e.iram[0x2B], e.iram[0x31] = inp, 1, 25
+    e.xram[bp.HN_SIG] = 0 if status in LOST else 1        # the loader's signal check, as hn_signal keeps it
     e.iram[0x3D], e.iram[0x75], e.iram[0x7E] = 2, 2, 2       # PCM
     e.iram[0x4F] = 1
     for k, ch in enumerate(status.encode() + b"\0"):
@@ -517,42 +681,35 @@ def test_step():
           all(v == 0x1234 for v in e.lcd.gram) and e.xram[bp.HN_VOL] == 25)
     bad, order, worst = [], [], 0
     refs = screen(ref)
+    parts = vol_parts(ref)
+    boxes = vol_boxes()
+    before = screen(e)
     for k in range(1, 21):
         worst = max(worst, run_steps(e, 1)[0])
         x = EASE[k]
         got_x = e.xram[bp.HN_X] << 8 | e.xram[bp.HN_X + 1]
-        rev = {b for b, (bx, by, bw, bh) in VOL_BOXES.items() if bx >= x + 2 or k == 20}
+        rev = {b for b, (bx, bx1, by, by1) in boxes.items() if bx >= x + 2 or k == 20}
+        drawn = set().union(*order) if order else set()
+        if k < 20 and {bp.VF_NAME, bp.VF_STAT} <= rev - drawn:
+            rev.discard(bp.VF_STAT)           # not in the name's step: the status line waits one
         vf = e.xram[bp.HN_VF]
         if vf != sum(rev):
             bad.append((k, "flags %s" % bin(vf)))
         new = [b for b in rev if not any(b in o for o in order)]
         order.append(set(new))
+        want = entry_screen(parts, before, x, k == 20, bp.ORANGE, rev)
         s = screen(e)
-        for xx in range(W):
-            for yy in range(H):
-                if k < 20 and xx < x:
-                    want = 0x1234
-                elif k < 20 and xx < x + 2:
-                    want = bp.ORANGE
-                else:
-                    want = 0
-                    for b, (bx, by, bw, bh) in VOL_BOXES.items():
-                        if bx <= xx < bx + bw and by <= yy < by + bh and (b in rev or b == bp.VF_LINE):
-                            want = refs[xx][yy]
-                if s[xx][yy] != want:
-                    bad.append((k, xx, yy, hex(s[xx][yy]), hex(want)))
-                    break
-            if bad and bad[-1][0] == k:
-                break
+        if s != want:
+            bad.append((k,) + next((xx, yy, hex(s[xx][yy]), hex(want[xx][yy])) for xx in range(W) for yy in range(H)
+                                   if s[xx][yy] != want[xx][yy]))
         if got_x != x:
             bad.append((k, "x", got_x))
-    names = {bp.VF_NAME: "name", bp.VF_DIV: "divider", bp.VF_VOL: "VOL", bp.VF_NUM: "number", bp.VF_LINE: "line"}
-    print("    entry reveal: " + ", ".join("%s at step %d (x %d)" % ("+".join(names[b] for b in o), k + 1, EASE[k + 1])
+    print("    entry reveal: " + ", ".join("%s at step %d (x %d)" % ("+".join(VOL_NAMES[b] for b in sorted(o)), k + 1, EASE[k + 1])
                                            for k, o in enumerate(order) if o))
     check("entry: each step x = ease[k]; old page left of the edge, 2-px accent edge, black band, "
           "elements once the edge is left of them", not bad, str(bad[:3]))
-    check("entry: final screen = hn_volpage's render; mode 0, HN_VF all",
-          screen(e) == refs and e.xram[bp.HN_MODE] == 0 and e.xram[bp.HN_VF] == bp.VF_ALL)
+    check("entry: final screen = hn_volpage's render = vol_model; mode 0, HN_VF all",
+          screen(e) == refs and vol_ok(e) and e.xram[bp.HN_MODE] == 0 and e.xram[bp.HN_VF] == bp.VF_ALL)
     check("entry: worst step %.2f ms (at most %g)" % (worst, STEP_LIMIT), worst <= STEP_LIMIT)
     STEP_MS["entry"] = worst
     e.call(LAB["hn_step"])
@@ -671,8 +828,10 @@ def test_step():
             run_steps(e, 1)
             xs.append(e.xram[bp.HN_X] << 8 | e.xram[bp.HN_X + 1])
         ok = e.xram[bp.HN_MODE] == 0 and xs == [EASE[k] for k in range(20 - turn + 1, 21)]
-        check("exit turned round after step %2d (x %3d) by a volume key: entry from there, %d steps, page for 27"
-              % (turn, x0, turn), ok and screen(e) == screen(volpage_render(vol=27)), str(xs[:3]))
+        check("exit turned round after step %2d (x %3d) by a volume key: entry from there, %d steps, page for 27, "
+              "status line loaded again" % (turn, x0, turn),
+              ok and screen(e) == screen(volpage_render(vol=27)) and vol_ok(e) and buffer_text(e, bp.SMALL_BUF),
+              str(xs[:3]) + vol_diff(e))
     e = home_reference(); e.iram[0x4F] = 1
     e.call(LAB["hn_enter_vol"]); e.iram[0x59] = 1; e.call(LAB["hn_clear"])
     check("entry turned round before its first step: stops, screen untouched (the page never showed)",
@@ -763,6 +922,25 @@ def test_enter_vol():
             ok = seen == [] and e.xram[bp.HN_SBUF] == 1
         check("0x4081, mode %d: %s" % (mode, "home_refresh and the status line as stock" if mode == 0 else
                                        "held back, returns, HN_SBUF set"), ok, str(seen))
+    # hn_signal: the status loader's signal check keeps its result in HN_SIG, C as the check left it
+    for sig in (0, 1):
+        e = st(); e.iram[0x47] = 2
+        e.pins[0xC0] = (0x04, 0 if sig else 0x04)         # optical: P4.2 low = lock
+        e.xram[bp.HN_SIG] = 1 - sig
+        e.call(LAB["hn_signal"])
+        check("hn_signal (0x4016), optical, P4.2 %d: C = %d, HN_SIG %d" % (1 - sig, sig, sig),
+              e.C == sig and e.xram[bp.HN_SIG] == sig)
+    # hn_stat_load: the loader runs to 0x4081, where hn_hold returns instead of drawing
+    for inp, text in ((2, "No signal"), (6, "Analog input")):
+        e = st(); e.iram[0x47] = inp
+        e.pins[0xC0] = (0x04, 0x04)
+        seen = []
+        e.hooks[bp.HOME_REFRESH] = lambda em: (seen.append("refresh"), em.ret())
+        e.hooks[0x3A53] = lambda em: (seen.append("status"), em.ret())
+        e.call(LAB["hn_stat_load"])
+        check("hn_stat_load, input %d: XDATA 0x50 = %r, HN_SIG 0, nothing drawn, HN_SLD clear" % (inp, text),
+              buffer_text(e, bp.SMALL_BUF) == text and e.xram[bp.HN_SIG] == 0 and seen == [] and
+              e.xram[bp.HN_SLD] == 0 and all(v == 0x1234 for v in e.lcd.gram), str(seen))
     # hn_name_guard: home_draw_input_name during an exit: the whole home first (black, home_refresh, which
     # draws the name too, the status line), then the stock name draw
     for mode in (0, 1, 2):
@@ -894,12 +1072,8 @@ def accent_of(amp):
 
 
 def volpage_reference(amp):
-    """What hn_volpage draws for this amp's state, on a black screen."""
-    e = emu((amp.e.iram[0x48], amp.e.iram[0x49]))
-    for a in (0x31, 0x47, 0x2B, 0x52):
-        e.iram[a] = amp.e.iram[a]
-    e.call(LAB["hn_volpage"])
-    return e.lcd.gram
+    """The volume page for this amp's state: vol_model on its RAM and status buffer."""
+    return vol_model(amp.e)
 
 
 def home_checks(step, new, ref):
@@ -1024,22 +1198,12 @@ def mid_entry_ok(new, before, k):
     it the volume page with the elements the edge has passed (the line in parts). Returns the first
     wrong pixel, or None."""
     x = EASE[k]
-    ref = volpage_reference(new)
-    rs = [[ref[xx * 240 + 0x23 + yy] for yy in range(H)] for xx in range(W)]
+    want = entry_screen(vol_parts(new.e), before, x, k == 20, accent_of(new))
+    s = screen(new.e)
     for xx in range(W):
         for yy in range(H):
-            p = px(new.e, xx, yy)
-            if xx < x:
-                want = before[xx][yy]
-            elif xx < x + 2:
-                want = accent_of(new)
-            else:
-                want = 0
-                for b, (bx, by, bw, bh) in VOL_BOXES.items():
-                    if bx <= xx < bx + bw and by <= yy < by + bh and (bx >= x + 2 or b == bp.VF_LINE):
-                        want = rs[xx][yy]
-            if p != want:
-                return (xx, yy, hex(p), hex(want))
+            if s[xx][yy] != want[xx][yy]:
+                return (xx, yy, hex(s[xx][yy]), hex(want[xx][yy]))
     return None
 
 
@@ -1091,8 +1255,8 @@ def tour():
         if kind == "home":
             home_checks(step, new, ref)
         elif kind == "vol":
-            check("%-12s volume page exactly as hn_volpage draws it" % step,
-                  new.page == 2 and new.lcd.gram == volpage_reference(new))
+            check("%-12s volume page = vol_model for the amp's state" % step,
+                  new.page == 2 and screen(new.e) == volpage_reference(new), vol_diff(new.e))
         else:
             check("%-12s screen identical to fast-lcd" % step, new.lcd.gram == ref.lcd.gram)
         if step in ("menu", "menu_down"):
@@ -1181,13 +1345,13 @@ SCENARIOS = [
 
 def screen_ok(base, new):
     """Whether new's screen is what we expect, given where both amps ended up: home_model for
-    new's state (both page 1, both powered), hn_volpage's exact render (both page 2, both powered),
+    new's state (both page 1, both powered), vol_model (both page 2, both powered),
     or bit-identical to base otherwise."""
     if base.powered and new.powered:
         if new.page == 1 and base.page == 1:
             return home_ok(new.e)
         if new.page == 2 and base.page == 2:
-            return new.lcd.gram == volpage_reference(new)
+            return screen(new.e) == volpage_reference(new)
     return new.lcd.gram == base.lcd.gram
 
 
@@ -1227,7 +1391,7 @@ def input_scenarios():
             print("    %s unmute countdown at the press: %d" % (label, cd_press))
         check("%ssame page, power, volumes, input, output" % label, state(ref) == state(new),
               "%s vs %s" % (state(ref), state(new)))
-        check("%spage %d, screen as expected (volume: hn_volpage's render; home: home_model)" %
+        check("%spage %d, screen as expected (volume: vol_model; home: home_model)" %
               (label, page), new.page == page and screen_ok(ref, new))
         new.lcd.save_png(os.path.join(HERE, "build", "inputs_%s.png" % name))
         for amp in amps:
@@ -1353,8 +1517,8 @@ def key_scenarios():
         check("%ssame page, power, volumes, input, output" % label, state(ref) == state(new),
               "%s vs %s" % (state(ref), state(new)))
         if expect == "vol":
-            check("%svolume page exactly as hn_volpage draws it (latest value)" % label,
-                  new.page == 2 and new.lcd.gram == volpage_reference(new))
+            check("%svolume page = vol_model (latest value)" % label,
+                  new.page == 2 and screen(new.e) == volpage_reference(new), vol_diff(new.e))
             if name.endswith("in_exit"):
                 xs = [s[3] for s in st if s[1] == 1]
                 check("%sturned round: entry steps from x %d leftwards, first at %d" % (label, x_at, xs[0] if xs else -1),
@@ -1623,7 +1787,7 @@ def sweep():
                   % (st, " ".join("%02X" % c for c in later)))
         check("%-10s 256 commands: same page, power, volumes, input, output, EQ, pins" % st, not diff,
               str(["%02X" % c for c in diff[:8]]))
-        check("%-10s screens as expected (home: home_model; volume: hn_volpage; "
+        check("%-10s screens as expected (home: home_model; volume: vol_model; "
               "other: identical to fast-lcd)" % st, not scr, str(["%02X" % c for c in scr[:8]]))
     print("  sweep in %.0f s" % (time.time() - t0))
 

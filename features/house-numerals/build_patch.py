@@ -1,28 +1,33 @@
 #!/usr/bin/env python3
-"""Build the "House Numerals" image for the SMSL AO300 (on top of fast-lcd), hn5.
+"""Build the "House Numerals" image for the SMSL AO300 (on top of fast-lcd), hn8.
 
 A reduced build of study 3 in features/ui-theme/ui_themes.html:
 
   home      the mock's home, drawn by us in the mock's typefaces (uk_text, fonts packed from
             tools/fonts by pfont): the speaker icon (red with an X when muted, headphones on
             the headphone output) and the volume top left, the format and EQ tags as accent
-            boxes top right, the input name in the display face, the status line in grey mono
-            under it and a 28x3 accent bar at 18,144. Each stock painter of a home element is
-            replaced by ours (icon 0x5744, volume 0x5916, EQ tag 0x4F18, format tag 0x425D and
-            its clears), and on page 1 the stock text renderers hand the name (big, y 75) and
-            the status line (small, y 135) to us (0x2A25, 0x3A82). So every stock sequence that
-            draws home parts draws ours. A shorter text clears the rest of the longer one.
-  volume    the input name, a divider, "VOL", the volume in the stock big digits at
-            2x and a 240-px position line. volpage_draw_volume 0x5936 is replaced, so
-            knob and remote steps redraw only the number and the line.
+            boxes with rounded corners top right, the input name in the display face, the
+            status line in grey mono under it (reddish when the input has no signal) and a
+            28x3 accent bar. Each stock painter of a home element is replaced by ours (icon
+            0x5744, volume 0x5916, EQ tag 0x4F18, format tag 0x425D and its clears), and on
+            page 1 the stock text renderers hand the name (big, y 75) and the status line
+            (small, y 135) to us (0x2A25, 0x3A82). So every stock sequence that draws home
+            parts draws ours. A shorter text clears the rest of the longer one. Sizes and
+            positions come from layout.json (sizing.html writes it).
+  volume    the mock's volume page: the input name (display face, 36 px) and the status line
+            (loaded as the periodic refresh loads it) left of a divider, "VOL" over the
+            volume right-aligned in 84-px numerals right of it, a 288-px position line, the
+            level in dB below step 60 ("_39.5 dB", from the stock NJW1194 code table) and
+            "max 60" under it. volpage_draw_volume 0x5936 is replaced, so knob and remote
+            steps redraw only the number, the line and the dB caption.
   wipes     a 2-px accent edge sweeps across the screen with an ease-in-out, 20 steps of
             one 10 ms main-loop tick each: right to left into the volume page, left to
             right back home. Nothing blocks: the main loop's tick path (main_tasks_on's
             lcall main_tick_tasks, 0x5B2A) runs one step after each tick it handles. Each
             step fills the band the edge swept with black, draws the edge and draws every
             element of the new page the edge has fully passed (hn_step).
-  text      uk_text (the mock's faces) for the home; uk_paint (the stock fonts) for the
-            volume page's name, "VOL" and number.
+  text      uk_text (the mock's faces) everywhere; the kit's stock-font painter uk_paint is
+            not linked into this image.
 
 Entry: the four volume-key sites and the page-2 renderer only start the animation
 (hn_enter_vol); the key handler's tail still writes the volume before anything is drawn.
@@ -31,9 +36,9 @@ starts the exit instead of clearing, and home_refresh at 0x4081 (hn_hold) is hel
 wipe runs. Any stock clear (ui_clear_screen 0x5D42, hn_cancel) cancels a wipe first; so does
 the name draw 0x4A85 during an exit (Source and direct-select on page 1, hn_name_guard).
 
-Register use: every hn_* / hm_* routine may clobber A, B, DPTR, PSW and R0-R7 (the stock
+Register use: every hn_* / hm_* / hv_* routine may clobber A, B, DPTR, PSW and R0-R7 (the stock
 routines they replace or wrap do the same). RAM 0x48:0x49 (the theme colour) is only read.
-New state lives in XDATA 0x0100..0x01A6.
+New state lives in XDATA 0x0100..0x01B2.
 """
 import hashlib
 import json
@@ -70,6 +75,7 @@ DIVIDER = 0x2104                    # #222
 TRACK = 0x18E3                      # #1d1d1d
 WHITE = 0xFFFF
 RED = 0xF800                        # #ff0000, the muted icon
+FAINT = uikit.rgb565(0x4D, 0x52, 0x57)   # #4d5257, the volume page's "max 60"
 
 # XDATA
 HN_N = 0x0100                       # uk_fill's work area (4 bytes, see KIT below)
@@ -104,17 +110,20 @@ HM_RH = 0x01A2                      # hm_rest: rows
 HM_RX = 0x01A3                      # hm_rest: next column (hi, lo)
 HM_TR = 0x01A5                      # hm_tag: the box ends before this column
 HM_TL = 0x01A6                      # hm_tag: the tag's area starts at this column
-HN_HF0 = 0x01A7                     # exit step: HN_HF when the step began (name and status don't share one)
+HN_HF0 = 0x01A7                     # step: HN_HF / HN_VF when the step began (name and status don't share one)
+HN_SLD = 0x01A8                     # hn_stat_load: the status loader runs for the volume page (hn_hold returns)
+HV_DB = 0x01A9                      # volume page: the dB caption, 8 characters and a NUL
+HN_SIG = 0x01B2                     # the status loader's signal check: 1 = signal (hn_signal); tints the status line
 
 # uk_fill's work area (HN_N, HN_C) and uk_paint's parameter block and work area (FP..FP_OFF)
 # belong to the kit, placed where hn4.1 had them
 KIT = uikit.Kit(fill_ws=HN_N, fp_base=0x0130, tp_base=TP_BASE)
+XDATA_END = HN_SIG
 # XDATA this image's own code uses: the variables above and the kit's blocks (tools/build.py checks it)
-XDATA = [(0x0100, HN_HF0 + 1, "house-numerals variables, uikit fill/FP/TP blocks")]
+XDATA = [(0x0100, XDATA_END + 1, "house-numerals variables, uikit fill/FP/TP blocks")]
 (FP, FP_FONT, FP_STR, FP_SPC, FP_X, FP_Y, FP_INK, FP_BG, FP_CX0, FP_CX1, FP_SCALE, FP_W, FP_BPC, FP_BPG,
  FP_DATA, FP_MAP, FP_NADV, FP_CUR, FP_END, FP_CW, FP_ADV, FP_GLY, FP_VX0, FP_VX1, FP_OFF) = KIT.fp_layout()
 assert FP + uikit.Kit.FP_SIZE - 1 < TP_BASE
-XDATA_END = HN_HF0
 assert TP_BASE + uikit.Kit.TP_SIZE <= HM_VS
 
 # the home layout: layout.json, written by sizing.html (served by tools/fonts/rasterize.py), with
@@ -125,22 +134,35 @@ NAME_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ .-"       # page-1 big text: input name
 TAG_CHARS = "ABCDFIKLMPQRSTUo. "                   # the format and EQ tags
 STATUS_CHARS = " !'-.0123456789ABCDEFGHIKLMNOPQRSTUVXabcdeghiklmnoprstuvwyz"   # every firmware string
 # (sizing.html keeps the same character sets, for its flash figures)
+# the volume page's mono texts: the status line (any firmware string), "VOL", the dB caption
+# ("_" draws the raster's minus sign, "~" its infinity) and "max 60"
+MONO_CHARS = STATUS_CHARS + "x_~"
+MONO_ALIAS = {"_": "−", "~": "∞"}
+VNAME_CHARS = "".join(sorted(set("".join(t for _, _, t in INPUT_NAMES[:6]))))   # the volume page's name
+assert set(TAG_CHARS) | set("VOL dBmax0123456789.") <= set(MONO_CHARS)
 
 
-def layout_font(label, element, chars):
-    rid = LAYOUT[element]["font"]
+def layout_font(label, element, chars, alias=None):
+    return raster_font(label, LAYOUT[element]["font"], chars, "layout.json, %s" % element, alias)
+
+
+def raster_font(label, rid, chars, where, alias=None):
     if not os.path.exists(os.path.join(pfont.RASTER_DIR, rid + ".json")):
-        raise SystemExit("font %s (layout.json, %s) has no raster: open sizing.html through "
-                         "python3 tools/fonts/rasterize.py and press Save" % (rid, element))
-    return pfont.PFont(label, rid, chars, bpp=2)
+        raise SystemExit("font %s (%s) has no raster: open sizing.html (or raster.html?only=%s) through "
+                         "python3 tools/fonts/rasterize.py and press Save" % (rid, where, rid))
+    return pfont.PFont(label, rid, chars, bpp=2, alias=alias)
 
 
 PF_NAME = layout_font("pf_name", "name", NAME_CHARS)
 PF_STATUS = layout_font("pf_status", "status", STATUS_CHARS)
-PF_TAG = layout_font("pf_tag", "tags", TAG_CHARS)
+PF_MONO = layout_font("pf_mono", "tags", MONO_CHARS, MONO_ALIAS)   # the tags, and the volume page's small texts
+PF_TAG = PF_MONO
 PF_HVOL = layout_font("pf_hvol", "volume", "0123456789")
 PF_ICON = layout_font("pf_icon", "icon", "SMH")
-PFONTS = (PF_NAME, PF_STATUS, PF_TAG, PF_HVOL, PF_ICON)
+PF_BOX = pfont.PFont("pf_box", pfont.box_edges(LAYOUT["tags"]["height"]), "[]", bpp=2)   # the tag boxes' edges
+PF_VNAME = raster_font("pf_vname", "disp36", VNAME_CHARS, "the volume page's name")
+PF_VNUM = raster_font("pf_vnum", "num84", "0123456789", "the volume page's number")
+PFONTS = (PF_NAME, PF_STATUS, PF_MONO, PF_HVOL, PF_ICON, PF_BOX, PF_VNAME, PF_VNUM)
 
 # where things go: x, baseline -> the cell's top row y = baseline + the font's top
 ICON_X, ICON_Y = LAYOUT["icon"]["x"], LAYOUT["icon"]["baseline"] + PF_ICON.top
@@ -162,20 +184,53 @@ NAME_SP = LAYOUT["name"]["spacing"]
 STAT_X, STAT_Y = LAYOUT["status"]["x"], LAYOUT["status"]["baseline"] + PF_STATUS.top
 STAT_SP = LAYOUT["status"]["spacing"]
 DIM = uikit.rgb565(*(int(LAYOUT["status"]["colour"][k:k + 2], 16) for k in (1, 3, 5)))   # the status line
+DIM_LOST = pfont.avg565(DIM, uikit.rgb565(0xFF, 0x50, 0x40))    # ... without a signal: the mock mixes in #ff5040
 BAR_X, BAR_Y, BAR_W, BAR_H = (LAYOUT["bar"][k] for k in ("x", "y", "width", "height"))
 assert all(PF_TAG.width(t) == PF_TAG.width("SDB") for t in ("DIR", "CUS", "BAS", "SBA", "RCK", "SFT", "CLR"))
-assert FMT_LEFT >= TAG_BASE and EQ_RIGHT - TAG_BASE < 256 and 2 <= TAG_PAD
+assert FMT_LEFT >= TAG_BASE and EQ_RIGHT - TAG_BASE < 256 and 3 <= TAG_PAD
 assert all((FMT_RIGHT - PF_TAG.width(t) - 2 * TAG_PAD) & 0xFF != 0xFF for t in ("PCM", "DSD", "DoP", "MQA", "MQA."))
-assert TAG_Y0 < TAG_TY and TAG_TY + PF_TAG.H - 1 < TAG_Y1
+assert TAG_Y0 < TAG_TY and TAG_TY + PF_TAG.H - 1 < TAG_Y1 and PF_BOX.H == TAG_Y1 - TAG_Y0 + 1
 assert ICON_X + max(PF_ICON.width(c) for c in "SMH") - 1 <= ICON_END < HVOL_X and HVOL_END < FMT_LEFT
 assert HNAME_Y + PF_NAME.H <= STAT_Y and STAT_Y + PF_STATUS.H <= BAR_Y and BAR_Y + BAR_H <= 170
 
+# the volume page (the mock's, with the small texts in the tag size and the name at 36 px): the
+# name and the status line left of a divider, "VOL" over the number right of it, the position line
+# with the dB caption and "max 60" under it. x, baseline -> cell top row as above.
+VNAME_X, VNAME_Y = 16, 64 + PF_VNAME.top
+VNAME_SP = 1
+VNAME_END = VNAME_X + max(PF_VNAME.width(t, VNAME_SP) for _, _, t in INPUT_NAMES[:6]) - 1
+VSTAT_X, VSTAT_Y = 18, 90 + PF_MONO.top
+VSTAT_SP = 0
+VSTAT_END = VSTAT_X + PF_MONO.width("Digital input") - 1        # the widest status line
+VDIV_X, VDIV_Y, VDIV_H = 150, 24, 92                            # the divider
+VLBL_X, VLBL_Y, VLBL_SP = 164, 38 + PF_MONO.top, 3              # "VOL", letter-spaced, in the accent
+VLBL_END = VLBL_X + PF_MONO.width("VOL", VLBL_SP) - 1
+VNUM_RIGHT, VNUM_Y = 304, 112 + PF_VNUM.top                     # the number ends here (right-aligned)
+VNUM_LEFT = VDIV_X + 6                                          # ... and its area starts here
+VNUM_MAXW = max(PF_VNUM.width(str(v)) for v in range(61))
+VLINE_X, VLINE_Y, VLINE_W, VLINE_H = 16, 136, 288, 3            # the position line: accent up to the split
+VLINE_SPLIT = [VLINE_X + int(round(VLINE_W * v / 60)) for v in range(61)]   # first track column per volume
+VLINE_MID = VLINE_X + 144                                        # hv_line fills the two halves separately (uk_fill: w <= 255)
+VCAP_X, VCAP_Y = 16, 160 + PF_MONO.top                          # the dB caption, always 8 characters
+VCAP_TEXTS = ("_75.5 dB", "  0.0 dB", "  _~ dB ")                 # the widest, the sign-less one, volume 0
+VCAP_END = VCAP_X + max(PF_MONO.width(t) for t in VCAP_TEXTS) - 1
+VCAPR_RIGHT = 304                                               # "max 60", right-aligned
+VCAPR_X = VCAPR_RIGHT - PF_MONO.width("max 60") + 1
+assert VNAME_END < VDIV_X and VSTAT_END < VDIV_X and VLBL_END < VNUM_RIGHT - VNUM_MAXW
+assert VDIV_X < VNUM_LEFT <= VNUM_RIGHT - VNUM_MAXW and VNUM_RIGHT - VNUM_MAXW + 1 > VLBL_END
+assert VLBL_Y + PF_MONO.H <= VNUM_Y and VNUM_Y + PF_VNUM.H <= VLINE_Y and VLINE_Y + VLINE_H <= VCAP_Y
+assert VNAME_Y + PF_VNAME.H <= VSTAT_Y and VDIV_Y <= VLBL_Y and VSTAT_Y + PF_MONO.H <= VDIV_Y + VDIV_H
+assert VCAP_Y + PF_MONO.H <= 170 and VCAP_END < VCAPR_X and VLINE_SPLIT[60] == VLINE_X + VLINE_W
+assert VLINE_MID - VLINE_X <= 255 and VLINE_X + VLINE_W - VLINE_MID <= 255
+assert all(PF_MONO.width(t) >= 8 * PF_MONO.width("0") for t in VCAP_TEXTS)   # 8 cells (the infinity is 1 px wider)
+
 # volume-page elements: (bit, name, x0, x1); an element appears once the edge is left of x0
-VF_NAME, VF_DIV, VF_VOL, VF_NUM, VF_LINE = 1, 2, 4, 8, 16
-VF_ALL = 31
-VOL_ELEMENTS = [(VF_NAME, "hv_name", 16, 16 + 14 * 7 - 1), (VF_DIV, "hv_div", 140, 140),
-                (VF_VOL, "hv_vol", 158, 158 + 3 * 14 - 1), (VF_NUM, "hv_num", 184, 303),
-                (VF_LINE, "hv_line", 40, 279)]
+VF_NAME, VF_STAT, VF_DIV, VF_VOL, VF_NUM, VF_LINE, VF_CAP, VF_CAPR = 1, 2, 4, 8, 16, 32, 64, 128
+VF_ALL = 255
+VOL_ELEMENTS = [(VF_NAME, "hv_name", VNAME_X, VNAME_END), (VF_STAT, "hv_status", VSTAT_X, VSTAT_END),
+                (VF_DIV, "hv_div", VDIV_X, VDIV_X), (VF_VOL, "hv_vol", VLBL_X, VLBL_END),
+                (VF_NUM, "hv_num", VNUM_LEFT, VNUM_RIGHT), (VF_LINE, "hv_line", VLINE_X, VLINE_X + VLINE_W - 1),
+                (VF_CAP, "hv_cap", VCAP_X, VCAP_END), (VF_CAPR, "hv_capr", VCAPR_X, VCAPR_RIGHT)]
 # home elements: (bit, name, x0, x1); they appear once the edge is right of x1. The name and the
 # status line end where their text ends: x1 is read from XDATA (HN_NAMER, HN_STATR) instead.
 HF_ICON, HF_VOL, HF_BAR, HF_NAME, HF_FMT, HF_EQ, HF_STAT = 1, 2, 4, 8, 16, 32, 64
@@ -206,6 +261,7 @@ HOOKS = [STOCK_SITES[site] + (op, target) for site, op, target in (
     ("ui_clear_screen", 0x02, "hn_cancel"),
     ("home_draw_input_name", 0x02, "hn_name_guard"),
     ("home_refresh_flag_path", 0x02, "hn_flag_path"),
+    ("status_signal_check", 0x12, "hn_signal"),
     ("home_draw_output_icon", 0x02, "hm_icon"),
     ("home_draw_volume", 0x02, "hm_volume"),
     ("eq_tag_paint", 0x02, "hm_eq"),
@@ -214,7 +270,7 @@ HOOKS = [STOCK_SITES[site] + (op, target) for site, op, target in (
     ("format_tag_clear_changed", 0x12, "hm_fmt_clear"),
 )]
 HOOKS += [f.HOOK for f in features.fixes(INCLUDES)]    # the fixes linked in
-VERSION_TEXT = "v1.4 tbenr hn7"
+VERSION_TEXT = "v1.4 tbenr hn8"
 
 
 rect = KIT.rect
@@ -230,6 +286,16 @@ def build_data(a):
         a.data("dw 0x%04X          ; input %d %s" % (addr, inp, text), [addr >> 8, addr & 0xFF])
     a.L("str_vol")
     a.data('db "VOL",0', b"VOL\0")
+    a.L("str_max")
+    a.data('db "max 60",0', b"max 60\0")
+    a.L("str_dbinf")
+    a.data('db "  _~ dB ",0     ; volume 0: minus infinity', b"  _~ dB \0")
+    a.comment("the position line: the first track column for volumes 0..60 (low byte; the high byte is 1 "
+              "from the first entry at or over 256, see hv_split)")
+    a.L("vsplit")
+    for k in range(0, 61, 16):
+        vals = VLINE_SPLIT[k:k + 16]
+        a.data("db " + ",".join("%d" % (v & 0xFF) for v in vals), [v & 0xFF for v in vals])
     a.comment("home_draw_input_name's strings for inputs 1..8 (0: none, the buffer is drawn as it is)")
     a.L("names8")
     tab = {inp: addr for inp, addr, _ in INPUT_NAMES}
@@ -240,9 +306,8 @@ def build_data(a):
     a.L("ease")
     for k, v in enumerate(EASE):
         a.data("dw %d              ; step %d" % (v, k), [v >> 8, v & 0xFF])
-    KIT.emit_font_data(a)
-    a.comment("icon strings for uk_text")
-    for lab, ch in (("hm_s_spk", "S"), ("hm_s_mute", "M"), ("hm_s_hp", "H")):
+    a.comment("icon and box-edge strings for uk_text")
+    for lab, ch in (("hm_s_spk", "S"), ("hm_s_mute", "M"), ("hm_s_hp", "H"), ("hm_s_lb", "["), ("hm_s_rb", "]")):
         a.L(lab)
         a.data('db "%s",0' % ch, ch.encode() + b"\0")
     for f in PFONTS:
@@ -277,15 +342,15 @@ ret
 
 
 def build_painter(a):
-    KIT.emit_painter(a)
-    KIT.emit_text(a)
+    KIT.emit_text(a)            # uk_text only: nothing here draws with the stock fonts any more
 
 
 def build_volume_page(a):
+    bit = {v: v.bit_length() - 1 for v in (VF_NUM, VF_LINE, VF_CAP)}
     S(a, """
 ; hn_draw_volume: replaces volpage_draw_volume 0x5936 (R7 speaker volume). Records the value
-; (HN_VOL, HN_NUM); draws the number and the line when no wipe runs, or when the wipe has already
-; revealed them; otherwise the wipe draws them when it reveals them.
+; (HN_VOL, HN_NUM); draws the number, the line and the dB caption when no wipe runs, or when the
+; wipe has already revealed them; otherwise the wipe draws them when it reveals them.
 hn_draw_volume:
 mov A,0x2B
 xrl A,#1
@@ -300,21 +365,8 @@ mov A,#60
 hdv_ok:
 mov DPTR,#0x%04X""" % HN_VOL + """
 movx @DPTR,A
-mov B,#10
-div AB             ; A tens, B ones
 inc DPTR           ; HN_NUM
-jnz hdv_tens
-mov A,#0x4F        ; blank tens digit: 0x7F after the add, a blank as wide as a digit (' ' is narrow)
-hdv_tens:
-add A,#0x30
-movx @DPTR,A
-inc DPTR
-mov A,B
-add A,#0x30
-movx @DPTR,A
-inc DPTR
-clr A
-movx @DPTR,A
+lcall hn_dec2
 mov R0,#5
 mov A,#2
 movx @R0,A         ; stock leaves the digit count 2 in XDATA 0x05
@@ -324,52 +376,274 @@ jz hdv_all
 inc DPTR           ; HN_VF
 movx A,@DPTR
 push ACC
-jnb ACC.3,hdv_nonum
+jnb ACC.%d,hdv_nonum""" % bit[VF_NUM] + """
 lcall hv_num
 hdv_nonum:
 pop ACC
-jnb ACC.4,hdv_ret
-ljmp hv_line
+push ACC
+jnb ACC.%d,hdv_noline""" % bit[VF_LINE] + """
+lcall hv_line
+hdv_noline:
+pop ACC
+jnb ACC.%d,hdv_ret""" % bit[VF_CAP] + """
+ljmp hv_cap
 hdv_ret:
 ret
 hdv_all:
 lcall hv_num
-ljmp hv_line
+lcall hv_line
+ljmp hv_cap
+
+; hn_dec2: A (0..99) as decimal text at DPTR, no leading zero, then a NUL; DPTR ends after the NUL
+hn_dec2:
+mov B,#10
+div AB             ; A tens, B ones
+jz hd_one
+add A,#0x30
+movx @DPTR,A
+inc DPTR
+hd_one:
+mov A,B
+add A,#0x30
+movx @DPTR,A
+inc DPTR
+clr A
+movx @DPTR,A
+inc DPTR
+ret
 """)
-    S(a, "; hv_num: the number, stock big digits at 2x, white, at 184,42 (leading zero blank)\nhv_num:")
-    fp_setup(a, "font_big", HN_NUM, 0, 184, 42, WHITE, scale=2)
-    S(a, "ljmp uk_paint")
-    S(a, "; hv_name: the input name, small font, white, at 16,30 (inputs 1..6)\nhv_name:\nlcall hn_name_ptr\njnc hvn_go\nret\nhvn_go:")
-    S(a, "mov DPTR,#0x%04X\nmov A,R2\nmovx @DPTR,A\ninc DPTR\nmov A,R3\nmovx @DPTR,A" % FP_STR)
-    fp_setup(a, "font_small", None, 1, 16, 30, WHITE)
-    S(a, "ljmp uk_paint")
-    S(a, "; hv_vol: \"VOL\" in the accent, small font, at 158,14\nhv_vol:")
-    fp_setup(a, "font_small", "str_vol", 1, 158, 14, "acc")
-    S(a, "ljmp uk_paint")
-    S(a, "; hv_div: the divider, 1 x 104 at 140,14\nhv_div:")
-    rect(a, 140, 1, 14, 104, DIVIDER)
-    S(a, "ljmp uk_fill")
-    S(a, "; hv_line: the whole position line\nhv_line:")
-    st_imm16(a, HN_S0, 40)
-    st_imm16(a, HN_S1, 279)
     S(a, """
-; hn_line_seg: the columns HN_S0..HN_S1 of the 240 x 3 position line at 40,136: accent up to
-; 40 + 4 * volume, 0x18E3 after it
-hn_line_seg:
+; hv_num: the number (HN_NUM) in the volume face, white, ending at x %d (baseline %d); black from
+; x %d up to it. Measured first (empty clip), so the columns left of a narrower number are cleared
+; without blanking the number itself.
+hv_num:""" % (VNUM_RIGHT, VNUM_Y - PF_VNUM.top, VNUM_LEFT))
+    tp_setup(a, "pf_vnum", HN_NUM, 0, 0, VNUM_Y, WHITE, clip=(0x100, 0))
+    S(a, """
+lcall uk_text      ; TP_END = width - 1
+mov DPTR,#0x%04X""" % (KIT.TP["END"] + 1) + """
+movx A,@DPTR
+mov R1,A
+mov A,%s""" % lo(VNUM_RIGHT) + """
+clr C
+subb A,R1
+mov R3,A
+mov A,%s""" % hi(VNUM_RIGHT) + """
+subb A,#0
+mov R2,A           ; the text's first column
+mov DPTR,#0x%04X""" % KIT.TP["X"] + """
+movx @DPTR,A
+inc DPTR
+mov A,R3
+movx @DPTR,A
+clr C
+subb A,%s""" % lo(VNUM_LEFT) + """
+jz hvn_draw        ; (the low byte of the difference: it is under 256)
+mov R1,A           ; columns to clear
+mov R2,%s""" % hi(VNUM_LEFT) + """
+mov R3,%s""" % lo(VNUM_LEFT) + """
+mov R5,#%d""" % VNUM_Y + """
+mov R4,#%d""" % PF_VNUM.H + """
+mov R6,#0
+mov R7,#0
+lcall uk_fill
+hvn_draw:""")
+    st_imm16(a, KIT.TP["STR"], HN_NUM)         # uk_text consumed it while measuring
+    S(a, """
+mov DPTR,#0x%04X""" % KIT.TP["CX0"] + """
+clr A
+movx @DPTR,A
+inc DPTR
+movx @DPTR,A
+inc DPTR
+inc A
+movx @DPTR,A
+inc DPTR
+mov A,#0x3F
+movx @DPTR,A       ; clip 0..319
+ljmp uk_text
+""")
+    S(a, "; hv_name: the input name (inputs 1..6), display face at 36 px, white, at %d, baseline %d\nhv_name:"
+         "\nlcall hn_name_ptr\njnc hvn_go\nret\nhvn_go:" % (VNAME_X, VNAME_Y - PF_VNAME.top))
+    st16(a, KIT.TP["STR"], "R2", "R3")
+    tp_setup(a, "pf_vname", None, 1, VNAME_X, VNAME_Y, WHITE, spacing=VNAME_SP)
+    S(a, "ljmp uk_text")
+    S(a, """
+; hv_status: the status line, loaded as the periodic refresh loads it (hn_stat_load), mono, grey
+; (reddish without a signal), at %d, baseline %d
+hv_status:
+lcall hn_stat_load""" % (VSTAT_X, VSTAT_Y - PF_MONO.top))
+    tp_setup(a, "pf_mono", SMALL_BUF, 0, VSTAT_X, VSTAT_Y, DIM, spacing=VSTAT_SP)
+    S(a, """
+lcall hn_dim_ink
+lcall uk_text
+mov R6,%s""" % hi(VSTAT_END) + """
+mov R7,%s""" % lo(VSTAT_END) + """
+mov R5,#%d""" % VSTAT_Y + """
+mov R4,#%d""" % PF_MONO.H + """
+ljmp hq_go         ; black up to x %d (a redraw after a turned-round exit may be shorter), wipe or not""" % VSTAT_END + """
+
+; hn_stat_load: XDATA 0x50 = the status line as home_refresh_periodic loads it (0x4016..0x407E: the
+; signal check 0x5232, then the input's string or its sample rate). That code ends in the lcall
+; home_refresh at 0x4081, which is hn_hold: with HN_SLD set it returns, to our caller.
+hn_stat_load:
+mov DPTR,#0x%04X""" % HN_SLD + """
+mov A,#1
+movx @DPTR,A
+ljmp 0x4016
+
+; hn_signal: replaces the status loader's lcall signal_check (0x4016): the check, its result kept
+; in HN_SIG for the status line's colour (RAM 0x22.5 is reused by volume_apply, so it is not read
+; back), C as the check left it
+hn_signal:
+lcall 0x5232
+clr A
+rlc A
+mov DPTR,#0x%04X""" % HN_SIG + """
+movx @DPTR,A
+rrc A
+ret
+
+; hn_dim_ink: TP_INK = the status line's colour: DIM, or DIM_LOST when the loader's signal check found
+; none (HN_SIG 0) on a digital input (0x47 not 6 or 8: the analogue inputs show "Analog input")
+hn_dim_ink:
+mov DPTR,#0x%04X""" % HN_SIG + """
+movx A,@DPTR
+jnz hdi_ret
+mov A,0x47
+cjne A,#6,hdi_n6
+ret
+hdi_n6:
+cjne A,#8,hdi_lost
+ret
+hdi_lost:
+mov DPTR,#0x%04X""" % KIT.TP["INK"] + """
+mov A,%s""" % hi(DIM_LOST) + """
+movx @DPTR,A
+inc DPTR
+mov A,%s""" % lo(DIM_LOST) + """
+movx @DPTR,A
+hdi_ret:
+ret
+""")
+    S(a, "; hv_vol: \"VOL\" in the accent, mono, letter-spaced %d, at %d, baseline %d\nhv_vol:"
+         % (VLBL_SP, VLBL_X, VLBL_Y - PF_MONO.top))
+    tp_setup(a, "pf_mono", "str_vol", 1, VLBL_X, VLBL_Y, "acc", spacing=VLBL_SP)
+    S(a, "ljmp uk_text")
+    S(a, "; hv_capr: \"max 60\", mono, faint, ending at x %d, baseline %d\nhv_capr:" % (VCAPR_RIGHT, VCAP_Y - PF_MONO.top))
+    tp_setup(a, "pf_mono", "str_max", 1, VCAPR_RIGHT, VCAP_Y, FAINT, align=1)
+    S(a, "ljmp uk_text")
+    S(a, "; hv_div: the divider, 1 x %d at %d,%d\nhv_div:" % (VDIV_H, VDIV_X, VDIV_Y))
+    rect(a, VDIV_X, 1, VDIV_Y, VDIV_H, DIVIDER)
+    S(a, "ljmp uk_fill")
+    S(a, """
+; hv_cap: the dB caption at %d, baseline %d, mono, grey: the volume's level below step 60 from the
+; stock NJW1194 code table (0x9289: code = 35 + 2 * dB below step 60), as "_75.5 dB" .. "  0.0 dB"
+; in HV_DB, always 8 characters (a shorter text draws its own background); "  _~ dB " at volume 0
+hv_cap:""" % (VCAP_X, VCAP_Y - PF_MONO.top))
+    tp_setup(a, "pf_mono", HV_DB, 0, VCAP_X, VCAP_Y, DIM)
+    S(a, """
 mov DPTR,#0x%04X""" % HN_VOL + """
 movx A,@DPTR
-rl A
-rl A
-add A,#40
+jnz hvc_num""")
+    st_imm16(a, KIT.TP["STR"], "str_dbinf")
+    S(a, """
+mov DPTR,#0x%04X""" % KIT.TP["SPC"] + """
+mov A,#1
+movx @DPTR,A       ; a code string
+ljmp uk_text
+hvc_num:
 mov R7,A
+mov A,#60
+clr C
+subb A,R7          ; 60 - volume
+mov DPTR,#0x9289
+movc A,@A+DPTR     ; the NJW1194 code
+add A,#0xDD        ; - 35: half-dB steps below step 60 (0..151)
+mov B,#2
+div AB             ; A whole dB (0..75), B its half
+mov R6,B
+mov B,#10
+div AB             ; A tens, B ones
+mov DPTR,#0x%04X""" % HV_DB + """
+mov R5,A
+jnz hvc_tens
+mov A,#0x20        ; under 10 dB: " _9.5 dB", or "  0.0 dB" at step 60
+movx @DPTR,A
+inc DPTR
+mov A,B
+orl A,R6
+jnz hvc_sign
+mov A,#0x20
+sjmp hvc_ones
+hvc_sign:
+mov A,#0x5F        ; "_": the minus sign
+sjmp hvc_ones
+hvc_tens:
+mov A,#0x5F
+movx @DPTR,A
+inc DPTR
+mov A,R5
+add A,#0x30
+hvc_ones:
+movx @DPTR,A
+inc DPTR
+mov A,B
+add A,#0x30
+movx @DPTR,A
+inc DPTR
+mov A,#0x2E        ; "."
+movx @DPTR,A
+inc DPTR
+mov A,R6
+jz hvc_half
+mov A,#5
+hvc_half:
+add A,#0x30
+movx @DPTR,A
+inc DPTR
+mov A,#0x20
+movx @DPTR,A
+inc DPTR
+mov A,#0x64        ; "d"
+movx @DPTR,A
+inc DPTR
+mov A,#0x42        ; "B"
+movx @DPTR,A
+inc DPTR
 clr A
-addc A,#0
+movx @DPTR,A
+ljmp uk_text
+""")
+    S(a, "; hv_line: the whole position line, in two halves (uk_fill takes widths up to 255)\nhv_line:")
+    st_imm16(a, HN_S0, VLINE_X)
+    st_imm16(a, HN_S1, VLINE_MID - 1)
+    S(a, "lcall hn_line_seg")
+    st_imm16(a, HN_S0, VLINE_MID)
+    st_imm16(a, HN_S1, VLINE_X + VLINE_W - 1)
+    split_hi_from = min(v for v in range(61) if VLINE_SPLIT[v] >= 256)
+    assert all((VLINE_SPLIT[v] >= 256) == (v >= split_hi_from) for v in range(61)) and VLINE_SPLIT[60] < 512
+    S(a, """
+; hn_line_seg: the columns HN_S0..HN_S1 of the %d x %d position line at %d,%d: accent up to the split
+; (vsplit[volume], HN_SPL), the track colour from it
+hn_line_seg:
+mov DPTR,#0x%04X""" % (VLINE_W, VLINE_H, VLINE_X, VLINE_Y, HN_VOL) + """
+movx A,@DPTR
+mov R7,A
+mov DPTR,#vsplit
+movc A,@A+DPTR
+mov R6,A           ; split lo
+mov A,R7
+clr C
+subb A,#%d""" % split_hi_from + """
+cpl C
+clr A
+rlc A              ; split hi: 1 from volume %d""" % split_hi_from + """
 mov DPTR,#0x%04X""" % HN_SPL + """
 movx @DPTR,A
 inc DPTR
-mov A,R7
+mov A,R6
 movx @DPTR,A
-; accent part: max(S0, 40) .. min(S1, split - 1)
+; accent part: max(S0, %d) .. min(S1, split - 1)""" % VLINE_X + """
 mov DPTR,#0x%04X""" % HN_S0 + """
 movx A,@DPTR
 mov R2,A
@@ -377,12 +651,12 @@ inc DPTR
 movx A,@DPTR
 mov R3,A
 clr C
-subb A,#40
+subb A,%s""" % lo(VLINE_X) + """
 mov A,R2
-subb A,#0
+subb A,%s""" % hi(VLINE_X) + """
 jnc hl_a0
-mov R2,#0
-mov R3,#40
+mov R2,%s""" % hi(VLINE_X) + """
+mov R3,%s""" % lo(VLINE_X) + """
 hl_a0:
 mov DPTR,#0x%04X""" % HN_SPL + """
 movx A,@DPTR
@@ -398,7 +672,7 @@ mov R4,A           ; R4:R5 = split - 1
 lcall hl_minS1
 lcall uk_acc
 lcall hl_fill
-; track part: max(S0, split) .. min(S1, 279)
+; track part: max(S0, split) .. min(S1, %d)""" % (VLINE_X + VLINE_W - 1) + """
 mov DPTR,#0x%04X""" % HN_SPL + """
 movx A,@DPTR
 mov R2,A
@@ -421,12 +695,12 @@ mov R2,A
 mov A,R7
 mov R3,A
 hl_t0:
-mov R4,#0x01
-mov R5,#0x17       ; 279
+mov R4,%s""" % hi(VLINE_X + VLINE_W - 1) + """
+mov R5,%s""" % lo(VLINE_X + VLINE_W - 1) + """
 lcall hl_minS1
 mov R6,%s""" % hi(TRACK) + """
 mov R7,%s""" % lo(TRACK) + """
-; hl_fill: fill R2:R3 .. R4:R5 (if not empty) at y 136, 3 rows, colour R6:R7
+; hl_fill: fill R2:R3 .. R4:R5 (if not empty, at most 255 columns) at y %d, %d rows, colour R6:R7""" % (VLINE_Y, VLINE_H) + """
 hl_fill:
 clr C
 mov A,R5
@@ -435,9 +709,9 @@ mov R1,A
 mov A,R4
 subb A,R2
 jc hl_none
-inc R1             ; width <= 240
-mov R5,#136
-mov R4,#3
+inc R1
+mov R5,#%d""" % VLINE_Y + """
+mov R4,#%d""" % VLINE_H + """
 ljmp uk_fill
 hl_none:
 ret
@@ -464,8 +738,10 @@ ret
 ; hn_vol_static: the parts of the volume page that don't depend on the volume
 hn_vol_static:
 lcall hv_name
+lcall hv_status
 lcall hv_div
-ljmp hv_vol
+lcall hv_vol
+ljmp hv_capr
 
 ; hn_volpage: page 2 renderer (replaces 0x2167). During a wipe it only records the volume.
 hn_volpage:
@@ -526,8 +802,13 @@ lcall 0x5CBC       ; ui_clear_small_buf, as ui_clear_screen
 ljmp 0x5CCB        ; ui_clear_big_buf
 
 ; hn_reverse: step = 20 - step (the ease table is symmetric, so x stays); A = new step, and at 20
-; (the running wipe had drawn nothing) the wipe stops: mode 0
+; (the running wipe had drawn nothing) the wipe stops: mode 0. The status line counts as not drawn:
+; an exit clears its buffer, so an entry turned round from one loads and draws it again.
 hn_reverse:
+mov DPTR,#0x%04X""" % HN_VF + """
+movx A,@DPTR
+anl A,#0x%02X""" % (0xFF ^ VF_STAT) + """
+movx @DPTR,A
 mov DPTR,#0x%04X""" % HN_STEP + """
 movx A,@DPTR
 mov R7,A
@@ -618,8 +899,15 @@ ljmp 0x5D45
 
 ; hn_hold: replaces the periodic refresh's lcall home_refresh at 0x4081 (0x3FE3): while a wipe
 ; runs, skip home_refresh and the status line (0x4084..0x4088) and note that the status buffer
-; (XDATA 0x50) has just been loaded
+; (XDATA 0x50) has just been loaded. When hn_stat_load ran the loader (HN_SLD), return to its caller.
 hn_hold:
+mov DPTR,#0x%04X""" % HN_SLD + """
+movx A,@DPTR
+jz hh_refresh
+clr A
+movx @DPTR,A
+ret                ; to hn_stat_load's caller
+hh_refresh:
 mov DPTR,#0x%04X""" % HN_MODE + """
 movx A,@DPTR
 jz hh_stock
@@ -1038,13 +1326,37 @@ ljmp hs_rvx
 hs_rve:
 """)
     # entry reveal
+    S(a, """
+; what the entry had drawn when this step began
+mov DPTR,#0x%04X
+movx A,@DPTR
+mov DPTR,#0x%04X
+movx @DPTR,A""" % (HN_VF, HN_HF0))
     for bit, name, x0, x1 in VOL_ELEMENTS:
         skip = "rv_%s" % name
         S(a, """
 mov DPTR,#0x%04X
 movx A,@DPTR
 anl A,#0x%02X
-jnz %s
+jnz %s""" % (HN_VF, bit, skip))
+        if name == "hv_status":
+            S(a, """
+; the name, the status line (with its load) and the line reach x 16..18 together: if the name was
+; drawn in this step, the status line waits for the next one (the last step draws whatever is left)
+mov DPTR,#0x%04X""" % HN_STEP + """
+movx A,@DPTR
+xrl A,#%d""" % STEPS + """
+jz re_split_ok
+mov DPTR,#0x%04X""" % HN_VF + """
+movx A,@DPTR
+mov R2,A
+mov DPTR,#0x%04X""" % HN_HF0 + """
+movx A,@DPTR
+xrl A,R2
+anl A,#0x%02X""" % VF_NAME + """
+jnz %s""" % skip + """
+re_split_ok:""")
+        S(a, """
 mov DPTR,#0x%04X
 movx A,@DPTR
 mov R6,A
@@ -1062,7 +1374,7 @@ mov DPTR,#0x%04X
 movx A,@DPTR
 orl A,#0x%02X
 movx @DPTR,A
-%s:""" % (HN_VF, bit, skip, HN_LIM, lo(x0), hi(x0), skip, name, HN_VF, bit, skip))
+%s:""" % (HN_LIM, lo(x0), hi(x0), skip, name, HN_VF, bit, skip))
     S(a, "ljmp hs_end\nhs_rvx:")
     S(a, """
 ; what the exit had drawn when this step began
@@ -1272,9 +1584,10 @@ ljmp 0x%04X
     S(a, "; hm_name_meas: TP_END = where hm_name's text ends (nothing drawn)\nhm_name_meas:")
     tp_setup(a, "pf_name", BIG_BUF, 0, HNAME_X, HNAME_Y, WHITE, clip=(0x100, 0), spacing=NAME_SP)
     S(a, "ljmp uk_text")
-    S(a, "; hm_status: the status line (XDATA 0x50), mono, grey, at x 18, baseline 132\nhm_status:")
+    S(a, "; hm_status: the status line (XDATA 0x50), mono, grey (reddish without a signal, hn_dim_ink), "
+         "at x %d, baseline %d\nhm_status:" % (STAT_X, STAT_Y - PF_STATUS.top))
     tp_setup(a, "pf_status", SMALL_BUF, 0, STAT_X, STAT_Y, DIM, spacing=STAT_SP)
-    S(a, "lcall uk_text")
+    S(a, "lcall hn_dim_ink\nlcall uk_text")
     S(a, "mov R6,#1\nmov R7,#0x3F\nmov R5,#%d\nmov R4,#%d\nljmp hm_rest" % (STAT_Y, PF_STATUS.H))
     S(a, "; hm_stat_meas: TP_END = where hm_status's text ends\nhm_stat_meas:")
     tp_setup(a, "pf_status", SMALL_BUF, 0, STAT_X, STAT_Y, DIM, clip=(0x100, 0), spacing=STAT_SP)
@@ -1392,20 +1705,8 @@ mov R0,#5
 mov A,#2
 movx @R0,A         ; XDATA 5 = 2, as stock
 mov A,R7
-mov B,#10
-div AB             ; A tens, B ones
 mov DPTR,#0x%04X""" % HM_VS + """
-jz hmv_one
-add A,#0x30
-movx @DPTR,A
-inc DPTR
-hmv_one:
-mov A,B
-add A,#0x30
-movx @DPTR,A
-inc DPTR
-clr A
-movx @DPTR,A
+lcall hn_dec2
 """)
     tp_setup(a, "pf_hvol", HM_VS, 0, HVOL_X, HVOL_Y, WHITE)
     S(a, "lcall uk_text")
@@ -1432,12 +1733,10 @@ inc DPTR
 mov A,R6
 movx @DPTR,A       ; HM_TL
 """)
-    tp_setup(a, "pf_tag", HM_TAG, 0, 0, TAG_TY, WHITE, clip=(0x100, 0))
+    tp_setup(a, "pf_mono", HM_TAG, 0, 0, TAG_TY, WHITE, clip=(0x100, 0))
     S(a, """
 lcall uk_text      ; measure: TP_END = width - 1
-""")
-    st_imm16(a, KIT.TP["STR"], HM_TAG)
-    S(a, """mov DPTR,#0x%04X""" % (KIT.TP["END"] + 1) + """
+mov DPTR,#0x%04X""" % (KIT.TP["END"] + 1) + """
 movx A,@DPTR
 inc A
 mov R7,A           ; text width
@@ -1476,49 +1775,26 @@ mov R6,#0
 mov R7,#0
 lcall uk_fill
 ht_box:
-; the box: top and bottom rows, left and right columns, in the accent
-lcall ht_xw
+; the box, in the accent: its left and right edges with the rounded corners (ht_edges), then the
+; top and bottom rows between them (x + 2 .. x + w - 3)
+lcall ht_edges
+lcall ht_xw2
 mov R5,#%d""" % TAG_Y0 + """
 mov R4,#1
 lcall ht_acc
-lcall ht_xw
+lcall ht_xw2
 mov R5,#%d""" % TAG_Y1 + """
 mov R4,#1
 lcall ht_acc
-lcall ht_xw
-mov R1,#1
-mov R5,#%d""" % (TAG_Y0 + 1) + """
-mov R4,#%d""" % (TAG_Y1 - TAG_Y0 - 1) + """
-lcall ht_acc
-lcall ht_xw
-dec A
-add A,R3
-mov R3,A
-clr A
-addc A,R2
-mov R2,A           ; x + w - 1
-mov R1,#1
-mov R5,#%d""" % (TAG_Y0 + 1) + """
-mov R4,#%d""" % (TAG_Y1 - TAG_Y0 - 1) + """
-lcall ht_acc
-; the inside around the text, black: rows above and below it, TAG_PAD - 1 columns left and right
-lcall ht_xw
-inc R3
-dec R1
-dec R1
-mov R5,#%d""" % (TAG_Y0 + 1) + """
-mov R4,#%d""" % (TAG_TY - TAG_Y0 - 1) + """
-lcall ht_black
-lcall ht_xw
-inc R3
-dec R1
-dec R1
-mov R5,#%d""" % (TAG_TY + PF_TAG.H) + """
-mov R4,#%d""" % (TAG_Y1 - TAG_TY - PF_TAG.H) + """
-lcall ht_black
-lcall ht_xw
-inc R3
-mov R1,#%d""" % (TAG_PAD - 1) + """
+; the inside around the text, black: the rows above and below the text's cell (if any) from x + 2
+; to x + w - 3 (the edge glyphs cover x + 1 and x + w - 2), TAG_PAD - 2 columns left and right of it""")
+    for y, rows in ((TAG_Y0 + 1, TAG_TY - TAG_Y0 - 1), (TAG_TY + PF_TAG.H, TAG_Y1 - TAG_TY - PF_TAG.H)):
+        assert rows >= 0
+        if rows:                                   # uk_fill takes no empty fill
+            S(a, "lcall ht_xw2\nmov R5,#%d\nmov R4,#%d\nlcall ht_black" % (y, rows))
+    S(a, """
+lcall ht_xw2
+mov R1,#%d""" % (TAG_PAD - 2) + """
 mov R5,#%d""" % TAG_TY + """
 mov R4,#%d""" % PF_TAG.H + """
 lcall ht_black
@@ -1530,12 +1806,14 @@ add A,R3
 mov R3,A
 clr A
 addc A,R2
-mov R2,A           ; x + 5 + text width
-mov R1,#%d""" % (TAG_PAD - 1) + """
+mov R2,A           ; x + pad + text width
+mov R1,#%d""" % (TAG_PAD - 2) + """
 mov R5,#%d""" % TAG_TY + """
 mov R4,#%d""" % PF_TAG.H + """
 lcall ht_black
-; the text at x + pad
+; the text at x + pad""")
+    tp_setup(a, "pf_mono", HM_TAG, 0, None, TAG_TY, "acc")
+    S(a, """
 mov DPTR,#0x%04X""" % HM_TX + """
 movx A,@DPTR
 add A,#%d""" % (TAG_PAD + TAG_BASE) + """
@@ -1547,26 +1825,30 @@ movx @DPTR,A
 inc DPTR
 mov A,R7
 movx @DPTR,A
-lcall uk_acc
-mov DPTR,#0x%04X""" % KIT.TP["INK"] + """
-mov A,R6
-movx @DPTR,A
-inc DPTR
-mov A,R7
-movx @DPTR,A
-mov DPTR,#0x%04X""" % KIT.TP["CX0"] + """
-clr A
-movx @DPTR,A
-inc DPTR
-movx @DPTR,A
-inc DPTR
-inc A
-movx @DPTR,A
-inc DPTR
-mov A,#0x3F
-movx @DPTR,A       ; clip 0..319
 ljmp uk_text
-; ht_xw: R2:R3 = box x, R1 = A = box width (the box never starts at x 255 or 511: inc R3 is safe)
+; ht_edges: the box's left and right edges, two columns each with corners of radius 2 (pf_box: "["
+; at x, "]" at x + w - 2), in the accent
+ht_edges:""")
+    tp_setup(a, "pf_box", "hm_s_lb", 1, None, TAG_Y0, "acc")
+    S(a, """
+lcall ht_xw""")
+    st16(a, KIT.TP["X"], "R2", "R3")
+    S(a, "lcall uk_text")
+    st_imm16(a, KIT.TP["STR"], "hm_s_rb")
+    S(a, """
+lcall ht_xw
+mov A,R1
+dec A
+dec A
+add A,R3
+mov R3,A
+clr A
+addc A,R2
+mov R2,A           ; x + w - 2""")
+    st16(a, KIT.TP["X"], "R2", "R3")
+    S(a, """
+ljmp uk_text
+; ht_xw: R2:R3 = box x, R1 = A = box width
 ht_xw:
 mov DPTR,#0x%04X""" % HM_TX + """
 movx A,@DPTR
@@ -1577,6 +1859,19 @@ addc A,#0
 mov R2,A
 inc DPTR
 movx A,@DPTR
+mov R1,A
+ret
+; ht_xw2: R2:R3 = box x + 2, R1 = A = box width - 4 (the box is at least 2 * TAG_PAD wide)
+ht_xw2:
+lcall ht_xw
+mov A,R3
+add A,#2
+mov R3,A
+clr A
+addc A,R2
+mov R2,A
+mov A,R1
+add A,#0xFC
 mov R1,A
 ret
 ht_acc:

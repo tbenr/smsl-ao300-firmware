@@ -53,15 +53,31 @@ def ramp(ink, bg):
     return [bg, avg565(bg, half), avg565(ink, half), ink]
 
 
+def box_edges(h):
+    """A raster (as load_raster returns one) of the two edges of a 1-px box h rows tall with corners
+    of radius 2, as the UI mock strokes its tags: "[" the left edge, "]" the right one, each two
+    columns wide (the edge column and the first column inside). The coverages are a 1-px-wide
+    stroke of radius 2 sampled on the pixel grid (corner 0.14, its two neighbours 0.77, the pixel
+    inside the corner 0.45), so the corners quantise to 1/4, 3/4, 3/4 and 1/4 ink. A theme draws the
+    box's top and bottom rows between the edges itself (from x + 2 to x + w - 3)."""
+    assert h >= 6
+    left = ["2c", "c7"] + ["f0"] * (h - 4) + ["c7", "2c"]
+    right = [r[::-1] for r in left]
+    return {"id": "box%d" % h, "font": "1-px box edges, corner radius 2, %d rows" % h,
+            "glyphs": {"[": {"adv": 2, "x": 0, "y": 1 - h, "rows": left},
+                       "]": {"adv": 2, "x": 0, "y": 1 - h, "rows": right}}}
+
+
 class PFont:
-    """name: label prefix in code; raster: raster id; chars: characters to keep (the codes the
-    firmware strings use); alias: {char: raster character to draw it with}, e.g. {"-": "−"}."""
+    """name: label prefix in code; raster: raster id (a file in RASTER_DIR) or a raster dict (see
+    box_edges); chars: characters to keep (the codes the firmware strings use); alias: {char:
+    raster character to draw it with}, e.g. {"-": "−"}."""
 
     def __init__(self, name, raster, chars, bpp=2, alias=None):
         assert bpp in (1, 2)
         self.name, self.bpp = name, bpp
-        r = load_raster(raster)
-        self.raster, self.font = raster, r["font"]
+        r = raster if isinstance(raster, dict) else load_raster(raster)
+        self.raster, self.font = r.get("id", raster), r["font"]
         alias = alias or {}
         chars = sorted(set(chars))
         assert all(0x20 <= ord(c) < 0x80 for c in chars), "uk_text strings are 7-bit"
