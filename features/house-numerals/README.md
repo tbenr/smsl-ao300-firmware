@@ -90,11 +90,10 @@ Earlier images:
 ## Status
 
 hn10: emulator-verified (all tests pass, including "fix-auto-off in house-numerals"). Tried on
-the amp on 2026-09-30: looks good (the cubic wipes, and with them hn9's number roll and spring
-on the line).
+the amp on 2026-09-30: looks good.
 
-hn9: emulator-verified (all tests pass, including "fix-auto-off in house-numerals"). Not
-flashed by itself; its animations were tried on the amp as part of hn10.
+hn9: emulator-verified (all tests pass, including "fix-auto-off in house-numerals"). Tried on
+the amp on 2026-09-30, before hn10: good.
 
 hn8: emulator-verified (all tests pass, including "fix-auto-off in house-numerals"). Tried on
 the amp on 2026-09-30: works. One thing to look into (see `TODO.md`): after a Source change

@@ -280,7 +280,7 @@ without a signal; tried on the amp on 2026-09-30, works (an open question on the
 status after a Source change is in `features/house-numerals/TODO.md`). hn9 (`v1.4 tbenr hn9`)
 adds the volume page's two animations from the mock, the number roll and the spring on the
 position line; hn10 (`v1.4 tbenr hn10`) gives both wipes the mock's cubic ease, 0.32 s each
-way. hn10 was tried on the amp on 2026-09-30: looks good.
+way. Both were tried on the amp on 2026-09-30: good.
 
 Verified on the amp on 2026-09-29, as part of hn7: the Auto OFF fix (`features/fix-auto-off`). With
 Dimmer on Auto OFF the display goes dark after a cold power-up. Its standalone image

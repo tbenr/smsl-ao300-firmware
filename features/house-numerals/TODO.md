@@ -1,7 +1,7 @@
 # House Numerals: what is left
 
 State as of hn10 (`v1.4 tbenr hn10`: hn8 plus the number roll and the spring on the line (hn9)
-and the mock's cubic ease on the wipes (hn10); tried on the amp on 2026-09-30, looks good). The
+and the mock's cubic ease on the wipes (hn10); both tried on the amp on 2026-09-30, good). The
 reference is study 3 in `features/ui-theme/ui_themes.html`.
 
 ## To investigate: reddish status after a Source change
