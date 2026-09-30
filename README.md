@@ -275,7 +275,8 @@ fix-auto-off included, so Dimmer Auto OFF also times out after a cold power-up. 
 the amp on 2026-09-29: it looks good, and Auto OFF times out after a cold power-up. hn8
 (`v1.4 tbenr hn8`) adds the mock's volume page (name, status line, "VOL", 84-px numerals, a
 288-px line, the level in dB and "max 60"), rounded tag corners and a reddish status line
-without a signal; emulator-verified, not yet tried on the amp.
+without a signal; tried on the amp on 2026-09-30, works (an open question on the reddish
+status after a Source change is in `features/house-numerals/TODO.md`).
 
 Verified on the amp on 2026-09-29, as part of hn7: the Auto OFF fix (`features/fix-auto-off`). With
 Dimmer on Auto OFF the display goes dark after a cold power-up. Its standalone image

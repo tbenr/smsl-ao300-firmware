@@ -54,8 +54,10 @@ Earlier images:
 
 ## Status
 
-hn8: emulator-verified (all tests pass, including "fix-auto-off in house-numerals"), not yet
-tried on the amp.
+hn8: emulator-verified (all tests pass, including "fix-auto-off in house-numerals"). Tried on
+the amp on 2026-09-30: works. One thing to look into (see `TODO.md`): after a Source change
+from an input whose status was reddish ("No Connected"), the next input's status shows reddish
+too for a while, until a refresh turns it grey.
 
 hn7: emulator-verified (all tests pass, including "fix-auto-off in house-numerals"). Tried on
 the amp on 2026-09-29: looks good, and with Dimmer on Auto OFF the display goes dark after a cold
@@ -709,6 +711,7 @@ input selection over IR).
 ## Files
 
 - `layout.json` is the home layout; `sizing.html` edits it (see "Layout").
+- `TODO.md`: what is left against the mock, and what to investigate.
 - `build_patch.py` builds `build/flash_house_numerals.bin` from
   `features/fast-lcd/build/flash_fastlcd.bin` and writes the listing
   `house_numerals.asm`. It uses the text instructions added to `tools/patch/asm51.py`
