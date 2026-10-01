@@ -34,6 +34,10 @@ tools/
                                   kit's test in parallel
   emu/ao300.py                    harness: boot the whole firmware, press remote keys, log
                                   audio-chip writes and pins per 10 ms tick
+  emu/i2c.py                      I2C slave model for the harness: the chips answer, and
+                                  every transfer is logged with its call site
+  emu/bus_trace.py                runs stock through every input and setting and prints the
+                                  registers and pins it touches (source of docs/bus-map.md)
   emu/panel_video.py              60 fps video of what the glass shows: samples panel memory
                                   line by line at the 60 Hz refresh (needs ffmpeg)
   emu/uitest.py                   shared helpers for UI tests: screen access, the stock
@@ -478,7 +482,8 @@ PE structure with `pefile`. Only the firmware resource differs from the vendor u
 
 What the control MCU (STC8C2K64S2) talks to, and how. Chip identities come from the
 firmware's bus traffic, silkscreen labels on board photos (ASR thread page 25) and
-retailer listings; pin roles come from the code.
+retailer listings; pin roles come from the code. `docs/bus-map.md` has the full register
+and pin tables, from an emulator trace of the stock image (`tools/emu/bus_trace.py`).
 
 Two buses share the pins P3.7 (data) and P4.1 (clock):
 - a 3-wire write-only bus with latch P2.0 for the NJW1194;
@@ -487,16 +492,17 @@ Two buses share the pins P3.7 (data) and P4.1 (clock):
 | Subsystem | Chip | MCU interface | Notes |
 |---|---|---|---|
 | Volume, bass, treble, EQ presets, speaker/headphone volume | NJW1194 analogue volume/tone controller | 3-wire, 16-bit words (0x54EA / 0x54DA): data byte D15..D8, select D7..D4 (0=vol1, 1=vol2, 2=input sel, 3=treble, 4=bass), chip addr D3..D0 | Volume code n = 32 - n/2 dB, 0xFF = mute; steps vs dB in the "Volume scale" section. Tone byte: D15 boost/cut, D14..D11 level 0..10 dB, D10 tone on/off (0x22.4 = bypass) |
-| DAC and its filter modes | CS43131 | I2C address 0x62, retries up to 5 times (0x4D9E) | The five filter menu options are the CS43131's own modes; the filter register write is not yet mapped |
-| GPIO expanders | up to four AW9523 (silkscreen RST_AW9523) | I2C addresses 0xB0, 0xB2, 0xB4, 0xB6; pin ids 0x10..0x1F per device; write 0x51AD, read-pin 0x2302, init 0x47BA | Carry most control nets: MUTE_AMP, MUTE_PRE, MUTE_HP, DIR_RST, DAC_MCK_SEL, relays, mux (to be mapped pin by pin) |
+| DAC and its filter modes | CS43131 | I2C address 0x62, write-only (`dac_write` 0x4D8A, 5 tries); reset on MCU P3.4 | The five filter menu options are the CS43131's own modes: `dac_set_filter` (0x4ECD) writes register 0x090000 = 0x02, 0x42, 0x82, 0xC2, 0xE2 for settings 1..5. Mute is register 0x090003 (0xA3 / 0xA0). Full register list in `docs/bus-map.md` |
+| GPIO expander | one AW9523B (silkscreen RST_AW9523) | I2C address 0xB0; pin ids 0x10..0x1F; register write 0x51AD, write-pin 0x1A7C, read-pin 0x2302, init 0x47BA. The routines can address four chips, but every call uses the first | Four outputs in use: 0x10 and 0x14 to the Bluetooth module, 0x17 (set low once), 0x18 high on HDMI. Six inputs: Bluetooth status and the signal-present lines. The mutes, relays, resets and mux lines are MCU pins. Pin table in `docs/bus-map.md` |
+| Clock generator | Si5351 register layout (part not seen) | I2C address 0xC0, write-only; one 43-register table (0x92C6) sent at power-on by `clkgen_load` (0x5089) | Output 0 at twice the reference frequency, the other outputs off, never changed afterwards. Reference and destination unknown |
 | Digital interface receiver | TI PCM9211 (fits: I2C 0x80, regs 0x38/0x39, net DIR_RST) | I2C read of sample-rate registers for optical, coax and Bluetooth | Bluetooth audio therefore arrives as SPDIF; lock pin on MCU P4.2 |
-| USB audio | XMOS XU-316, own firmware | UART1 receive-only (ISR 0x55F2); USB activity on P4.5; USB_DET net | Incoming messages feed the PCM / DSD / DoP / MQA display |
+| USB audio | XMOS XU-316, own firmware | UART1 receive-only (ISR 0x55F2, `uart1_init` 0x59ED: 115200 baud from Timer2). `standby_power_step` (0x55BC) moves UART1 with the power state through P_SW1: on P3.6 (RxD_2; TxD_2 would be P3.7, the shared bus data pin, so never write SBUF while the amp is on) when powered, back on the header pins P3.0/P3.1 in standby (pin pairs per the STC8G manual's S1_S table). USB activity on P4.5; USB_DET net | Incoming messages feed the PCM / DSD / DoP / MQA display |
 | HDMI ARC | receiver near the HDMI socket (QFP-48, 1.2 V core; part not readable) | signal-present via expander pin 0x1C; routing shares the USB path, differing on P2.4 | Read by the signal-present routine 0x5232 |
-| Bluetooth | separate module board | control pins P2.5, P2.7, P2.2; status via expander pins 0x11..0x13; signal-present via expander pin 0x15 | own stack, out of reach |
+| Bluetooth | separate module board | expander pin 0x10 (high only on the Bluetooth input; "BT Reconnect" pulses it low) and 0x14 ("BT list clear" pulses it low); status via expander pins 0x11..0x13; signal-present via expander pin 0x15 | own stack, out of reach |
 | Signal presence per input (0x5232) | | USB: P4.5; optical/coax/AUX: P4.2 lock; Bluetooth: expander 0x15; HDMI: expander 0x1C; USB detect also expander 0x1D | Drives the on-screen status and a mute on signal loss (P2.5, after 1 s, digital inputs and headphone mode). There is no auto-standby; "Always ON / Auto OFF" is the display Dimmer timeout |
-| Input routing | mux control + NJW1194 selector | P0.1, P0.2, P4.6, P2.4 plus expander bits (0x24D6) | |
-| Power amplifier | MA5332MS, analogue in | mute / enable via expander | no control interface |
-| Speaker and headphone relays | two speaker relays, one headphone relay | driven during the power-on sequence | |
+| Input routing | mux control + NJW1194 selector | P0.1, P0.2, P4.6, P2.4, expander pin 0x18, five receiver registers (0x24D6) | Per-input table in `docs/bus-map.md` |
+| Power amplifier | MA5332MS, analogue in | mute on MCU P2.2 (high while muted and in headphone mode; role inferred from the trace) | no control interface |
+| Speaker and headphone relays | two speaker relays, one headphone relay | P2.5 and P2.7, high in headphone mode (`p2_mute_pins_by_output`); which pin drives which relay is not known | |
 | Display | ST7789-class colour LCD, 320 × 170 as drawn | bit-banged 8-bit bus on P1 (WR P0.5, CS P0.7, D/C P0.3), byte writes 0x567A / 0x5C9C with a delay call per byte; full clear 0x51EE | column offset 0x23. Window 0x4437: firmware y + 0x23 → CASET, firmware x → RASET, so pixels stream one 170-px vertical line at a time; P0 and P1 are push-pull (init 0x45CE). Two 1-bit fonts, stored rotated (glyph rows = screen columns): small 14 × 24 at 0x5DAB (42 bytes/glyph, painter 0x2DF8, status line and menus) and big 32 × 30 at 0x6A23 (120 bytes/glyph, painter 0x3F3C, input name and other centre-line text); glyph index = digits 6..15, A-Z 0x10.., a-z 0x2A.. (small font only). Text colour from the theme table 0x9241 (RGB565: FFFF F800 07E0 33BF CFA0 07FF FC00 F81F). Home (refresh 0x5C8B): output/mute icon at 15,8 (0x5744), volume as two digits at 48,9 (0x5916; speaker volume 0x31 or headphone volume 0x52), format tag at 208,10, EQ tag at 266,10, input name centred at y 75, status line centred at y 135. Page variable 0x45 (1 home, 2 volume, 3+ menus; renderer 0x2101, jump table `ui_page_table` at 0x2143, page 2 entry `volpage_render` at 0x2167). Volume page (page 2): full clear, two digits at 130,75, "volume" at y 135, back home when the Timer0 countdown 0x3F:0x40 (200 ticks, armed by the key tail 0x0F48) runs out (0x3ED9 sets page 1 and 0x22.3); the next render only clears, and the periodic refresh 0x3FE3 draws home 10 main ticks later (0x27:0x28 is that refresh countdown: 10 after a render, 50 after each refresh). The volume keys (`key_volume_up` 0x0D03, `key_volume_up2` 0x0D83, `key_volume_down4` 0x0E2A, `key_volume_down` 0x0ED2) each set page 2 and open it directly, inline right after `mov 0x45,#0x02` (four sites: 0x0D33, 0x0DB3, 0x0E5A, 0x0F02, each `lcall ui_clear_screen` then the "volume" caption); the page-2 renderer at 0x2167 is only a second way in, not the path the keys use |
 | Backlight | LED on GPIO P0.6 | on/off only; "Auto OFF" (0x29 = 2) clears it when the countdown 0x2F:0x30 runs out (0x33DB, main ticks), armed to 500 by every key (0x0BBD): about 6 s in the emulator, as main-loop passes miss some 10 ms ticks | no PWM peripheral on this MCU. Stock never arms it at power-on, see "AO300 PRO firmware" |
 | Front panel | buttons / encoder (nets RE_A, RE_B) | P4.7, P5.4, P5.5, P2.6, P7.4 | Encoder scanned by Timer3 (0x5040, every 0.5 ms) through 0x396D into RAM 0x2D (0xFF idle); when no IR or panel key is pending, `read_key`'s tail (0x3E37) returns 0x2D on every powered page (menu pages other than 7 and 8 swap 0x1A and 0x1B first), so `dispatch_key` sees 0xFF (no key) on an idle pass. `tools/emu/ao300.py` runs Timer3 as well as Timer0 (see Testing) |
@@ -628,6 +634,8 @@ power-on, so stock times out there too.
 ## Open questions
 
 Things still worth investigating to complete the picture of what the MCU code can do.
+`docs/probing-plan.md` has the plan for finding out on the amp: a read-only probe build
+first, single writes after it.
 
 - **HDMI auto-switch feasibility.** The ARC receiver's signal-present line reaches the
   MCU through expander pin 0x1C and is already polled for the status display. Unknown: whether
@@ -635,23 +643,28 @@ Things still worth investigating to complete the picture of what the MCU code ca
   or muxed off via P2.4 when HDMI is not active). A debug build that shows the pin state
   on screen while on USB would answer it; if live, auto-switch is a small main-loop
   addition.
-- **Expander pin map.** List every expander pin id the firmware sets or reads and match
-  them to the silkscreen nets (MUTE_AMP, MUTE_PRE, MUTE_HP, DIR_RST, DAC_MCK_SEL, relays,
-  HDMI enable). Needed before touching power sequencing or switching delays.
-- **Filter register mapping.** Find the routine that turns the filter setting (RAM 0x2C)
-  into the CS43131 register write, and confirm each of the five values. Also the entry
-  point for other CS43131 features (digital volume, de-emphasis).
+- **Pin roles on the board.** `docs/bus-map.md` lists every expander and MCU pin the
+  firmware drives or reads, with roles inferred from when they change. Matching them to
+  the silkscreen nets (MUTE_AMP, MUTE_PRE, MUTE_HP, DIR_RST, DAC_MCK_SEL, relays) needs a
+  board photo or a meter. Still needed before touching power sequencing.
+- **Clock generator.** The chip at I2C 0xC0 (Si5351 register layout): which part, which
+  crystal, and what its output clocks.
+- **DAC bits stock never sets.** Register 0x090000 bit 0 and bit 1, the PCM volume
+  registers 0x090001/0x090002 and the path controls 0x090003/0x090004: check each against
+  the CS43131 datasheet before a patch uses it (digital volume, de-emphasis).
 - **PCM9211 confirmation.** Verify the receiver identity (register 0x38/0x39 semantics
   match the datasheet) and whether the ARC receiver's output also passes through it.
 - **HDMI ARC receiver part number.** Still unreadable in photos; a close-up of the QFP-48
   next to the HDMI socket would settle it and its status-pin behaviour.
 - **Backlight drive.** What P0.6 connects to (transistor, resistor, or driver enable).
   Determines whether software PWM dimming is viable; listen for audio buzz in any test.
-- **UART1 message format.** The receive buffer (0x76..) and its consumer (0x2810 /
-  0x2975 region) parse status from the XMOS; documenting the format would allow richer
-  display of stream info.
-- **Unnamed key handlers.** 0x1047 (key 0x1C, raw 0x09), 0x0F62 (key 0x59), 0x10E1
-  (four-press combo 0x38). Some may be hidden service functions.
+- **UART1 message values.** A message is two bytes and a 0xFF terminator: format class,
+  then rate index 1..12 (`uart1_isr`, `xmos_format_take` 0x408B). The meaning of each class
+  and index is in the jump tables after 0x408B and still to be tabulated.
+- **Key handlers, resolved in the emulator.** 0x1047 (key 0x1C, NEC 0x09) is the mute
+  toggle, 0x10BE (key 0x14, NEC 0x08) toggles Dimmer, 0x106D (key 0x0A, NEC 0x0E) is "BT
+  Reconnect", 0x10E1 (four-press combo 0x38) is "BT list clear", 0x0F62 (key 0x59) steps
+  the EQ. None is a hidden service function.
 - **Power-on sequence timing.** The delays in 0x5AAB, 0x24D6 and 0x5D66 govern switching
   speed and the click that SMSL fixed once; worth tabulating if faster switching is
   wanted.

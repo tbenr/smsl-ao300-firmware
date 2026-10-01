@@ -29,8 +29,10 @@ public class SmslAo300Labels extends GhidraScript {
         {0x0ED2, "key_volume_down"},
         {0x0F62, "key_59"},            {0x0F93, "key_source_next"},
         {0x0FC8, "key_source_prev"},   {0x1006, "key_output_toggle"},
-        {0x1047, "key_1c"},            {0x106D, "key_bt_function"},
-        {0x10BE, "key_toggle_29"},     {0x10E1, "key_38_combo"},
+        {0x1047, "key_1c"},            // NEC 0x09: mute toggle (0x22.1): NJW1194 mute code, DAC mute, P2.2 high, clr P2.5
+        {0x106D, "key_bt_function"},   // key 0x0A (NEC 0x0E), Bluetooth only: "BT Reconnect" (0x934E), expander pin 0x10 low for 0.3 s
+        {0x10BE, "key_toggle_29"},     // key 0x14 (NEC 0x08): Dimmer 1 <-> 2
+        {0x10E1, "key_38_combo"},      // bt_list_clear, then home
         {0x10FC, "key_menu_nav"},      // reached by NEC 0x04, which opens the menu (page -> 3) from home
         {0x126F, "key_up"},
         {0x135A, "key_down"},          {0x144E, "key_menu"},          // NEC 0x03 (NEC_MENU in ao300.py); acts only inside a menu, does not open it
@@ -43,6 +45,8 @@ public class SmslAo300Labels extends GhidraScript {
         {0x396D, "encoder_scan"},      // timer3_isr (every 0.5 ms): RE_A P5.5 / RE_B P5.4 -> key code, stored in 0x2D (0xFF idle)
         {0x536F, "key_history_combo"}, {0x549F, "int0_isr"},
         {0x55F2, "uart1_isr"},         {0x5628, "input_step"},
+        {0x59ED, "uart1_init"},        // SCON 0x50, Timer2 as 1T baud generator (reload 0xFFCC: 115200 at 24 MHz), UART1 on P3.0/P3.1, ES on
+        {0x55BC, "standby_power_step"}, // standby loop, after the standby key handler: on power-on clr P0.2, P_SW1 S1_S=01 (UART1 to P3.6/P3.7, the XMOS line), power_on_display; on entering standby setb P0.2, S1_S=00 (UART1 back on the header pins P3.0/P3.1), 0x5B4F
         {0x56E8, "int1_isr"},          {0x588B, "input_menu_select"},
         {0x58AF, "eeprom_write"},
         {0x58D3, "audio_apply_mute"},  // 0x22.4 set: volume_apply(0x31), setb 0x22.5; clear: NJW1194 to the mute code (0x92C5), clr 0x22.5; then DAC reg 9 by 0x22.5 (0x5A0A). 5.2 ms when muting
@@ -81,7 +85,30 @@ public class SmslAo300Labels extends GhidraScript {
         {0x2302, "expander_read_pin"}, {0x47BA, "expander_init"},
         {0x4D9E, "dac_i2c_write"},     {0x51AD, "expander_write"},
         {0x5232, "signal_present_update"}, {0x54EA, "njw1194_write"},
-        {0x4CDF, "i2c_read_reg16"},    // R7 device, R4:R5 register, returns R7; 5 tries
+        {0x4CDF, "i2c_read_reg16"},    // R7 device, R4:R5 register (only R5 is sent), returns R7; 5 tries. Only the expander (0xB0) and the receiver (0x80) are ever read
+        {0x4FAD, "i2c_write_reg"},     // R7 device, R4:R5 register (only R5 is sent), R3 data; 5 tries
+        {0x4D8A, "dac_write"},         // device 0x62: address bytes R7, R5, R3, then XDATA 3 (control) and XDATA 4 (data); 5 tries (dac_i2c_write is its retry loop)
+        {0x5B65, "i2c_start"},         {0x5C08, "i2c_stop"},
+        {0x56B9, "i2c_write_byte"},    // R7, MSB first; waits while P4.1 is held low
+        {0x5339, "i2c_read_ack"},      // R7 = 1 on ACK (sample at 0x535D), 0 after 255 samples
+        {0x5335, "i2c_write_a_ack"},   // i2c_write_byte(A), i2c_read_ack; 0x5334 takes the byte from XDATA @R0, 0x5331 first ands R7 into R2
+        {0x579C, "i2c_read_byte"},     // returns R7 (bit sample at 0x57B5); no ACK clock follows
+        {0x1A7C, "expander_write_pin"},// R7 pin id (0x10 + port 0 bit, 0x18 + port 1 bit), R5 level; output shadow in XDATA 0x69..
+        {0x5089, "clkgen_load"},       // R3:R2:R1 -> 43 entries (16-bit register, value), written to I2C 0xC0 (Si5351 register layout)
+        {0x50D1, "audio_chips_init"},  // expander 0x10 low, P4.3 and P2.1 low for 0.1 s, clkgen_load(0x92C6), dir_init, dac_init, input_set_hw, eq_apply, filter_apply, volume_apply
+        {0x3B35, "dir_init"},          // PCM9211 (I2C 0x80) setup, 21 writes
+        {0x1CE5, "dac_init"},          // P3.4 low for 0.5 s (DAC reset), then the CS43131 setup
+        {0x14E4, "dac_hdmi_setup"},    // input 5 only: R7 = format code; DAC PLL registers 0x0300xx
+        {0x4ECD, "dac_set_filter"},    // R7 = filter 1..5 -> DAC register 0x090000 = 0x02, 0x42, 0x82, 0xC2, 0xE2
+        {0x5BB8, "filter_apply"},      // mute, wait, dac_set_filter
+        {0x48B2, "eq_apply"},          // R7 = EQ 1..8 (Direct, Tone, SDB, Bass, Super Bass, Rock, Soft, Clear): tone_write for bass and treble
+        {0x4837, "tone_write"},        // R5 = level 0..18 (9 flat), R7 = 0x30 treble / 0x40 bass -> njw1194_write
+        {0x5D66, "p43_pulse"},         // P4.3 low for one delay_long; input_set_hw calls it on a switch to USB
+        {0x3C14, "bt_list_clear"},     // Bluetooth: "BT CLEAR......", bt_clear_pulse; else "It's not BT!"
+        {0x5BA4, "bt_clear_pulse"},    // expander pin 0x14 low for about 0.2 s
+        {0x5B7A, "expander_outputs_on"},// pin 0x14 high, 0x10 and 0x17 low (power-on)
+        {0x408B, "xmos_format_take"},  // buffer valid (0x78 == 0xFF): copy 0x76 -> 0x75 (format class), 0x77 -> 0x73 (rate index 1..12); the only reader of the UART buffer
+        {0x5B4F, "standby_enter"},     // lcd_bus_low, P0.0 and P4.0 low, backlight off, mute, P4.4 low
         {0x4DDC, "volume_apply"},      // R7 = volume (0x31): saves it in 0x5B, looks up 0x9289, njw1194_write(R7=0x10)
         // main loop and timers
         {0x3325, "main_tick_tasks"},   // first, on every pass: 0x21.4 set (re-mute request) -> clear it and 0x22.4, audio_apply_mute
@@ -228,6 +255,8 @@ public class SmslAo300Labels extends GhidraScript {
         // data
         {0x5DAB, "font_small_14x24"},       {0x6A23, "font_big_32x30"},
         {0x9241, "theme_colours_rgb565"},   {0x9289, "volume_code_table"},
+        {0x92C6, "clkgen_table"},           // 43 x (register hi, lo, value) for the clock generator at I2C 0xC0
+        {0x9251, "str_bt_clear"},           {0x9270, "str_not_bt"},             {0x934E, "str_bt_reconnect"},
         {0x9048, "input_name_strings"},     {0x9347, "str_volume"},
     };
 
@@ -257,6 +286,11 @@ public class SmslAo300Labels extends GhidraScript {
         {0x6E, "g_ir_shift_lo"},   {0x6F, "g_ir_key2"},       {0x70, "g_ir_bit_cnt"},
         {0x68, "g_pixel_hi"},      {0x69, "g_pixel_lo"},      {0x7F, "g_blink_timer"},
         {0x59, "l_render_page"},  // page argument saved inside ui_render_page (0x2101)
+        {0x3B, "g_bt_enable_hi"},  {0x3C, "g_bt_enable_lo"},  // 200 ticks from input_set_hw on Bluetooth (else 0); when it runs out (0x3449) expander pin 0x10 goes high
+        {0x73, "g_xmos_rate"},     // second byte of the XMOS message, rate index 1..12 (xmos_format_take)
+        {0x76, "g_uart_byte0"},    {0x77, "g_uart_byte1"},    // uart1_isr: the message bytes before the 0xFF terminator
+        {0x78, "g_uart_valid"},    // 0xFF after a terminator; a third message byte would overwrite it
+        {0x79, "g_uart_index_hi"}, {0x7A, "g_uart_index_lo"},
         {0x7E, "g_format_tag_drawn"},  // home_draw_format_tag: the format (0x3D) its tag shows; the box is cleared when it changes
     };
 

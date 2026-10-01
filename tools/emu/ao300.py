@@ -21,7 +21,7 @@ Timer0 ticks only.
 Audio events (amp.events, as (cycle, name, detail) tuples) cover everything that
 touches the analogue or digital audio path: calls to the NJW1194, CS43131 and AW9523
 writers and to input_set_hw, plus every change of the MCU pins the firmware uses for
-mutes, muxes, Bluetooth control and the backlight. amp.state holds the last value per
+mutes, muxes, the speaker/headphone switch and the backlight. amp.state holds the last value per
 register and pin; amp.state_changes records it after every write that changed it
 (and amp.state_log at every 10 ms tick), so two images can be compared on what the
 audio chips actually see, in order.
@@ -53,7 +53,7 @@ AUDIO_CALLS = {
 }
 AUDIO_PINS = {                     # SFR -> {bit: name}
     0x80: {1: "P0.1 mux", 2: "P0.2 mux", 6: "P0.6 backlight"},
-    0xA0: {2: "P2.2 bt", 4: "P2.4 mux", 5: "P2.5 mute", 7: "P2.7 bt"},
+    0xA0: {2: "P2.2 amp mute", 4: "P2.4 mux", 5: "P2.5 hp", 7: "P2.7 hp"},   # p2_mute_pins_by_output; roles in docs/bus-map.md
     0xC0: {0: "P4.0", 6: "P4.6 mux"},
 }
 
