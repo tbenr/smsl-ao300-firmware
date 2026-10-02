@@ -49,11 +49,19 @@ public class SmslAo300Labels extends GhidraScript {
         {0x55F2, "uart1_isr"},         {0x5628, "input_step"},
         {0x59ED, "uart1_init"},        // SCON 0x50, Timer2 as 1T baud generator (reload 0xFFCC: 115200 at 24 MHz), UART1 on P3.0/P3.1, ES on
         {0x55BC, "standby_power_step"}, // standby loop, after the standby key handler: on power-on clr P0.2, P_SW1 S1_S=01 (UART1 to P3.6/P3.7, the XMOS line), power_on_display; on entering standby setb P0.2, S1_S=00 (UART1 back on the header pins P3.0/P3.1), 0x5B4F
-        {0x56E8, "int1_isr"},          {0x588B, "input_menu_select"},
+        {0x56E8, "int1_isr"},          {0x588B, "input_menu_select"},  // R7 = input, from the menu's INPUT page (0x11FE, 0x1489): settings save armed, mute by register (clr 0x22.4, audio_apply_mute; P2.2 not set),
+                                       // clr P4.0, 0x41:0x42 = 300 ticks, page 1. The Source key does none of this (input_apply 0x5640).
+                                       // features/fix-menu-input hooks the lcall at 0x5892 (mi_switch) and skips 0x5895..0x589C
+        {0x3375, "reinit_timer_expired"}, // main loop: 0x41:0x42 reaches 0 -> setb P4.0, delay_long, expander_init, audio_chips_init (the power-on chip setup, ends in the unmute)
         {0x58AF, "eeprom_write"},
         {0x58D3, "audio_apply_mute"},  // 0x22.4 set: volume_apply(0x31), setb 0x22.5; clear: NJW1194 to the mute code (0x92C5), clr 0x22.5; then DAC reg 9 by 0x22.5 (0x5A0A). 5.2 ms when muting
         {0x5956, "eeprom_read"},       {0x59B2, "standby_key"},
-        {0x59D0, "eeprom_erase"},      {0x5A5E, "fn_5a5e"},
+        {0x59D0, "eeprom_erase"},
+        {0x5A5E, "unmute_now"},        // clr 0x22.1 (mute key flag), mute_state_set(1): pins by output, NJW1194 volume, DAC unmute, whatever 0x43:0x44 still holds.
+                                       // Called by the head of all four volume keys (0x0D22, 0x0DA2, 0x0E49, 0x0EF1) when the mute key is on, and on optical/coax
+                                       // with lock (P4.2 low) on every press, so there a volume key ends a running unmute countdown early (emulator, 2026-10-02).
+                                       // Optical/coax without lock: the keys set P2.5 low, P2.7 and P2.2 high instead (the pop on the first key, confirmed on the amp
+                                       // 2026-10-02; features/fix-volume-pop patches the four heads at entry + 0x0C: no lock -> clr 0x22.1 only). Fifth caller 0x100F
         {0x5AAB, "eeprom_mark_power_on"}, // only this: erase sector 0, 0x0001 = 0x45 (magic), 0x0002 = 1 (power-on flag); standby_key jumps here on Power.
                                        // The power-on work itself is standby_power_step and post_power_on
         {0x5CE8, "iap_idle"},
@@ -154,6 +162,10 @@ public class SmslAo300Labels extends GhidraScript {
         {0x9680, "fx_auto_off"},       // features/fix-auto-off standalone image; builds that include the fix place it in their own code
         {0x96B0, "sv_limit"},          // features/start-volume standalone image (hook 0x5596): g_volume and g_volume_hp capped at the build's limits, then audio_chips_init;
                                        // builds that include the fix place it in their own code (house-numerals hn13: 0xEF8A)
+        {0x9650, "mi_switch"},         // features/fix-menu-input standalone image (hook 0x5892): audio_apply_mute, format poll 10 ticks, unmute countdown 200, input_set_hw(g_input),
+                                       // then input_menu_select's tail at 0x589D; builds that include the fix place it in their own code (house-numerals hn15: 0xEFB9)
+        {0x96D6, "vp_apply"},          // features/fix-volume-pop standalone image (hook 0x0F4A): volume_apply, except on Optical/Coaxial without lock (P4.2 high),
+                                       // where it only raises the re-mute request (0x21.4, 0x43:0x44 = 100); builds that include the fix place it in their own code (house-numerals hn14: 0xEFA1)
         {0x9700, "fast_pixel"},        // features/fast-lcd, replaces lcd_write_pixel
         {0x9716, "fast_clear"},        // features/fast-lcd, replaces lcd_clear_black's loop
         // features/house-numerals (hn10)
@@ -267,7 +279,7 @@ public class SmslAo300Labels extends GhidraScript {
         {0x442F, "lcd_set_window_x1_from_a"},
         {0x2A25, "big_text_start_x_stored"},   // big_text_render: clr A ; mov R0,#2 ; movx @R0,A (hooked, features/house-numerals)
         {0x3A82, "small_text_start_x_stored"}, // small_text_render: same shape (hooked, features/house-numerals)
-        {0x0F48, "vol_key_tail"},            // common tail of the volume keys: volume_apply, 0x5D7D, draw (0x5936), arm page timers
+        {0x0F48, "vol_key_tail"},            // common tail of the volume keys: volume_apply (the lcall at 0x0F4A is hooked by features/fix-volume-pop: vp_apply), 0x5D7D, draw (0x5936), arm page timers
         {0x0D30, "volpage_enter_a"},         // mov 0x45,#2 before volume-entry site 0x0D33, in key_volume_up
         {0x0DB0, "volpage_enter_b"},         // mov 0x45,#2 before volume-entry site 0x0DB3, in key_volume_up2
         {0x0E57, "volpage_enter_c"},         // mov 0x45,#2 before volume-entry site 0x0E5A, in key_volume_down4
@@ -306,7 +318,8 @@ public class SmslAo300Labels extends GhidraScript {
         {0x39, "g_eq"},            {0x3D, "g_format"},        // g_format: 3 DSD, 4 MQA (by 0x75), 5 DoP, else PCM (home_draw_format_tag)
         {0x75, "g_format_mqa"},    // with g_format 4: 3 -> "MQA ", 4 or 5 -> "MQA.", else "PCM "
         // bit 0x22.1: muted (the mute key cpl's it, 0x1052); home_draw_output_icon draws the red icon then
-        {0x3F, "g_home_timer_hi"}, {0x40, "g_home_timer_lo"}, {0x43, "g_mute_timer_hi"},
+        {0x3F, "g_home_timer_hi"}, {0x40, "g_home_timer_lo"}, {0x41, "g_reinit_timer_hi"}, {0x42, "g_reinit_timer_lo"},   // P4.0 off time after input_menu_select, main-loop ticks; see 0x3375
+        {0x43, "g_mute_timer_hi"},
         {0x44, "g_mute_timer_lo"},      // unmute countdown, main-loop ticks; see 0x33ED
         {0x23, "g_settle_timer_hi"}, {0x24, "g_settle_timer_lo"}, // 1000 at power-on, 500 by input_set_hw, 100 after a format reconfig; reloads 100
         {0x4B, "g_format_poll_hi"},  {0x4C, "g_format_poll_lo"},  // format_poll_tick countdown, 10 ticks

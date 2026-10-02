@@ -56,9 +56,9 @@ rules apply to anyone working here, human or agent.
   sectors in use (offsets 0x0000, 0x0200, 0x0400) alone.
 - Each build sets its own `VERSION_TEXT` (20 characters at most), so the RESET page
   shows which image is running.
-- An image meant for the amp includes direct-select, fix-auto-off, strings and start-volume
-  (INCLUDES) unless the user asks otherwise. Only a UI theme stacks on fast-lcd; fixes stack
-  on stock.
+- An image meant for the amp includes direct-select, fix-auto-off, strings, start-volume,
+  fix-volume-pop and fix-menu-input (INCLUDES) unless the user asks otherwise. Only a UI
+  theme stacks on fast-lcd; fixes stack on stock.
 - UI themes build on fast-lcd and `tools/patch/uikit.py`. Code more than one theme can use goes
   into the kit, with tests in `tools/patch/uikit_test.py`. After a kit change, rebuild every
   theme: an image whose sha changes needs its tests run again and a new `KNOWN_IMAGES` entry.

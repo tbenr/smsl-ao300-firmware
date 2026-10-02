@@ -187,6 +187,34 @@ quasi-bidirectional; P5 quasi-bidirectional.
 | P4.7, P5.4, P5.5, P7.4 | in | front panel | |
 | P2.3, P3.5, P5.0 to P5.3 | | never written or read after `port_init` | not used by the firmware |
 
+The volume keys also write the mute pins. On Optical and Coaxial without lock (P4.2 high) the
+amp is muted by register only and P2.2, P2.5 and P2.7 stay as they were while it played; the
+head of each volume key then sets P2.5 low and P2.7 and P2.2 high (0x0D17 in `key_volume_up`,
+the same in the other three), whichever output is active. So P2.7 high is not only "headphone
+mode". On the amp the first such key pops (2026-10-02); `features/fix-volume-pop` takes the
+pin writes out.
+
+An input chosen in the menu takes another path than the Source key. `input_menu_select`
+(0x588B) mutes the NJW1194 and the DAC by register, sets P4.0 low and returns home; 300 main
+ticks later (0x3375) the main loop sets P4.0 high and runs `expander_init` and
+`audio_chips_init` again: the resets on P4.3 and P2.1, the clock generator, the receiver, the
+DAC reset on P3.4, and the unmute. P2.2 is not set until the end of that (high for 75 ms just
+before the unmute), and on inputs 1 to 5 the format poll unmutes the NJW1194 and the DAC about
+0.5 s after the key, while P4.0 is still low. A pop is heard on the amp on such a change
+(2026-10-02); which of these steps makes it is open. Emulator times, hn14, from the Enter key:
+P4.0 low at 0, high at 3.07 s, P4.3 and P2.1 low 3.08 to 3.18 s, P3.4 low 3.20 to 3.71 s, P2.2
+high 3.83 s, unmute 3.90 s.
+
+Compared in the emulator for all 30 input pairs with a signal on every input, a direct jump
+(direct-select, the Source key's `input_apply`) and the menu's path end with the same MCU
+pins, NJW1194 words and I2C registers, with two exceptions. The menu's second `expander_init`
+leaves expander P0_4 low (output register 0x02 = 0x00): the power-on code sets it high
+afterwards, this path does not. And on AUX the DAC, which AUX does not use, keeps the last
+input's mode after a direct jump and has the reset defaults after the menu. So nothing the
+firmware configures needs the P4.0 cycle; whether a chip on that supply needs the power
+cycle itself cannot be seen from the code. `features/fix-menu-input` replaces the path with
+the Source key's steps.
+
 Power-on order (times from the key press, emulator): supply enables, LCD reset released
 at 0.4 s, backlight at 1.1 s, logo, P4.4 at 5.2 s, expander setup, resets P4.3 and P2.1,
 clock generator, receiver, DAC reset and setup, input routing, tone, filter, volume, and

@@ -20,12 +20,18 @@
 ; 0x5D10: af 6a ef -> 02 ef 3f  (ds_select)
 ; 0x55B9: 02 5d 42 -> 02 ef 7c  (fx_auto_off)
 ; 0x5596: 12 50 d1 -> 12 ef 8a  (sv_limit)
+; 0x0F4A: 12 4d dc -> 12 ef a1  (vp_apply)
+; 0x5892: 12 58 d3 -> 02 ef b9  (mi_switch)
 ; 0x0D33: 12 5d 42 7b ff -> 12 e2 23 80 11  (lcall hn_enter_vol ; sjmp 0x0D49)
 ; 0x0DB3: 12 5d 42 7b ff -> 12 e2 23 80 11  (lcall hn_enter_vol ; sjmp 0x0DC9)
 ; 0x0E5A: 12 5d 42 7b ff -> 12 e2 23 80 11  (lcall hn_enter_vol ; sjmp 0x0E70)
 ; 0x0F02: 12 5d 42 7b ff -> 12 e2 23 80 11  (lcall hn_enter_vol ; sjmp 0x0F18)
 ; 0x91ED: 4e 6f 20 43 6f 6e 6e 65 63 74 65 64 00 -> 44 69 73 63 6f 6e 6e 65 63 74 65 64 00  (HDMI ARC without a link: the status loader's text for input 5 (0x406D))
-; version string 'v1.4 tbenr hn13' at 0xEFA1, pointer 0x22CA repointed
+; 0x0D0F: 20 11 10 20 c2 02 80 -> 30 c2 10 c2 11 80 0f  (volume key 0x0D03 on Optical/Coaxial: no lock -> clear the mute flag only)
+; 0x0D8F: 20 11 10 20 c2 02 80 -> 30 c2 10 c2 11 80 0f  (volume key 0x0D83 on Optical/Coaxial: no lock -> clear the mute flag only)
+; 0x0E36: 20 11 10 20 c2 02 80 -> 30 c2 10 c2 11 80 0f  (volume key 0x0E2A on Optical/Coaxial: no lock -> clear the mute flag only)
+; 0x0EDE: 20 11 10 20 c2 02 80 -> 30 c2 10 c2 11 80 0f  (volume key 0x0ED2 on Optical/Coaxial: no lock -> clear the mute flag only)
+; version string 'v1.4 tbenr hn15' at 0xEFD0, pointer 0x22CA repointed
 
             ; input-name pointers for inputs 1..6 (volume page), then the VOL label
 names:
@@ -7636,3 +7642,40 @@ sv_hp:
   EF9B: 75 52 14                 mov 0x52,#0x14
 sv_go:
   EF9E: 02 50 d1                 ljmp 0x50D1                 ; audio_chips_init
+            ; vp_apply: replaces vol_key_tail's `lcall volume_apply` (0x0F4A; R7 = g_volume), the one write
+            ; of the volume to the NJW1194 that all four volume keys share. On Optical and Coaxial without
+            ; lock the chip keeps its mute code; on any other input, and with lock, this is volume_apply.
+            ; Skipping the write also raises the re-mute request with its 1 s countdown, as Timer0 does when
+            ; it sees no lock (t0_remute_no_lock, 0x3EA4). The head and Timer0 sample P4.2 on their own: if
+            ; only this test saw it high, the volume would stay unwritten. With the request up, the main
+            ; loop mutes and the unmute that follows writes the volume from RAM.
+vp_apply:
+  EFA1: e5 47                    mov A,0x47                  ; g_input
+  EFA3: 24 fe                    add A,#0xFE                 ; input - 2
+  EFA5: 60 03                    jz vp_digital               ; 2 Optical
+  EFA7: 14                       dec A
+  EFA8: 70 0c                    jnz vp_go                   ; not 3 Coaxial either
+vp_digital:
+  EFAA: 30 c2 09                 jnb 0xC2,vp_go              ; P4.2 low: lock
+  EFAD: d2 0c                    setb 0x0C                   ; 0x21.4: re-mute request, served by main_tick_tasks
+  EFAF: 75 43 00                 mov 0x43,#0x00              ; g_mute_timer = 100 ticks
+  EFB2: 75 44 64                 mov 0x44,#0x64
+  EFB5: 22                       ret                         ; no signal: the number changes, the chip does not
+vp_go:
+  EFB6: 02 4d dc                 ljmp 0x4DDC                 ; volume_apply, returns to the tail
+            ; mi_switch: replaces input_menu_select's `lcall audio_apply_mute` (0x5892), reached with 0x22.4
+            ; cleared and the settings save armed, as input_apply is at 0x5645. Do what input_step and
+            ; input_apply do for the Source key: mute, format poll in 10 ticks, unmute countdown 200 ticks,
+            ; input_set_hw. Then rejoin input_menu_select at 0x589D, past its `clr P4.0` and the re-init
+            ; countdown (0x5895..0x589C, no longer reached): page, refresh countdown, clear, list state.
+            ; A jump in and a jump back, so the stack is as deep as in stock when input_set_hw runs, one
+            ; call below the key handler, as on the Source key's path.
+mi_switch:
+  EFB9: 12 58 d3                 lcall 0x58D3                ; audio_apply_mute: NJW1194 mute code, DAC mute
+  EFBC: 75 4b 00                 mov 0x4B,#0x00            ; g_format_poll: 10 ticks
+  EFBF: 75 4c 0a                 mov 0x4C,#0x0A
+  EFC2: 75 43 00                 mov 0x43,#0x00            ; g_mute_timer: 200 ticks, then mute_timer_expired unmutes
+  EFC5: 75 44 c8                 mov 0x44,#0xC8
+  EFC8: af 47                    mov R7,0x47                 ; g_input
+  EFCA: 12 24 d6                 lcall 0x24D6                ; input_set_hw: NJW1194 selector, muxes, receiver, DAC clocking
+  EFCD: 02 58 9d                 ljmp 0x589D                 ; input_menu_select's tail

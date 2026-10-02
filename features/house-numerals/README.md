@@ -2,11 +2,20 @@
 
 A reduced build of study 3 ("House Numerals", after SMSL's SU and DO series screens) from
 `features/ui-theme/ui_themes.html`. Built on top of fast-lcd, with direct-select, fix-auto-off,
-strings and start-volume included. The RESET page shows `v1.4 tbenr hn13`.
+strings, start-volume, fix-volume-pop and fix-menu-input included. The RESET page shows
+`v1.4 tbenr hn15`.
 
-This is image hn13 (sha256 `e91e3a20…`): hn12 with `features/start-volume` linked in. The volume
+This is image hn15 (sha256 `7a4af92f…`): hn14 with `features/fix-menu-input` linked in. An
+input chosen in the menu is switched as the Source key switches it, without stock's 3 s
+supply cycle on P4.0 and second chip setup; nothing in this layer changed, and the theme's
+code is at the same addresses.
+hn14 (`d39d321c…`) is hn13 with `features/fix-volume-pop` linked in. On
+Optical and Coaxial without a signal the volume keys no longer move the mute pins or open the
+NJW1194 (the pop on the first key); nothing in this layer changed, and the theme's code is at
+the same addresses.
+hn13 (`e91e3a20…`) is hn12 with `features/start-volume` linked in. The volume
 at power-on is capped at the limits set in `features/start-volume/start_volume.py` (speakers 25,
-headphones 20); nothing in this layer changed, and the theme's code is at the same addresses.
+headphones 20).
 hn12 (`5f406b5d…`) is hn11.1 with direct-select linked in as a fix (its code
 at the end of this image's own code) instead of stacked under fast-lcd; the same firmware
 otherwise. hn11.1 (`3aa0f2d6…`) is hn10.1 rebuilt on direct-select v2, which ignores a
@@ -108,6 +117,17 @@ Earlier images:
 - Flashed so far: the first image (`v1.4 tbenr hn`, `deada16a…`, 47 ms wipe) and hn4.1.
 
 ## Status
+
+hn15: emulator-verified (all tests pass, including "fix-menu-input in house-numerals": an input
+chosen in the menu leaves P4.0 and the chip setup alone, the amp plays again within 3.5 s, and
+it sees the same events as after the Source key). Flashed on the amp on 2026-10-02: no pop on
+an input change any more, through the menu, the Source key or direct-select.
+
+hn14: emulator-verified (all tests pass, including "fix-volume-pop in house-numerals": on
+Optical and Coaxial without a signal the volume keys change no mute pin, the NJW1194 and the
+DAC stay muted, the volume page shows the new number, and the signal then unmutes at it).
+Flashed on the amp on 2026-10-02: the pop on the first volume key on Optical without a signal
+is gone.
 
 hn13: emulator-verified (all tests pass, including "start-volume in house-numerals": after a
 cold power-up and after standby the amp starts at 25 / 20 at most, and the home screen shows
@@ -708,13 +728,18 @@ adds none). Every stock byte is asserted by
 | 0x5D10 | `AF 6A EF` (`ir_cmd_to_key`) | ljmp `ds_select` | direct-select (`INCLUDES`, since hn12) |
 | 0x5596 | `12 50 D1` lcall `audio_chips_init` | lcall `sv_limit` | start-volume (`INCLUDES`, since hn13): both volumes capped before the first volume write |
 | 0x91ED | `"No Connected\0"` | `"Disconnected\0"` | strings (`INCLUDES`): an in-place patch, not a hook |
+| 0x0F4A | `12 4D DC` lcall `volume_apply` | lcall `vp_apply` | fix-volume-pop (`INCLUDES`, since hn14): the volume keys' write to the NJW1194, skipped on Optical/Coaxial without lock |
+| 0x0D0F, 0x0D8F, 0x0E36, 0x0EDE | `20 11 10 20 C2 02 80` | `30 C2 10 C2 11 80 0F` | fix-volume-pop: the four volume-key heads, in-place; without lock only the mute flag is cleared |
+| 0x5892 | `12 58 D3` lcall `audio_apply_mute` | ljmp `mi_switch` | fix-menu-input (`INCLUDES`, since hn15): the menu's input choice sets the input's hardware as the Source key does, and skips `clr P4.0` and the re-init countdown |
 | 0x0D33, 0x0DB3, 0x0E5A, 0x0F02 | `12 5D 42 7B FF …` | `12 DE 54 80 11` (lcall `hn_enter_vol` ; sjmp site+0x16) | volume-key entry sites A-D |
 
 ## Memory
 
-hn13: the image is 61361 bytes (0x9800..0xEFB0 with the version string), 23 more than hn12
-for start-volume's code at 0xEF8A; 1103 bytes are left under the 0xF400 split. The figures
-below are hn10.1's.
+hn15: the image is 61408 bytes (0x9800..0xEFDF with the version string), 23 more than hn14
+for fix-menu-input's code at 0xEFB9; 1056 bytes are left under the 0xF400 split. hn14 was
+61385 bytes, 24 more than hn13 for fix-volume-pop's code at 0xEFA1. hn13 was
+61361 bytes, 23 more than hn12 for start-volume's code at 0xEF8A. The figures below are
+hn10.1's.
 
 - **Code:** 22349 bytes at 0x9800..0xEF4C (15271 of them fonts, fix-auto-off's 14 at the
   end), plus the version string at 0xEF4D. Image length 61279 bytes; 1185 bytes are left under

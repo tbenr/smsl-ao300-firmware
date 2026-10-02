@@ -87,6 +87,10 @@ KNOWN_IMAGES = {
     "5f406b5d828965a59a0773af4f62879a4749ae2e61a264e5ed2378765e3f3dc5": "fast-lcd fast3 + House Numerals v12 (hn11.1 with direct-select linked in as a fix instead of stacked under fast-lcd; same behaviour), 'v1.4 tbenr hn12' (features/house-numerals/build/flash_house_numerals.bin)",
     "50ad41194c00b4265c8c9b297b821818d088ae42c0c123afa56c68347de36a27": "stock + start-volume only (volume at power-on capped: speakers 25, headphones 20), 'v1.4 tbenr sv1' (features/start-volume/build/flash_startvolume.bin)",
     "e91e3a208841a11ecf54aee94a4c6e5b676529e0572117fdb9dec8553d2d99e1": "fast-lcd fast3 + House Numerals v13 (hn12 + start-volume: volume at power-on capped, speakers 25, headphones 20), 'v1.4 tbenr hn13' (features/house-numerals/build/flash_house_numerals.bin)",
+    "e2075861e79451ca18f7923aa76d4238eb11cb43d135945f767cec839d805e65": "stock + fix-volume-pop only (volume keys on Optical/Coaxial without a signal leave the mute pins and the NJW1194 alone), 'v1.4 tbenr vp1' (features/fix-volume-pop/build/flash_fixvolumepop.bin)",
+    "d39d321c88127a9af0f5ed313b957f7e3483c6edc9edac576fb86ae73f3dc0d3": "fast-lcd fast3 + House Numerals v14 (hn13 + fix-volume-pop: no pop on the first volume key on Optical/Coaxial without a signal), 'v1.4 tbenr hn14' (features/house-numerals/build/flash_house_numerals.bin)",
+    "693bdef6b17a2f8cec93c40a0d138d826fb7061463f51dadcc2c52d8bbada279": "stock + fix-menu-input only (an input chosen in the menu is switched as the Source key switches it: no P4.0 supply cycle, no second chip setup), 'v1.4 tbenr mi1' (features/fix-menu-input/build/flash_fixmenuinput.bin)",
+    "7a4af92f44d7c22a775706b33d28133299c0937b7424e3a73b444dda4f3054e6": "fast-lcd fast3 + House Numerals v15 (hn14 + fix-menu-input: no supply cycle and no pop on an input change through the menu), 'v1.4 tbenr hn15' (features/house-numerals/build/flash_house_numerals.bin)",
 }
 
 
