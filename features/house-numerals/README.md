@@ -1,10 +1,13 @@
 # House Numerals
 
 A reduced build of study 3 ("House Numerals", after SMSL's SU and DO series screens) from
-`features/ui-theme/ui_themes.html`. Built on top of fast-lcd, with direct-select, fix-auto-off and
-strings included. The RESET page shows `v1.4 tbenr hn12`.
+`features/ui-theme/ui_themes.html`. Built on top of fast-lcd, with direct-select, fix-auto-off,
+strings and start-volume included. The RESET page shows `v1.4 tbenr hn13`.
 
-This is image hn12 (sha256 `5f406b5d…`): hn11.1 with direct-select linked in as a fix (its code
+This is image hn13 (sha256 `e91e3a20…`): hn12 with `features/start-volume` linked in. The volume
+at power-on is capped at the limits set in `features/start-volume/start_volume.py` (speakers 25,
+headphones 20); nothing in this layer changed, and the theme's code is at the same addresses.
+hn12 (`5f406b5d…`) is hn11.1 with direct-select linked in as a fix (its code
 at the end of this image's own code) instead of stacked under fast-lcd; the same firmware
 otherwise. hn11.1 (`3aa0f2d6…`) is hn10.1 rebuilt on direct-select v2, which ignores a
 direct command for the input already selected (hn11, `6050a846…`, was hn10 on the same base).
@@ -105,6 +108,10 @@ Earlier images:
 - Flashed so far: the first image (`v1.4 tbenr hn`, `deada16a…`, 47 ms wipe) and hn4.1.
 
 ## Status
+
+hn13: emulator-verified (all tests pass, including "start-volume in house-numerals": after a
+cold power-up and after standby the amp starts at 25 / 20 at most, and the home screen shows
+the capped volume). Not flashed yet.
 
 hn12: emulator-verified (all tests pass, including "direct-select in house-numerals",
 "fix-auto-off in house-numerals" and "strings in house-numerals"). Flashed on the amp on
@@ -671,8 +678,9 @@ commit: the same values (the table showed 0.02 to 0.03 s, from before hn5).
 
 ## Hooks
 
-Twenty-three hook sites: eighteen 3-byte hooks of the theme, fix-auto-off's, plus the four
-places the volume keys open the volume page (hn9 adds none). Every stock byte is asserted by
+Twenty-five hook sites: eighteen 3-byte hooks of the theme, one each of direct-select,
+fix-auto-off and start-volume, plus the four places the volume keys open the volume page (hn9
+adds none). Every stock byte is asserted by
 `build_patch.py`, and so are the bytes `uk_tasks` relies on: `main_tick_tasks`' re-mute part
 0x3325..0x3331 and its `ret` at 0x345B.
 
@@ -697,10 +705,16 @@ places the volume keys open the volume page (hn9 adds none). Every stock byte is
 | 0x4A85 | `E5 47 14` (`home_draw_input_name`) | ljmp `hn_name_guard` | a name drawn during an exit: the whole home first, then the name |
 | 0x3FF8 | `C2 0B C2` (`clr 0x21.3; clr 0x20.6`) | ljmp `hn_flag_path` | the refresh's flag path during a wipe: flags and page as stock, the 0x412F fill skipped |
 | 0x55B9 | `02 5D 42` ljmp `ui_clear_screen` | ljmp `fx_auto_off` | fix-auto-off (`INCLUDES`) |
+| 0x5D10 | `AF 6A EF` (`ir_cmd_to_key`) | ljmp `ds_select` | direct-select (`INCLUDES`, since hn12) |
+| 0x5596 | `12 50 D1` lcall `audio_chips_init` | lcall `sv_limit` | start-volume (`INCLUDES`, since hn13): both volumes capped before the first volume write |
 | 0x91ED | `"No Connected\0"` | `"Disconnected\0"` | strings (`INCLUDES`): an in-place patch, not a hook |
 | 0x0D33, 0x0DB3, 0x0E5A, 0x0F02 | `12 5D 42 7B FF …` | `12 DE 54 80 11` (lcall `hn_enter_vol` ; sjmp site+0x16) | volume-key entry sites A-D |
 
 ## Memory
+
+hn13: the image is 61361 bytes (0x9800..0xEFB0 with the version string), 23 more than hn12
+for start-volume's code at 0xEF8A; 1103 bytes are left under the 0xF400 split. The figures
+below are hn10.1's.
 
 - **Code:** 22349 bytes at 0x9800..0xEF4C (15271 of them fonts, fix-auto-off's 14 at the
   end), plus the version string at 0xEF4D. Image length 61279 bytes; 1185 bytes are left under

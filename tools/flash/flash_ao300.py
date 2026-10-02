@@ -85,6 +85,8 @@ KNOWN_IMAGES = {
     "1fb644707c1ce4d59760f2e37a288903b7eb622fefe4969f09af6027856858ff": "stock + Auto OFF armed after power-on only (AO300 PRO V1.2 fix), 'v1.4 tbenr aof3' (features/fix-auto-off/build/flash_fixautooff.bin)",
     "6c5611ad8985f599877793e81c90b1e37b0eb352140878caf85d037a9004454d": "stock + corrected stock texts only ('Disconnected' on ARC), 'v1.4 tbenr str3' (features/strings/build/flash_strings.bin)",
     "5f406b5d828965a59a0773af4f62879a4749ae2e61a264e5ed2378765e3f3dc5": "fast-lcd fast3 + House Numerals v12 (hn11.1 with direct-select linked in as a fix instead of stacked under fast-lcd; same behaviour), 'v1.4 tbenr hn12' (features/house-numerals/build/flash_house_numerals.bin)",
+    "50ad41194c00b4265c8c9b297b821818d088ae42c0c123afa56c68347de36a27": "stock + start-volume only (volume at power-on capped: speakers 25, headphones 20), 'v1.4 tbenr sv1' (features/start-volume/build/flash_startvolume.bin)",
+    "e91e3a208841a11ecf54aee94a4c6e5b676529e0572117fdb9dec8553d2d99e1": "fast-lcd fast3 + House Numerals v13 (hn12 + start-volume: volume at power-on capped, speakers 25, headphones 20), 'v1.4 tbenr hn13' (features/house-numerals/build/flash_house_numerals.bin)",
 }
 
 
