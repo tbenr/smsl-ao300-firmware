@@ -70,7 +70,7 @@ features/
     build_patch.py, emu_test.py   build build/flash_fastlcd.bin, lockstep UI tour vs stock
   house-numerals/                 House Numerals home and volume page, on top of fast-lcd,
                                   built with tools/patch/uikit.py; hn10 to hn12 tried on the amp
-                                  on 2026-09-30; see its README
+                                  on 2026-09-30, hn13 on 2026-10-02; see its README
     build_patch.py, emu_test.py   build build/flash_house_numerals.bin (hn10: the mock's home
                                    and volume page in its own typefaces, non-blocking wipes
                                    with the mock's cubic ease, the number roll and the line's spring), home and
@@ -336,10 +336,11 @@ byte-identical to ds2), fast-lcd, fix-auto-off and strings moved onto stock (`fa
 `aof3`, `str3`), and house-numerals includes direct-select (`hn12`, hn11.1 with the same
 code at other addresses). All emulator-verified; hn12 was flashed on 2026-09-30 and works.
 
-Built on 2026-10-02, not flashed yet: start-volume (`features/start-volume`, standalone image
-`v1.4 tbenr sv1`) caps the volume at power-on at limits set at build time, speakers 25 and
-headphones 20 by default. House-numerals includes it as hn13 (`v1.4 tbenr hn13`, hn12
-otherwise). Both are emulator-verified, including "start-volume in house-numerals".
+Verified on the amp on 2026-10-02, as hn13: start-volume (`features/start-volume`), which caps
+the volume at power-on at limits set at build time, speakers 25 and headphones 20 by default.
+House-numerals includes it as hn13 (`v1.4 tbenr hn13`, hn12 otherwise); hn13 was flashed on
+2026-10-02 and works. The standalone image (`v1.4 tbenr sv1`) is emulator-verified and has not
+been flashed.
 
 ## What the custom firmware adds
 

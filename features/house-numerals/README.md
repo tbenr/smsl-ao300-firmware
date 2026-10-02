@@ -111,7 +111,7 @@ Earlier images:
 
 hn13: emulator-verified (all tests pass, including "start-volume in house-numerals": after a
 cold power-up and after standby the amp starts at 25 / 20 at most, and the home screen shows
-the capped volume). Not flashed yet.
+the capped volume). Flashed on the amp on 2026-10-02: works.
 
 hn12: emulator-verified (all tests pass, including "direct-select in house-numerals",
 "fix-auto-off in house-numerals" and "strings in house-numerals"). Flashed on the amp on

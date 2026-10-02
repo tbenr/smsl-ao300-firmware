@@ -7,8 +7,9 @@ the RESET page shows `v1.4 tbenr sv1`.
 
 ## Status
 
-Emulator-verified (all tests pass, including "start-volume in house-numerals"). Not flashed
-yet, neither the standalone image nor house-numerals hn13, which includes it.
+Verified on the amp on 2026-10-02, as part of house-numerals hn13 (limits 25 / 20): works.
+Emulator-verified (all tests pass, including "start-volume in house-numerals"). The standalone
+image itself has not been flashed.
 
 ## Setting the limits
 
