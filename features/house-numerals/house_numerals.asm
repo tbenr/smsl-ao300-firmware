@@ -21,12 +21,13 @@
 ; 0x3DD1: eb 64 1f -> 02 e3 44  (hn_key_p2)
 ; 0x5D10: af 6a ef -> 02 f0 37  (ds_select)
 ; 0x55B9: 02 5d 42 -> 02 f0 74  (fx_auto_off)
+; 0x5596: 12 50 d1 -> 12 f0 82  (sv_limit)
 ; 0x0D33: 12 5d 42 7b ff -> 12 e2 e8 80 11  (lcall hn_enter_vol ; sjmp 0x0D49)
 ; 0x0DB3: 12 5d 42 7b ff -> 12 e2 e8 80 11  (lcall hn_enter_vol ; sjmp 0x0DC9)
 ; 0x0E5A: 12 5d 42 7b ff -> 12 e2 e8 80 11  (lcall hn_enter_vol ; sjmp 0x0E70)
 ; 0x0F02: 12 5d 42 7b ff -> 12 e2 e8 80 11  (lcall hn_enter_vol ; sjmp 0x0F18)
 ; 0x91ED: 4e 6f 20 43 6f 6e 6e 65 63 74 65 64 00 -> 44 69 73 63 6f 6e 6e 65 63 74 65 64 00  (HDMI ARC without a link: the status loader's text for input 5 (0x406D))
-; version string 'v1.4 tbenr hn13' at 0xF082, pointer 0x22CA repointed
+; version string 'v1.4 tbenr hn14' at 0xF099, pointer 0x22CA repointed
 
             ; input-name pointers for inputs 1..6 (volume page), then the VOL label
 names:
@@ -7777,3 +7778,23 @@ fx_auto_off:
   F07C: 75 30 f4                 mov 0x30,#0xF4            ; g_screen_off_lo
 fx_ao_done:
   F07F: 02 5d 42                 ljmp 0x5D42                 ; ui_clear_screen, the stock tail call
+            ; sv_limit: replaces post_power_on's `lcall audio_chips_init` (0x5596). Cold power-up and the
+            ; wake from standby both come through here with the outputs muted, before the first volume
+            ; write (volume_apply at 0x510A). Cap g_volume (speakers) and g_volume_hp (headphones) at
+            ; their limits, whichever output is active, then go on into audio_chips_init, which returns
+            ; to 0x5599: the stack depth is as stock. The capped value is what stock then shows, applies
+            ; and saves; the volume keys are not touched.
+sv_limit:
+  F082: 74 19                    mov A,#0x19               ; g_volume, speakers limit 25
+  F084: c3                       clr C
+  F085: 95 31                    subb A,0x31               ; limit - volume
+  F087: 50 03                    jnc sv_hp                      ; volume <= limit: keep it
+  F089: 75 31 19                 mov 0x31,#0x19
+sv_hp:
+  F08C: 74 14                    mov A,#0x14               ; g_volume_hp, headphones limit 20
+  F08E: c3                       clr C
+  F08F: 95 52                    subb A,0x52               ; limit - volume
+  F091: 50 03                    jnc sv_go                      ; volume <= limit: keep it
+  F093: 75 52 14                 mov 0x52,#0x14
+sv_go:
+  F096: 02 50 d1                 ljmp 0x50D1                 ; audio_chips_init

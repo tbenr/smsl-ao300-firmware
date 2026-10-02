@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Emulator tests for House Numerals hn13 (see README.md).
+"""Emulator tests for House Numerals hn14 (see README.md).
 
   python3 emu_test.py unit    image diff, then every routine at its hook: the home screen against
                               home_model, the volume page against vol_model, a wipe step by step,

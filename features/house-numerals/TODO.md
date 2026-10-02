@@ -1,7 +1,7 @@
 # House Numerals: what is left
 
-State as of hn13 (`v1.4 tbenr hn13`, emulator-verified, not yet tried on the amp; hn12 works on
-the amp, 2026-09-30). The reference is
+State as of hn14 (`v1.4 tbenr hn14`, emulator-verified, not yet tried on the amp as this image:
+hn13 works on the amp, and so does the MUTE state's branch build on hn12, both 2026-10-02). The reference is
 study 3 in `features/ui-theme/ui_themes.html`.
 
 ## Missing against the mock
@@ -22,8 +22,8 @@ Volume page:
   target (the float one never quite does); settles in at most 0.63 s.
 - **Sizing.** `sizing.html` covers the home only; the volume page's positions are constants
   in `build_patch.py` (`V*`). A second tab with the same save path (`layout.json`,
-  `"volume"`) would let the sizes be picked by eye. Flash is tight: 878 bytes left.
-- **MUTE state: the face.** Done in hn13 (the mute key shows the page), with "MUTE" in the home
+  `"volume"`) would let the sizes be picked by eye. Flash is tight: 855 bytes left.
+- **MUTE state: the face.** Done in hn14 (the mute key shows the page), with "MUTE" in the home
   name's face (disp54, in the image already). The mock's is the numerals' face at 64 px: its
   raster is there (`num64`, with M, U, T, E), 503 bytes for the four glyphs.
 - **MUTE state: the line during a wipe.** A mute in mid-entry leaves the part of the fill drawn

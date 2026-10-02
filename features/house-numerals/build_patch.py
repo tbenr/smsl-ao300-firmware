@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the "House Numerals" image for the SMSL AO300 (on top of fast-lcd), hn13.
+"""Build the "House Numerals" image for the SMSL AO300 (on top of fast-lcd), hn14.
 
 A reduced build of study 3 in features/ui-theme/ui_themes.html:
 
@@ -73,7 +73,7 @@ from uikit import (hi, lo, S, st_imm16, ld16, st16, FONTS, SMALL_MAP, BIG_MAP, B
                    VOL_ENTRY_SITES, VOL_ENTRY_ORIG, vol_entry_bytes, VERSION_PTR_ADDR, VERSION_MAX_LEN)
 
 BASE = "fast-lcd"                   # image this builds on (tools/patch/features.py)
-INCLUDES = ["direct-select", "fix-auto-off", "strings"]   # fix features linked into this image
+INCLUDES = ["direct-select", "fix-auto-off", "strings", "start-volume"]   # fix features linked into this image
 BASE_IMAGE = features.image(BASE)
 BASE_SHA = "30c1e6fe785dc725037e5925d53f5b82305618037532b4a0cd7397a0774f560b"
 OUT_IMAGE = os.path.join(HERE, "build", "flash_house_numerals.bin")
@@ -398,7 +398,7 @@ KEY_P2_SITE = (0x3DD1, bytes([0xEB, 0x64, 0x1F]))       # read_key, IR, page 2: 
 HOOKS += [MUTE_KEY_SITE + (0x02, "hn_mute_key"), KEY_P2_SITE + (0x02, "hn_key_p2")]
 HOOKS += features.hooks(INCLUDES)      # the fixes linked in: their hooks ...
 FIX_PATCHES = features.patches(INCLUDES)   # ... and their in-place patches (strings: "Disconnected")
-VERSION_TEXT = "v1.4 tbenr hn13"
+VERSION_TEXT = "v1.4 tbenr hn14"
 
 
 rect = KIT.rect

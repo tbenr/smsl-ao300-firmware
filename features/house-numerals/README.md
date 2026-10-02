@@ -1,10 +1,10 @@
 # House Numerals
 
 A reduced build of study 3 ("House Numerals", after SMSL's SU and DO series screens) from
-`features/ui-theme/ui_themes.html`. Built on top of fast-lcd, with direct-select, fix-auto-off and
-strings included. The RESET page shows `v1.4 tbenr hn13`.
+`features/ui-theme/ui_themes.html`. Built on top of fast-lcd, with direct-select, fix-auto-off,
+strings and start-volume included. The RESET page shows `v1.4 tbenr hn14`.
 
-This is image hn13 (sha256 `1e5691d8…`): hn12 with the mock's MUTE state on the volume page.
+This is image hn14 (sha256 `3bef4bb7…`): hn13 with the mock's MUTE state on the volume page.
 - **The muted volume page.** While the amp is muted (RAM bit 0x22.1) the page shows the home's
   muted speaker in red in place of "VOL", "MUTE" in red in place of the number, and the position
   line's fill in dark red, going back to 0. "MUTE" rolls in and out as a number does. See "The
@@ -17,8 +17,15 @@ This is image hn13 (sha256 `1e5691d8…`): hn12 with the mock's MUTE state on th
   `read_key`'s page-2 filter (0x3DD1).
 - No new font: "MUTE" is drawn in the home name's face (disp54, already in the image); the mock
   uses the numerals' face at 64 px, which would cost 503 bytes for the four letters.
+- **Two images say hn13.** The MUTE state was developed on hn12 while start-volume went into
+  main as hn13. Its branch build (sha256 `1e5691d8…`: hn12 plus the MUTE state, without
+  start-volume) also shows `v1.4 tbenr hn13` on the RESET page. hn14 is the two merged: the same
+  MUTE code at the same addresses, start-volume's 23 bytes after it.
 
-hn12 (sha256 `5f406b5d…`) is hn11.1 with direct-select linked in as a fix (its code
+hn13 (sha256 `e91e3a20…`) is hn12 with `features/start-volume` linked in. The volume
+at power-on is capped at the limits set in `features/start-volume/start_volume.py` (speakers 25,
+headphones 20); nothing in this layer changed, and the theme's code is at the same addresses.
+hn12 (`5f406b5d…`) is hn11.1 with direct-select linked in as a fix (its code
 at the end of this image's own code) instead of stacked under fast-lcd; the same firmware
 otherwise. hn11.1 (`3aa0f2d6…`) is hn10.1 rebuilt on direct-select v2, which ignores a
 direct command for the input already selected (hn11, `6050a846…`, was hn10 on the same base).
@@ -120,8 +127,15 @@ Earlier images:
 
 ## Status
 
-hn13: emulator-verified (all tests pass, including "direct-select in house-numerals",
-"fix-auto-off in house-numerals" and "strings in house-numerals"). Not yet tried on the amp.
+hn14: emulator-verified (all tests pass, including "direct-select in house-numerals",
+"fix-auto-off in house-numerals", "strings in house-numerals" and "start-volume in
+house-numerals"). Not yet tried on the amp as this image. Its MUTE state was tried on the amp
+on 2026-10-02 as the branch build `1e5691d8…` (hn12 plus the MUTE state, without start-volume):
+works.
+
+hn13: emulator-verified (all tests pass, including "start-volume in house-numerals": after a
+cold power-up and after standby the amp starts at 25 / 20 at most, and the home screen shows
+the capped volume). Flashed on the amp on 2026-10-02: works.
 
 hn12: emulator-verified (all tests pass, including "direct-select in house-numerals",
 "fix-auto-off in house-numerals" and "strings in house-numerals"). Flashed on the amp on
@@ -198,7 +212,7 @@ is still to come.
 
 Still cut from the mockup: the dB ↔ steps switch (and the dB mode's other captions), the mock's
 wipe timings (0.32 s in, 0.42 s out) and per-column reveal. The roll shows one number per frame
-where the mock crossfades two (see "The number roll"). The MUTE state (hn13) uses the home name's
+where the mock crossfades two (see "The number roll"). The MUTE state (hn14) uses the home name's
 face for "MUTE", not the numerals' at 64 px (see "The MUTE state").
 
 ## The home screen
@@ -656,7 +670,7 @@ volume change does.
 
 #### The mute key
 
-| Where | Stock (and fast-lcd) | hn13 |
+| Where | Stock (and fast-lcd) | hn14 |
 |---|---|---|
 | Home | toggles; stays home (the icon turns red) | toggles; the volume page wipes in, muted or with the number; home after 2 s |
 | Volume page open | `read_key` turns the key into "home": the page closes, nothing is toggled | toggles in place: "MUTE" rolls in or out, label and line follow; the 2 s start again |
@@ -761,8 +775,9 @@ commit: the same values (the table showed 0.02 to 0.03 s, from before hn5).
 
 ## Hooks
 
-Twenty-five hook sites: twenty 3-byte hooks of the theme (hn13 added the mute key's two),
-fix-auto-off's, plus the four places the volume keys open the volume page. Every stock byte is asserted by
+Twenty-seven hook sites: twenty 3-byte hooks of the theme (hn14 added the mute key's two), one
+each of direct-select, fix-auto-off and start-volume, plus the four places the volume keys open
+the volume page. Every stock byte is asserted by
 `build_patch.py`, and so are the bytes `uk_tasks` relies on: `main_tick_tasks`' re-mute part
 0x3325..0x3331 and its `ret` at 0x345B.
 
@@ -786,17 +801,20 @@ fix-auto-off's, plus the four places the volume keys open the volume page. Every
 | 0x5D42 | `12 5C BC` (`ui_clear_screen`'s first call) | ljmp `hn_cancel` | every stock clear cancels a wipe |
 | 0x4A85 | `E5 47 14` (`home_draw_input_name`) | ljmp `hn_name_guard` | a name drawn during an exit: the whole home first, then the name |
 | 0x3FF8 | `C2 0B C2` (`clr 0x21.3; clr 0x20.6`) | ljmp `hn_flag_path` | the refresh's flag path during a wipe: flags and page as stock, the 0x412F fill skipped |
-| 0x1047 | `E5 45 64` (`key_1c`: `mov A,0x45 ; xrl A,#1`) | ljmp `hn_mute_key` | the mute key: the stock toggle, then the volume page instead of home (hn13) |
-| 0x3DD1 | `EB 64 1F` (`read_key`: `mov A,R3 ; xrl A,#0x1F`) | ljmp `hn_key_p2` | page 2 keeps the mute key 0x1C as well as 0x1A, 0x1B, 0x1F; every other key still becomes "home" (hn13) |
+| 0x1047 | `E5 45 64` (`key_1c`: `mov A,0x45 ; xrl A,#1`) | ljmp `hn_mute_key` | the mute key: the stock toggle, then the volume page instead of home (hn14) |
+| 0x3DD1 | `EB 64 1F` (`read_key`: `mov A,R3 ; xrl A,#0x1F`) | ljmp `hn_key_p2` | page 2 keeps the mute key 0x1C as well as 0x1A, 0x1B, 0x1F; every other key still becomes "home" (hn14) |
 | 0x55B9 | `02 5D 42` ljmp `ui_clear_screen` | ljmp `fx_auto_off` | fix-auto-off (`INCLUDES`) |
+| 0x5D10 | `AF 6A EF` (`ir_cmd_to_key`) | ljmp `ds_select` | direct-select (`INCLUDES`, since hn12) |
+| 0x5596 | `12 50 D1` lcall `audio_chips_init` | lcall `sv_limit` | start-volume (`INCLUDES`, since hn13): both volumes capped before the first volume write |
 | 0x91ED | `"No Connected\0"` | `"Disconnected\0"` | strings (`INCLUDES`): an in-place patch, not a hook |
 | 0x0D33, 0x0DB3, 0x0E5A, 0x0F02 | `12 5D 42 7B FF …` | `12 DE 54 80 11` (lcall `hn_enter_vol` ; sjmp site+0x16) | volume-key entry sites A-D |
 
 ## Memory
 
-- **Code:** 22658 bytes at 0x9800..0xF081 (15271 of them fonts; the included fixes' code at the
-  end), plus the version string at 0xF082. Image length 61586 bytes; 878 bytes are left under
-  the 0xF400 split (hn12: 1126, hn10.1: 1185, hn10: 1199, hn9: 1231, hn8: 2220). hn13 added 248
+- **Code:** 22681 bytes at 0x9800..0xF098 (15271 of them fonts; the included fixes' code at the
+  end: direct-select, fix-auto-off, start-volume's 23 bytes), plus the version string at 0xF099.
+  Image length 61609 bytes; 855 bytes are left under the 0xF400 split (hn13: 1103, hn12: 1126,
+  hn10.1: 1185, hn10: 1199, hn9: 1231, hn8: 2220). hn14 added 248
   bytes and no font: the text and the mute change in `hn_draw_volume` 57, "MUTE" in `hn_num_at`
   48 and its string 5, the label's icon and the two clears in `hv_vol` 72, the fill's colour and
   the spring's target 15, `hn_mute_key` 35 and `hn_key_p2` 16. hn10.1 added 12 bytes of code (the mark in
@@ -806,7 +824,7 @@ fix-auto-off's, plus the four places the volume keys open the volume page. Every
   row-clipped decoder `tx_yclip`, format 2 only here: about 190), the roll (about 250 with its
   39-byte frame table), the spring (about 480 with its multiply and constants), less hn8's
   61-byte split table (`vsplit`, now computed). `house_numerals.asm` is the generated listing.
-- **XDATA** 0x0100..0x01C1 (hn13 added none: the muted page's state is the text "M" in `HN_NUM`
+- **XDATA** 0x0100..0x01C1 (hn14 added none: the muted page's state is the text "M" in `HN_NUM`
   and `HR_OLD`). The EEPROM sectors and everything fast-lcd/direct-select use
   stay untouched. hn9 added 0x01B3..0x01C1, and `uk_text`'s block grew by 5 bytes (the row clip)
   and now starts at 0x015B, in what was free below it.
@@ -852,15 +870,15 @@ fix-auto-off's, plus the four places the volume keys open the volume page. Every
 
 ## Emulator results
 
-`python3 tools/run_tests.py` gives **ALL PASS** for every feature (hn13: 156 s wall,
-house-numerals 156 s, about half of it the sweep). `emu_test.py` has four groups: `unit`, `tour`,
+`python3 tools/run_tests.py` gives **ALL PASS** for every feature (hn14: 161 s wall,
+house-numerals 161 s, about half of it the sweep). `emu_test.py` has four groups: `unit`, `tour`,
 `int1`, `sweep`; `unit tour` alone runs in about a minute. Since hn12 the whole-firmware
 scenarios and the sweep run against a reference the test builds itself, fast-lcd plus the fixes
 this image includes (`build/reference.bin`), so that only the theme differs between the two
 amps; the image diff still runs against fast-lcd, the base. Before, fast-lcd carried
 direct-select itself.
 
-- **The muted page and the mute key** (hn13).
+- **The muted page and the mute key** (hn14).
   - Unit, the page (`test_mute`, against `vol_model`, which draws the muted look from the mute
     bit: `label_model`, `roll_box` with MUTE, the line dark red at 0): `hn_volpage` muted for
     inputs 1 to 8 at volumes 0, 25 and 60 and in two tints; 0x5936 muted for every step; muting
@@ -1047,7 +1065,7 @@ direct-select itself.
 - **Panel timing: same as fast-lcd.** `uk_fill` and `uk_text` use fast-lcd's byte timing (the
   WR pulse the blit-test build proved on the panel; see fast-lcd's README, Bus timing).
 - **The main loop now runs during the wipes.** A tick's step, spring and roll take at most
-  7.2 ms (hn13, whole firmware; the limit the tests hold is 8), after the tick's own work. The volume keys, format poll, unmute and re-mute run as on fast-lcd (tested
+  7.2 ms (hn14, whole firmware; the limit the tests hold is 8), after the tick's own work. The volume keys, format poll, unmute and re-mute run as on fast-lcd (tested
   against it, including the INT1 case the hn3 review raised).
 - **The tick driver's re-mute part** (hn9): `uk_tasks` runs `main_tick_tasks`' first
   instructions itself (0x21.4 set: clear it and 0x22.4, `lcall volume_apply`), so the stock
@@ -1060,10 +1078,10 @@ direct-select itself.
   `home_refresh_periodic`. The stack peak is unchanged (0xAF with Timer0
   only, 0xB3 with Timer3; see Stack above).
 - **Recovery: unchanged.** The reset vector, the standby key handler (0x59B2) and
-  `read_key`'s Source-in-standby jump to the bootloader (0x3DB8) are untouched. hn13's hook in
+  `read_key`'s Source-in-standby jump to the bootloader (0x3DB8) are untouched. hn14's hook in
   `read_key` is at 0x3DD1, in the page-2 filter that follows it; standby never gets there with
   page 2, and the sweep's standby state is unchanged for all 256 commands.
-- **The mute key's behaviour changed on purpose** (hn13): it shows the volume page instead of
+- **The mute key's behaviour changed on purpose** (hn14): it shows the volume page instead of
   staying home, and on the open page it now toggles. The toggle's audio writes are the stock
   ones (tested against the stock handler and, on the whole firmware, against the reference). A
   held mute key is not modelled in the emulator: if the remote repeats the command, each
@@ -1071,7 +1089,7 @@ direct-select itself.
 
 ## What to look for on the amp
 
-hn13, the mute key:
+hn14, the mute key:
 - Mute on home: the sound stops at once and the volume page wipes in with the red speaker,
   "MUTE" in red and the line empty; 2 s later it wipes back and the home shows the red speaker.
 - Mute again on home: the page wipes in with "VOL" and the number, the line growing; the sound

@@ -38,7 +38,9 @@ public class SmslAo300Labels extends GhidraScript {
         {0x135A, "key_down"},          {0x144E, "key_menu"},          // NEC 0x03 (NEC_MENU in ao300.py); acts only inside a menu, does not open it
         {0x14E3, "key_default"},       {0x2072, "keil_switch_case"},
         {0x202C, "cmp_u32"},           {0x24D6, "input_set_hw"},
-        {0x2681, "nec_decode"},        {0x2F46, "settings_load_eeprom"},
+        {0x2681, "nec_decode"},        {0x2F46, "settings_load_eeprom"},   // cold boot only (main, 0x53F6): EEPROM 0x0002 -> 0x26 (power-on flag); the record 0x0201..0x020C ->
+                                       // 0x31 volume, 0x47 input, 0x2B output, 0x4A, 0x39 EQ, 0x35, 0x2A, 0x4D colour, 0x52 headphone volume, 0x33, 0x29 dimmer, 0x2C filter;
+                                       // both volumes only clamped to 0..60 (0x2F56, 0x303A), so stock starts at the last volume (features/start-volume caps it)
         {0x3A53, "small_text_render"}, {0x3DA2, "read_key"},
         {0x3E67, "timer0_isr"},        {0x449F, "main_init"},
         {0x4E2D, "step_with_wrap"},    {0x5040, "timer3_isr"},
@@ -52,7 +54,9 @@ public class SmslAo300Labels extends GhidraScript {
         {0x58D3, "audio_apply_mute"},  // 0x22.4 set: volume_apply(0x31), setb 0x22.5; clear: NJW1194 to the mute code (0x92C5), clr 0x22.5; then DAC reg 9 by 0x22.5 (0x5A0A). 5.2 ms when muting
         {0x5956, "eeprom_read"},       {0x59B2, "standby_key"},
         {0x59D0, "eeprom_erase"},      {0x5A5E, "unmute_now"},        // clr 0x22.1, then falls into mute_state_set with R7 = 1: the volume keys call it while muted
-        {0x5AAB, "power_on_sequence"}, {0x5CE8, "iap_idle"},
+        {0x5AAB, "eeprom_mark_power_on"}, // only this: erase sector 0, 0x0001 = 0x45 (magic), 0x0002 = 1 (power-on flag); standby_key jumps here on Power.
+                                       // The power-on work itself is standby_power_step and post_power_on
+        {0x5CE8, "iap_idle"},
         {0x5D03, "delay_long"},        {0x5D10, "ir_cmd_to_key"},
         {0x5D42, "ui_clear_screen"},   {0x5D4B, "timer1_isr"},
         {0x5D7D, "reset_timer_37"},    {0x5D8A, "inject_key_08"},
@@ -104,12 +108,23 @@ public class SmslAo300Labels extends GhidraScript {
         {0x48B2, "eq_apply"},          // R7 = EQ 1..8 (Direct, Tone, SDB, Bass, Super Bass, Rock, Soft, Clear): tone_write for bass and treble
         {0x4837, "tone_write"},        // R5 = level 0..18 (9 flat), R7 = 0x30 treble / 0x40 bass -> njw1194_write
         {0x5D66, "p43_pulse"},         // P4.3 low for one delay_long; input_set_hw calls it on a switch to USB
-        {0x3C14, "bt_list_clear"},     // Bluetooth: "BT CLEAR......", bt_clear_pulse; else "It's not BT!"
+        {0x3C14, "bt_list_clear"},     // the RESET page's hold action. Bluetooth: "BT CLEAR......", bt_clear_pulse. Any other input (0x3C2F): "RESETTING......",
+                                       // sectors 0 and 0x0200 erased and rewritten with the factory record (volume 20, input 1, ...), then IAP_CONTR = 0x60 (reset).
+                                       // "It's not BT!" belongs to bt_clear_or_not_bt (0x568A)
+        {0x568A, "bt_clear_or_not_bt"}, // on Bluetooth: bt_clear_pulse, then mute (clr 0x22.4, audio_apply_mute); else the text "It's not BT!" (0x9270). Callers not traced
         {0x5BA4, "bt_clear_pulse"},    // expander pin 0x14 low for about 0.2 s
         {0x5B7A, "expander_outputs_on"},// pin 0x14 high, 0x10 and 0x17 low (power-on)
         {0x408B, "xmos_format_take"},  // buffer valid (0x78 == 0xFF): copy 0x76 -> 0x75 (format class), 0x77 -> 0x73 (rate index 1..12); the only reader of the UART buffer
         {0x5B4F, "standby_enter"},     // lcd_bus_low, P0.0 and P4.0 low, backlight off, mute, P4.4 low
-        {0x4DDC, "volume_apply"},      // R7 = volume (0x31): saves it in 0x5B, looks up 0x9289, njw1194_write(R7=0x10)
+        {0x4DDC, "volume_apply"},      // R7 = volume (0x31): saves it in 0x5B, looks up 0x9289, njw1194_write(R7=0x10); with output 2 (0x2B) it uses g_volume_hp (0x52) instead of R7
+        {0x492B, "settings_save_eeprom"}, // erase sector 0x0200, write the 12 bytes 0x0201..0x020C from RAM (see settings_load_eeprom). Called at 0x3446 when the
+                                       // countdown 0x37:0x38 (reset_timer_37: 50 main ticks) runs out, so about 0.5 s after a change, and after every power-on (filter_apply arms it)
+        {0x5CF6, "clamp_hp_30"},       // R7 = min(R7, 30)
+        {0x5275, "output_apply"},      // R7 = output 1 speakers / 2 headphones. On a change (0x5287): save armed, mute, g_volume_hp = clamp_hp_30 (0x5296), volume_apply.
+                                       // The only volume cap in stock; nothing caps at power-on
+        // menus (pages 3..13). Details in docs/menu-system.md
+        {0x2B0D, "menu_list_render"},  // R3:R2:R1 -> list table of 4-byte entries {count, 3-byte string pointer}; R5 = highlighted row; count -> 0x14; rows from y 36, 28 px apart
+        {0x46BC, "menu_main_restore"}, // back on the main menu: 0x17 = 0x16, scroll offset 0x19 and row 0x10 recomputed; the item count 10 is an immediate at 0x4723 and 0x472A
         // main loop and timers
         {0x3325, "main_tick_tasks"},   // first, on every pass: 0x21.4 set (re-mute request) -> clear it and 0x22.4, audio_apply_mute
         {0x5585, "post_power_on"},     // run by main_tasks_on when 0x20.3 is set (power-on path 0x55E4); blocks ~1 s, then 0x43:0x44 = 200
@@ -137,6 +152,8 @@ public class SmslAo300Labels extends GhidraScript {
         // patch code, only in the images that carry it
         {0x9400, "ds_select"},         // features/direct-select standalone image; builds that include the fix place it in their own code
         {0x9680, "fx_auto_off"},       // features/fix-auto-off standalone image; builds that include the fix place it in their own code
+        {0x96B0, "sv_limit"},          // features/start-volume standalone image (hook 0x5596): g_volume and g_volume_hp capped at the build's limits, then audio_chips_init;
+                                       // builds that include the fix place it in their own code (house-numerals hn14: 0xF082)
         {0x9700, "fast_pixel"},        // features/fast-lcd, replaces lcd_write_pixel
         {0x9716, "fast_clear"},        // features/fast-lcd, replaces lcd_clear_black's loop
         // features/house-numerals (hn10)
@@ -252,7 +269,10 @@ public class SmslAo300Labels extends GhidraScript {
         {0x3E92, "t0_remute_no_lock"},      // Timer0: optical/coax and P4.2 high (no lock) -> setb 0x21.4, 0x43:0x44 = 100
         {0x3EE9, "t0_hold_mute_p26"},       // Timer0: P2.6 low, powered, output 2 (or P2.6 high in standby) -> clr P2.5, 0x43:0x44 = 300
         {0x45CE, "port_init"},              {0x5C79, "lcd_write_pixel_black"},
-        {0x2143, "ui_page_table"},          // jump-table entry for page 2 (data: 02 21 67, ljmp volpage_render)
+        {0x2143, "ui_page_table"},          // jump-table entry for page 2 (data: 02 21 67, ljmp volpage_render); 12 ljmps, pages 2..13. Any other page: ljmp ui_render_done at 0x2132
+        {0x1143, "menu_enter_table"},       // key_menu_nav on page 3: 10 ljmps indexed by the main-menu cursor (0x17, checked against 10 at 0x1134; else ljmp 0x11BB at 0x1139).
+                                            // Item i opens page i + 4; key_menu (back) and 0x1261 rely on that: 0x17 = page - 4
+        {0x5596, "post_power_on_chips"},    // post_power_on: lcall audio_chips_init, outputs still muted; cold power-up and standby wake both pass here (hooked, features/start-volume: sv_limit)
         {0x442F, "lcd_set_window_x1_from_a"},
         {0x2A25, "big_text_start_x_stored"},   // big_text_render: clr A ; mov R0,#2 ; movx @R0,A (hooked, features/house-numerals)
         {0x3A82, "small_text_start_x_stored"}, // small_text_render: same shape (hooked, features/house-numerals)
@@ -267,10 +287,26 @@ public class SmslAo300Labels extends GhidraScript {
         {0x92C6, "clkgen_table"},           // 43 x (register hi, lo, value) for the clock generator at I2C 0xC0
         {0x9251, "str_bt_clear"},           {0x9270, "str_not_bt"},             {0x934E, "str_bt_reconnect"},
         {0x9048, "input_name_strings"},     {0x9347, "str_volume"},
+        {0x9260, "str_resetting"},
+        // menu list tables for menu_list_render, 4-byte entries {count, FF, string hi, lo}, packed back to back
+        {0x8F1E, "menu_list_input"},        // 6
+        {0x8F36, "menu_list_eq"},           // 8
+        {0x8F56, "menu_list_color"},        // 8
+        {0x8F76, "menu_list_output"},       // 2
+        {0x8F7E, "menu_list_dimmer"},       // 2
+        {0x8F86, "menu_list_main"},         // 10: Input, Output, EQ, Treble, Bass, Filter, Color, BT Clear, Dimmer, RESET. Referenced by the immediates at
+                                            // 0x2197 / 0x2199 (page 3 renderer) and by the Keil init record at 0x583A (03 11 FF 8F 86: RAM 0x11..0x13)
+        {0x8FAE, "menu_list_filter"},       // 5
+        {0x8D6D, "menu_main_strings"},      // "- Input      " ...: 10 x 14 bytes
     };
 
     Object[][] ramLabels = {
         {0x10, "g_menu_a"},        {0x17, "g_menu_cursor"},   {0x19, "g_menu_b"},
+        // menus: 0x10 highlighted row on screen, 0x19 scroll offset, 0x17 selected item (a value 0..18 on the Treble, Bass and BT Clear pages)
+        {0x14, "g_menu_len"},      {0x15, "g_menu_rows"},     {0x16, "g_menu_main_item"},
+        // 0x14: items in the list on screen (menu_list_render); 0x15: visible rows, 5 (init record at 0x5836); 0x16: main-menu item kept while a sub-page is open
+        {0x26, "g_power_on_flag"}, // EEPROM 0x0002: non-zero, the amp turns on by itself after a cold power-up (standby_power_step)
+        {0x37, "g_save_timer_hi"}, {0x38, "g_save_timer_lo"}, // reset_timer_37 arms it to 50; at 0 (0x3446) settings_save_eeprom
         {0x27, "g_osd_timer_hi"},  {0x28, "g_osd_timer_lo"},  {0x29, "g_dimmer_mode"},
         // 0x27:0x28, page 1: home_refresh_periodic countdown (10 after a render, 50 after a refresh)
         {0x2B, "g_output"},        {0x2C, "g_filter"},        {0x2F, "g_screen_off_hi"},
