@@ -2,9 +2,23 @@
 
 A reduced build of study 3 ("House Numerals", after SMSL's SU and DO series screens) from
 `features/ui-theme/ui_themes.html`. Built on top of fast-lcd, with direct-select, fix-auto-off and
-strings included. The RESET page shows `v1.4 tbenr hn12`.
+strings included. The RESET page shows `v1.4 tbenr hn13`.
 
-This is image hn12 (sha256 `5f406b5d…`): hn11.1 with direct-select linked in as a fix (its code
+This is image hn13 (sha256 `1e5691d8…`): hn12 with the mock's MUTE state on the volume page.
+- **The muted volume page.** While the amp is muted (RAM bit 0x22.1) the page shows the home's
+  muted speaker in red in place of "VOL", "MUTE" in red in place of the number, and the position
+  line's fill in dark red, going back to 0. "MUTE" rolls in and out as a number does. See "The
+  MUTE state".
+- **The mute key shows the page.** Stock goes home on the mute key and toggles there; on the
+  open volume page the key only closed the page and did not mute. Now it toggles the same way
+  and shows the volume page (the entry wipe from home, in place on the open page), which goes
+  home after 2 s as after a volume key. The volume keys still unmute first, as stock; in a menu
+  the key still only goes home, as stock. Two new hooks: the key's handler (0x1047) and
+  `read_key`'s page-2 filter (0x3DD1).
+- No new font: "MUTE" is drawn in the home name's face (disp54, already in the image); the mock
+  uses the numerals' face at 64 px, which would cost 503 bytes for the four letters.
+
+hn12 (sha256 `5f406b5d…`) is hn11.1 with direct-select linked in as a fix (its code
 at the end of this image's own code) instead of stacked under fast-lcd; the same firmware
 otherwise. hn11.1 (`3aa0f2d6…`) is hn10.1 rebuilt on direct-select v2, which ignores a
 direct command for the input already selected (hn11, `6050a846…`, was hn10 on the same base).
@@ -106,6 +120,9 @@ Earlier images:
 
 ## Status
 
+hn13: emulator-verified (all tests pass, including "direct-select in house-numerals",
+"fix-auto-off in house-numerals" and "strings in house-numerals"). Not yet tried on the amp.
+
 hn12: emulator-verified (all tests pass, including "direct-select in house-numerals",
 "fix-auto-off in house-numerals" and "strings in house-numerals"). Flashed on the amp on
 2026-09-30: works.
@@ -170,15 +187,19 @@ is still to come.
 | Volume page: spring | the split follows the volume (k 200, c 28, 10 ms ticks, fixed point); from 0 when the page opens, towards 0 during the exit |
 | Volume page: dB caption | Plex Mono 16 px, grey, at x 16, baseline 160: the level below step 60 from the NJW1194 code table, "−39.5 dB" (8 cells; "−∞ dB" at step 0) |
 | Volume page: max | "max 60", Plex Mono 16 px, #4d5257, ending at x 304, baseline 160 |
+| Volume page, muted: label | the home's muted speaker (22 px, red 0xF800) at x 164, rows 20..41, in place of "VOL" |
+| Volume page, muted: text | "MUTE" in Big Shoulders Display 54 px (the home name's face), red, letter-spaced 1, right-aligned to end at x 304, baseline 112, in place of the number; it rolls in and out as a number does, the frames' greys as shares of red |
+| Volume page, muted: line | the spring's target is 0; the fill is dark red 0x58E3 (#5a1d19) while it retracts, then the line is all track |
+| Mute key | toggles as stock, then shows the volume page: the entry wipe from home, in place on the open page; home again after 2 s |
 | (hn7) | volume page: name in the stock small font at 16,30, divider 1 x 104 at 140,14, "VOL" small font at 158,14, stock big digits at 2x at 184,42, line 240 x 3 at 40,136 |
 | Wipe in | 2-px accent edge from x 318 to 0 over 32 ticks (0.32 s), the mock's cubic ease-in-out; black behind it; each element appears once the edge has passed it |
 | Wipe out | the same from x 0 to 318; the home elements appear once the edge has passed them |
 | Accent | theme colour (RAM 0x48:0x49); SMSL orange 0xFC43 when the theme is White (0xFFFF) |
 
 Still cut from the mockup: the dB ↔ steps switch (and the dB mode's other captions), the mock's
-wipe timings (0.32 s in, 0.42 s out) and per-column reveal. The MUTE state of the volume page is
-unreachable in this firmware (see above). The roll shows one number per frame where the mock
-crossfades two (see "The number roll").
+wipe timings (0.32 s in, 0.42 s out) and per-column reveal. The roll shows one number per frame
+where the mock crossfades two (see "The number roll"). The MUTE state (hn13) uses the home name's
+face for "MUTE", not the numerals' at 64 px (see "The MUTE state").
 
 ## The home screen
 
@@ -589,6 +610,75 @@ the mock's cubic ease is past 0.5 by frame 3.
 - **Cost.** 6.1 ms for the worst frame in the unit test (a 2-digit number shifted, its left
   columns and the uncovered rows blacked), 5.8 ms in the whole firmware including the spring.
 
+### The MUTE state
+
+The mock (`S.muted`): the red muted speaker replaces "VOL", the label becomes "MUTE" in red at
+64 px, the spring's target is 0 and the fill is #5a1d19; `toggleMute` shows the volume page as a
+volume change does.
+
+- **State.** RAM bit 0x22.1, the stock mute flag (the mute key complements it; the volume keys
+  clear it through `unmute_now` 0x5A5E). No new XDATA: `hn_draw_volume` writes the text "M" into
+  `HN_NUM` instead of the digits while muted, and that one letter is the whole state of what the
+  page shows.
+- **Text.** `hn_num_at` draws a text starting with "M" as "MUTE" (`str_mute`, a code string) in
+  `pf_name`, the home name's face (disp54, 107 x 52 px with its 1 px letter spacing, columns
+  198..304, rows 67..118), 16 rows lower than the numerals' cell so that it stands on the number's
+  baseline (112), in the red part of the ink it was given: white gives 0xF800, and a roll frame's
+  grey gives that share of red, as the mock fades `col` with the frame's alpha. The rest of
+  the roll box is blacked as for a number (the rows below the cell from `TP_H`, the face's height
+  as `uk_textc` read it).
+  - The mock draws "MUTE" in the numerals' face (Barlow Condensed) at 64 px. Its raster exists
+    (`tools/fonts/raster/num64.json`), but the four glyphs would add 503 bytes; the home name's
+    face has the letters already. With the flash to spare, `PF_NAME` in `hn_num_at` and
+    `MUTE_Y` are the only things to change.
+- **Label.** `hv_vol` sets up "VOL" and, when muted, changes the font, the string, the row and
+  the ink to the home's muted speaker (`pf_icon` "M", red) at the label's x, its last row the
+  label cell's (rows 20..41; the home's 22-px icon, where the mock's 14 px at this page's scale
+  would be 20).
+  Each state clears what the other leaves: the icon's five rows above "VOL"'s cell, or the
+  columns of "VOL" right of the icon's cell.
+- **Line.** `hn_sp_t6` gives the spring the target 0 while muted, so the fill retracts (and an
+  entry while muted never grows it); `hn_line_seg` draws the fill in dark red 0x58E3 instead of
+  the accent. `hn_sp_snap` puts it at 0 for the idle render.
+- **A change on the open page.** `hn_draw_volume` compares the text shown so far with the mute
+  bit (PSW.F0: the old text was "M" xor muted now). When they differ it arms the roll as for a
+  changed number (direction: up, unless the same key also lowered the volume), and redraws the
+  label and the whole line at once, so the fill changes colour before the spring moves it. The
+  dB caption stays the volume's. While muted, a volume change alone does not roll: "MUTE" stays.
+- **During a wipe** the label is redrawn only if the wipe has revealed it and the state changed;
+  the text and the caption as before (in their final state where revealed). The line is left to
+  the spring: after a mute in mid-entry the part of the fill already drawn stays in the accent
+  until the spring has retracted it (at most 0.6 s). Nothing of it is left once the spring
+  rests, since the fill is then 0 wide.
+- **Cost.** The entry step that reveals the divider and "MUTE" takes 7.0 ms (the number: 7.1);
+  a roll frame with "MUTE" and the spring at most 6.3 ms; the mute key on the open page spends
+  2.0 ms drawing (label, line, caption) on top of the stock mute.
+
+#### The mute key
+
+| Where | Stock (and fast-lcd) | hn13 |
+|---|---|---|
+| Home | toggles; stays home (the icon turns red) | toggles; the volume page wipes in, muted or with the number; home after 2 s |
+| Volume page open | `read_key` turns the key into "home": the page closes, nothing is toggled | toggles in place: "MUTE" rolls in or out, label and line follow; the 2 s start again |
+| During the entry wipe | as on the open page: goes home, not toggled | toggles; the entry runs on and ends on the page in the new state |
+| During the exit wipe (page 1 already) | toggles; stays home | toggles; the exit turns round into an entry |
+| Menu | `dispatch_key` turns the key into "home" (0x0C23): not toggled | the same |
+| Standby | not dispatched | the same |
+| Volume key while muted | unmutes at once (`unmute_now`), then the step | the same; on the open muted page the number rolls in |
+
+- **Handler.** `hn_mute_key` replaces `key_1c` at 0x1047. It runs the stock toggle (0x1052 to
+  0x1065: `cpl 0x22.1`; muted: `mute_state_set(0)` and P2.5 low; unmuted: the unmute countdown
+  0x43:0x44 = 10 ticks). Instead of the stock "page 1 and render" before it, it then opens page 2
+  as the volume keys do (`mov 0x45,#2`, `hn_enter_vol`, unless the page is 2 already) and ends in
+  their tail at 0x0F50: `volpage_draw_volume` (ours) and both timers at 200 ticks (stock: the
+  refresh in 10 ticks). The audio writes are the stock ones, in the stock order, before
+  anything is drawn.
+- **Filter.** `read_key` (IR path) turns every key on page 2 into 0x15 ("home") except 0x1A,
+  0x1B and 0x1F (0x3DC6 to 0x3DD6). `hn_key_p2` hooks the last of those tests (0x3DD1) and keeps
+  0x1C, the mute key, as well. 0x3DD6 itself cannot take a 3-byte hook: 0x3DD8 is a branch
+  target. The Source-in-standby jump to the bootloader (0x3DB8) is 25 bytes before the hook and
+  untouched; the bytes between are asserted by the build.
+
 ### The spring on the line
 
 The mock: `spring(this.s, show ? vol / 60 : 0, dt, 200, 28)`, integrated at 240 Hz (3 substeps
@@ -671,8 +761,8 @@ commit: the same values (the table showed 0.02 to 0.03 s, from before hn5).
 
 ## Hooks
 
-Twenty-three hook sites: eighteen 3-byte hooks of the theme, fix-auto-off's, plus the four
-places the volume keys open the volume page (hn9 adds none). Every stock byte is asserted by
+Twenty-five hook sites: twenty 3-byte hooks of the theme (hn13 added the mute key's two),
+fix-auto-off's, plus the four places the volume keys open the volume page. Every stock byte is asserted by
 `build_patch.py`, and so are the bytes `uk_tasks` relies on: `main_tick_tasks`' re-mute part
 0x3325..0x3331 and its `ret` at 0x345B.
 
@@ -696,22 +786,28 @@ places the volume keys open the volume page (hn9 adds none). Every stock byte is
 | 0x5D42 | `12 5C BC` (`ui_clear_screen`'s first call) | ljmp `hn_cancel` | every stock clear cancels a wipe |
 | 0x4A85 | `E5 47 14` (`home_draw_input_name`) | ljmp `hn_name_guard` | a name drawn during an exit: the whole home first, then the name |
 | 0x3FF8 | `C2 0B C2` (`clr 0x21.3; clr 0x20.6`) | ljmp `hn_flag_path` | the refresh's flag path during a wipe: flags and page as stock, the 0x412F fill skipped |
+| 0x1047 | `E5 45 64` (`key_1c`: `mov A,0x45 ; xrl A,#1`) | ljmp `hn_mute_key` | the mute key: the stock toggle, then the volume page instead of home (hn13) |
+| 0x3DD1 | `EB 64 1F` (`read_key`: `mov A,R3 ; xrl A,#0x1F`) | ljmp `hn_key_p2` | page 2 keeps the mute key 0x1C as well as 0x1A, 0x1B, 0x1F; every other key still becomes "home" (hn13) |
 | 0x55B9 | `02 5D 42` ljmp `ui_clear_screen` | ljmp `fx_auto_off` | fix-auto-off (`INCLUDES`) |
 | 0x91ED | `"No Connected\0"` | `"Disconnected\0"` | strings (`INCLUDES`): an in-place patch, not a hook |
 | 0x0D33, 0x0DB3, 0x0E5A, 0x0F02 | `12 5D 42 7B FF …` | `12 DE 54 80 11` (lcall `hn_enter_vol` ; sjmp site+0x16) | volume-key entry sites A-D |
 
 ## Memory
 
-- **Code:** 22349 bytes at 0x9800..0xEF4C (15271 of them fonts, fix-auto-off's 14 at the
-  end), plus the version string at 0xEF4D. Image length 61279 bytes; 1185 bytes are left under
-  the 0xF400 split (hn10: 1199, hn9: 1231, hn8: 2220). hn10.1 added 12 bytes of code (the mark in
+- **Code:** 22658 bytes at 0x9800..0xF081 (15271 of them fonts; the included fixes' code at the
+  end), plus the version string at 0xF082. Image length 61586 bytes; 878 bytes are left under
+  the 0xF400 split (hn12: 1126, hn10.1: 1185, hn10: 1199, hn9: 1231, hn8: 2220). hn13 added 248
+  bytes and no font: the text and the mute change in `hn_draw_volume` 57, "MUTE" in `hn_num_at`
+  48 and its string 5, the label's icon and the two clears in `hv_vol` 72, the fill's colour and
+  the spring's target 15, `hn_mute_key` 35 and `hn_key_p2` 16. hn10.1 added 12 bytes of code (the mark in
   `hn_hold`, `hm_status_r`, less `hn_home_now`'s own status draw) and 2 of version string.
   hn10 added 32 bytes: the ease table's 12 more words
   and the still-step test in `hn_step`. hn9 added 989 bytes: the kit's row clip (`uk_textc`, the
   row-clipped decoder `tx_yclip`, format 2 only here: about 190), the roll (about 250 with its
   39-byte frame table), the spring (about 480 with its multiply and constants), less hn8's
   61-byte split table (`vsplit`, now computed). `house_numerals.asm` is the generated listing.
-- **XDATA** 0x0100..0x01C1. The EEPROM sectors and everything fast-lcd/direct-select use
+- **XDATA** 0x0100..0x01C1 (hn13 added none: the muted page's state is the text "M" in `HN_NUM`
+  and `HR_OLD`). The EEPROM sectors and everything fast-lcd/direct-select use
   stay untouched. hn9 added 0x01B3..0x01C1, and `uk_text`'s block grew by 5 bytes (the row clip)
   and now starts at 0x015B, in what was free below it.
 
@@ -719,7 +815,7 @@ places the volume keys open the volume page (hn9 adds none). Every stock byte is
 |---|---|---|
 | 0x0100, 0x0102 | `HN_N`, `HN_C` | `uk_fill`'s pixel count and colour |
 | 0x0104 | `HN_VOL` | the volume shown (0..60) |
-| 0x0105..0x0107 | `HN_NUM` | its decimal text (no leading zero) and a NUL |
+| 0x0105..0x0107 | `HN_NUM` | its decimal text (no leading zero) and a NUL; "M" while muted (drawn as MUTE) |
 | 0x0108 | `HN_MODE` | 0 idle, 1 wipe in, 2 wipe out |
 | 0x0109 | `HN_VF` | volume-page elements on screen (name, status, divider, VOL, number, line, dB, max) |
 | 0x010A | `HN_HF` | home elements drawn by the exit (icon, volume, bar, name, format, EQ, status) |
@@ -747,7 +843,7 @@ places the volume keys open the volume page (hn9 adds none). Every stock byte is
 | 0x01B7, 0x01B9, 0x01BB | `SP_T`, `SP_E`, `SP_W` | a spring tick's target × 64, error, first product |
 | 0x01BD | `HR_F` | the roll's next frame 1..14, 0 idle |
 | 0x01BE | `HR_DIR` | the roll's direction: 0 up, 1 down |
-| 0x01BF..0x01C1 | `HR_OLD` | the roll's old text (the previous target's) and a NUL |
+| 0x01BF..0x01C1 | `HR_OLD` | the roll's old text (the previous target's, "M" for MUTE) and a NUL |
 
 - **Stack:** the tour (with two entries and two exits) was run with a canary above SP. The
   deepest idata used is 0xB3, the same as fast-lcd. That is stock's own peak: the delay
@@ -756,14 +852,42 @@ places the volume keys open the volume page (hn9 adds none). Every stock byte is
 
 ## Emulator results
 
-`python3 tools/run_tests.py` gives **ALL PASS** for every feature (hn9: 137 s wall,
-house-numerals 137 s, most of it the sweep). `emu_test.py` has four groups: `unit`, `tour`,
+`python3 tools/run_tests.py` gives **ALL PASS** for every feature (hn13: 156 s wall,
+house-numerals 156 s, about half of it the sweep). `emu_test.py` has four groups: `unit`, `tour`,
 `int1`, `sweep`; `unit tour` alone runs in about a minute. Since hn12 the whole-firmware
 scenarios and the sweep run against a reference the test builds itself, fast-lcd plus the fixes
 this image includes (`build/reference.bin`), so that only the theme differs between the two
 amps; the image diff still runs against fast-lcd, the base. Before, fast-lcd carried
 direct-select itself.
 
+- **The muted page and the mute key** (hn13).
+  - Unit, the page (`test_mute`, against `vol_model`, which draws the muted look from the mute
+    bit: `label_model`, `roll_box` with MUTE, the line dark red at 0): `hn_volpage` muted for
+    inputs 1 to 8 at volumes 0, 25 and 60 and in two tints; 0x5936 muted for every step; muting
+    and unmuting on the idle page at several volumes: label, line and caption at once, the roll
+    armed, each of the 14 frames' box equal to `roll_box` (the number in grey, MUTE in that share
+    of red) and nothing outside it changed, then the spring tick by tick against `spring_model`
+    with the fill in dark red towards 0 (or in the accent from 0); an unmute that also changes
+    the volume, both directions; a volume change while muted (no roll); a mute cut by an unmute
+    at frame 5; fifteen wipe cases (five sets of revealed elements, the state changing or not);
+    an entry while muted step by step: the same elements at the same steps as unmuted, worst
+    step 7.02 ms.
+  - Unit, the keys (`test_mute_key`): the handler at 0x1047 against the stock handler run on the
+    base image: the same mute bit, `mute_state_set` call, P2 and unmute countdown, both ways;
+    then page 2, the entry at step 0 with nothing drawn, both timers 200. On the open page: no
+    wipe, the roll armed. During an exit: turned round. `read_key`'s tail for all 256 key codes
+    on pages 1, 2, 3, 7 and 13: as the base except key 0x1C on page 2.
+  - Whole firmware (`mute_scenarios`, lockstep with the reference): mute from home (the audio
+    writes before the first wipe step, the muted page = `vol_model`, the exit, the home with the
+    red icon), unmute from home (one unmute 0.10 s after the key, no later than the reference);
+    mute and unmute on the open page (the reference only goes home there, so the audio state is
+    compared with the reference muted from home: equal); Vol+ at home while muted and Vol- on the
+    open muted page (both images unmute and step; the number rolls in); mute during the entry
+    and during the exit. The audio states match the reference in order and time wherever it
+    toggles too. Worst tick 7.17 ms.
+  - Sweep: the mute key (NEC 0x09) on home and on the volume page (both outputs) is compared
+    with the reference muted from home: every output equal but the page, which is 2, and the
+    screen is the muted page. In standby and in the menu it behaves as the reference.
 - **Status tint** (hn10.1). Unit: the refresh's draw keeps the loader's tint (three no-signal texts
   reddish, a sample rate grey); four draws at y 135 that are not the loader's, after a no-signal
   check, are grey and stay grey when redrawn. Whole firmware, six cases (Source, direct-select BT
@@ -771,8 +895,8 @@ direct-select itself.
   Bluetooth searching): the status before the key is reddish, the text 0.3 s after the key is grey,
   and once the loader has run it is reddish exactly when the new input has no signal. Against
   hn10 five of the six 0.3 s checks fail (reddish), as seen on the amp; AUX is grey either way.
-- **Image diff:** only the fifteen hook sites and strings' patch at 0x91ED (plus the version
-  pointer) differ from fast-lcd inside the base image. The labels in `SmslAo300Labels.java` match this build.
+- **Image diff:** only the hook sites, the four volume-entry sites and strings' patch at 0x91ED
+  (plus the version pointer) differ from fast-lcd inside the base image. The labels in `SmslAo300Labels.java` match this build.
 - **Home screen, against `home_model`.** The model is written in Python, independent of the
   8051 code. It reads the state (input, output, mute bit, volumes, EQ, format, the two text
   buffers) and draws with `PFont.render`, which the kit test proves pixel-identical to
@@ -923,7 +1047,7 @@ direct-select itself.
 - **Panel timing: same as fast-lcd.** `uk_fill` and `uk_text` use fast-lcd's byte timing (the
   WR pulse the blit-test build proved on the panel; see fast-lcd's README, Bus timing).
 - **The main loop now runs during the wipes.** A tick's step, spring and roll take at most
-  6.9 ms, after the tick's own work. The volume keys, format poll, unmute and re-mute run as on fast-lcd (tested
+  7.2 ms (hn13, whole firmware; the limit the tests hold is 8), after the tick's own work. The volume keys, format poll, unmute and re-mute run as on fast-lcd (tested
   against it, including the INT1 case the hn3 review raised).
 - **The tick driver's re-mute part** (hn9): `uk_tasks` runs `main_tick_tasks`' first
   instructions itself (0x21.4 set: clear it and 0x22.4, `lcall volume_apply`), so the stock
@@ -936,9 +1060,29 @@ direct-select itself.
   `home_refresh_periodic`. The stack peak is unchanged (0xAF with Timer0
   only, 0xB3 with Timer3; see Stack above).
 - **Recovery: unchanged.** The reset vector, the standby key handler (0x59B2) and
-  `read_key`'s Source-in-standby jump to the bootloader (0x3DB8) are untouched.
+  `read_key`'s Source-in-standby jump to the bootloader (0x3DB8) are untouched. hn13's hook in
+  `read_key` is at 0x3DD1, in the page-2 filter that follows it; standby never gets there with
+  page 2, and the sweep's standby state is unchanged for all 256 commands.
+- **The mute key's behaviour changed on purpose** (hn13): it shows the volume page instead of
+  staying home, and on the open page it now toggles. The toggle's audio writes are the stock
+  ones (tested against the stock handler and, on the whole firmware, against the reference). A
+  held mute key is not modelled in the emulator: if the remote repeats the command, each
+  dispatched repeat toggles again, as in stock at home.
 
 ## What to look for on the amp
+
+hn13, the mute key:
+- Mute on home: the sound stops at once and the volume page wipes in with the red speaker,
+  "MUTE" in red and the line empty; 2 s later it wipes back and the home shows the red speaker.
+- Mute again on home: the page wipes in with "VOL" and the number, the line growing; the sound
+  is back about 0.1 s after the key.
+- Mute while the volume page is open (after Vol+): the number rolls out and "MUTE" rolls in,
+  the line turns dark red and retracts. Mute again within the 2 s: "MUTE" rolls out, the number
+  back in, the line grows in the accent. Is "MUTE" in the name's face right next to the numerals,
+  or should it get the numerals' face (503 bytes)?
+- Vol+ or Vol- while "MUTE" shows: unmuted at once, the number rolls in.
+- Hold the mute key: does it toggle once, or does the remote repeat and toggle again?
+- Mute in a menu: goes home without muting, as before.
 
 hn10.1, the status tint: on an input without a signal (status reddish), press Source or a direct
 input key. The next input's first status text ("Digital input", "initializing") is grey at once.

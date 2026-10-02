@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
-"""Emulator tests for House Numerals hn10.1 (see README.md).
+"""Emulator tests for House Numerals hn13 (see README.md).
 
   python3 emu_test.py unit    image diff, then every routine at its hook: the home screen against
                               home_model, the volume page against vol_model, a wipe step by step,
                               entry/exit/reversal/cancel logic, the number roll against roll_box,
                               the line's spring against spring_model (and it against the mock's
-                              float integrator)
+                              float integrator), the muted page and the mute key's two hooks
   Whole-firmware scenarios and the sweep run against a reference the test builds: fast-lcd
   plus the fixes this image includes (build/reference.bin), so only the theme differs.
 
   python3 emu_test.py tour    whole firmware from reset, lockstep with fast-lcd: the tour, a volume
                               key per input, keys during the wipes, keys on the open page (the
                               roll's frames, the spring, knob-speed repeats, a roll cut by
-                              Menu / Source / Power), the stack check
+                              Menu / Source / Power), the mute key (from home, on the open page,
+                              during the wipes, a volume key while muted), the stack check
   python3 emu_test.py int1    INT1 receiver event at a Vol+ press, 100 offsets, against fast-lcd
-  python3 emu_test.py sweep   all 256 IR commands in five states, against fast-lcd
+  python3 emu_test.py sweep   all 256 IR commands in five states, against fast-lcd (the mute key
+                              where it differs on purpose: against fast-lcd muted from home)
   python3 emu_test.py         all four
 """
 import math
@@ -110,7 +112,7 @@ def image_diff():
     java = open(os.path.join(ROOT, "tools", "disasm", "SmslAo300Labels.java")).read()
     named = {n: int(a, 16) for a, n in re.findall(r'\{0x([0-9A-F]{4}), "((?:h[nvhm]|uk|pf)_\w+)"\}', java)}
     lab = dict(LAB, hn_ease=LAB["ease"], hn_names=LAB["names"], hn_names8=LAB["names8"], hn_rolltab=LAB["ro_tab"],
-               hn_spkt=LAB["sp_kt"])
+               hn_spkt=LAB["sp_kt"], hn_strmute=LAB["str_mute"])
     wrong = sorted(k for k in named if named[k] != lab.get(k))
     check("SmslAo300Labels.java: the %d hn_/hv_/hh_/hm_/uk_/pf_ labels match this build" % len(named), not wrong, str(wrong))
 
@@ -458,12 +460,31 @@ def fill(fb, x, y, w, h, c):
             fb[yy][xx] = c
 
 
-def vol_parts(e, v=None, split=None):
+def muted(e):
+    return bool(e.iram[0x22] & 0x02)                    # RAM bit 0x22.1
+
+
+def label_model(fb, acc, mute):
+    """The label over the number: "VOL" in the accent, or (the mock's S.muted) the home's muted speaker
+    in red at the label's x with its bottom row on the label cell's; the other's area black."""
+    x0, x1, y0, y1 = bp.VLBL_X, bp.VLBL_END, bp.MICON_Y, bp.VLBL_Y + bp.PF_MONO.H - 1
+    fill(fb, x0, y0, x1 - x0 + 1, y1 - y0 + 1, 0)
+    if mute:
+        bp.PF_ICON.render(fb, "M", bp.VLBL_X, bp.MICON_Y, bp.RED, 0, spacing=bp.VLBL_SP)
+    else:
+        bp.PF_MONO.render(fb, "VOL", bp.VLBL_X, bp.VLBL_Y, acc, 0, spacing=bp.VLBL_SP)
+
+
+def vol_parts(e, v=None, split=None, mute=None):
     """{element: its pixels} of the volume page for e's state ({(x, y): colour}, black included);
     v: the volume shown (default: the active output's, as hn_draw_volume takes it); split: the line's
-    split column (default: the volume's, the spring at rest)."""
+    split column (default: the volume's, the spring at rest; muted: the line's start); mute: the mute
+    state shown (default: e's, RAM bit 0x22.1): the muted speaker for "VOL", MUTE in red for the
+    number, the line's fill dark red towards 0."""
     ir = e.iram
     acc = accent((ir[0x48], ir[0x49]))
+    if mute is None:
+        mute = muted(e)
     if v is None:
         v = ir[0x31] if ir[0x2B] == 1 else ir[0x52]
     v = min(v, 60)
@@ -481,11 +502,10 @@ def vol_parts(e, v=None, split=None):
         bp.PF_MONO.render(fb, buffer_text(e, bp.SMALL_BUF), bp.VSTAT_X, bp.VSTAT_Y, status_ink(e), 0, spacing=bp.VSTAT_SP)
     part(bp.VF_STAT, status)
     part(bp.VF_DIV, lambda fb: fill(fb, bp.VDIV_X, bp.VDIV_Y, 1, bp.VDIV_H, bp.DIVIDER))
-    part(bp.VF_VOL, lambda fb: bp.PF_MONO.render(fb, "VOL", bp.VLBL_X, bp.VLBL_Y, acc, 0, spacing=bp.VLBL_SP))
-
-    part(bp.VF_NUM, lambda fb: roll_box(fb, str(v)))
-    part(bp.VF_LINE, lambda fb: line_model(fb, bp.VLINE_X + int(round(bp.VLINE_W * v / 60)) if split is None else split,
-                                           acc))
+    part(bp.VF_VOL, lambda fb: label_model(fb, acc, mute))
+    part(bp.VF_NUM, lambda fb: roll_box(fb, bp.MUTE_TEXT if mute else str(v)))
+    rest = bp.VLINE_X if mute else bp.VLINE_X + int(round(bp.VLINE_W * v / 60))
+    part(bp.VF_LINE, lambda fb: line_model(fb, rest if split is None else split, bp.MLINE if mute else acc))
     part(bp.VF_CAP, lambda fb: bp.PF_MONO.render(fb, db_caption(v), bp.VCAP_X, bp.VCAP_Y, bp.DIM, 0))
     part(bp.VF_CAPR, lambda fb: bp.PF_MONO.render(fb, "max 60", bp.VCAPR_RIGHT, bp.VCAP_Y, bp.FAINT, 0, align=1))
     return parts
@@ -521,10 +541,15 @@ def roll_frame(n, up=True):
 
 def roll_box(fb, text, dy=0, ink=bp.WHITE):
     """The number's box as a frame leaves it: black, the number right-aligned to VNUM_RIGHT with its
-    cell dy rows off, in ink, only the box's rows."""
+    cell dy rows off, in ink, only the box's rows. MUTE: in the home name's face on the number's
+    baseline, in red, a frame's grey as that share of red (the mock: col = RED at the frame's alpha)."""
     x0, x1, y0, y1 = ROLL_BOX
     fill(fb, x0, y0, x1 - x0 + 1, y1 - y0 + 1, 0)
-    bp.PF_VNUM.render(fb, text, bp.VNUM_RIGHT, bp.VNUM_Y + dy, ink, 0, align=1, rows=(y0, y1))
+    if text == bp.MUTE_TEXT:
+        bp.PF_NAME.render(fb, text, bp.VNUM_RIGHT, bp.MUTE_Y + dy, ink & bp.RED, 0, align=1, spacing=bp.MUTE_SP,
+                          rows=(y0, y1))
+    else:
+        bp.PF_VNUM.render(fb, text, bp.VNUM_RIGHT, bp.VNUM_Y + dy, ink, 0, align=1, rows=(y0, y1))
 
 
 # ---- the line's spring: a bit-exact model of the 8051 arithmetic, and the mock's float integrator
@@ -583,16 +608,16 @@ def compose(parts, only=None):
     return s
 
 
-def vol_model(e, v=None, only=None, split=None):
-    return compose(vol_parts(e, v, split), only)
+def vol_model(e, v=None, only=None, split=None, mute=None):
+    return compose(vol_parts(e, v, split, mute), only)
 
 
-def vol_ok(e, v=None, only=None, split=None):
-    return screen(e) == vol_model(e, v, only, split)
+def vol_ok(e, v=None, only=None, split=None, mute=None):
+    return screen(e) == vol_model(e, v, only, split, mute)
 
 
-def vol_diff(e, v=None, only=None, split=None):
-    m, s = vol_model(e, v, only, split), screen(e)
+def vol_diff(e, v=None, only=None, split=None, mute=None):
+    m, s = vol_model(e, v, only, split, mute), screen(e)
     for x in range(W):
         for y in range(H):
             if m[x][y] != s[x][y]:
@@ -1045,20 +1070,21 @@ def split_of(e):
 
 def settle(e, vol, sp=None, sv=None, limit=120):
     """Idle ticks (hn_step with no wipe: the spring and the roll) until the spring is still on vol's
-    fill. With sp, sv: each tick must match spring_model, and the line on screen its split. Returns
-    (ticks, ok, worst tick in ms)."""
+    fill (muted: on 0, the fill dark red). With sp, sv: each tick must match spring_model, and the
+    line on screen its split. Returns (ticks, ok, worst tick in ms)."""
     ok, worst, acc = True, 0.0, accent((e.iram[0x48], e.iram[0x49]))
+    target, ink = (0, bp.MLINE) if muted(e) else (fill_px(vol), acc)
     for n in range(1, limit + 1):
         worst = max(worst, run_steps(e, 1)[0])
         if sp is not None:
-            sp, sv = spring_model(sp, sv, fill_px(vol))
+            sp, sv = spring_model(sp, sv, target)
             lm = [[None] * W for _ in range(H)]
-            line_model(lm, spring_split(sp), acc)
+            line_model(lm, spring_split(sp), ink)
             ok = ok and spring_state(e) == (sp, sv) and split_of(e) == spring_split(sp) and all(
                 px(e, xx, yy) == lm[yy][xx] for yy in range(bp.VLINE_Y, bp.VLINE_Y + bp.VLINE_H)
                 for xx in range(bp.VLINE_X, bp.VLINE_X + bp.VLINE_W))
-        if spring_state(e) == (fill_px(vol) << bp.SPRING_Q, 0) and e.xram[bp.HR_F] == 0:
-            return n, ok and split_of(e) == bp.VLINE_SPLIT[vol], worst
+        if spring_state(e) == (target << bp.SPRING_Q, 0) and e.xram[bp.HR_F] == 0:
+            return n, ok and split_of(e) == bp.VLINE_X + target, worst
     return limit, False, worst
 
 
@@ -1092,7 +1118,7 @@ def box_diff(e, want, before):
 def roll_run(e, old, new, frames=14, up=None):
     """Frames of the roll from `old` to `new` text, one hn_roll call each: after each, the box must be
     roll_box of the frame's number and nothing outside it may change. Returns (bad, worst ms)."""
-    up = (int(new) >= int(old)) if up is None else up
+    up = (int(new) >= int(old)) if up is None else up       # with MUTE as a text: say which way
     bad, worst = [], 0.0
     for n in range(1, frames + 1):
         before = screen(e)
@@ -1197,6 +1223,268 @@ def test_roll():
         e.call(LAB["hn_roll"])
         check("hn_roll with HR_F %d, HN_MODE %d, HN_VF 0x%02X: stops, draws nothing" % (f, mode, vf),
               e.xram[bp.HR_F] == 0 and screen(e) == before)
+
+
+# ---- the muted volume page --------------------------------------------------------------------------
+NEC_MUTE = 0x09                          # the remote's mute key: key code 0x1C, key_1c 0x1047 (hn_mute_key)
+MUTE_SET = 0x5A62                        # mute_state_set (R7 0: mute)
+KEY_FILTER = 0x3DBD                      # read_key (IR): the key in R7 from here to its ret
+
+
+def set_mute(e, on):
+    e.iram[0x22] = (e.iram[0x22] & ~0x02) | (0x02 if on else 0)
+
+
+def f0_clear(e):
+    return not e.sfr[0xD0] & 0x20        # PSW.5, hn_draw_volume's "the mute state shown changes"
+
+
+def muted_page(vol, inp=2, theme=(0xFF, 0xFF)):
+    """The idle volume page for vol with the amp muted (hn_volpage), amp on."""
+    e = emu(theme)
+    e.iram[0x47], e.iram[0x2B], e.iram[0x31], e.iram[0x4F] = inp, 1, vol, 1
+    set_mute(e, True)
+    e.call(LAB["hn_volpage"])
+    return e
+
+
+def overlay(base, parts, only):
+    """`base` (a screen) with the given parts drawn over it."""
+    s = [col[:] for col in base]
+    for b in only:
+        for (xx, yy), c in parts[b].items():
+            s[xx][yy] = c
+    return s
+
+
+def key_filter(img, page, code):
+    """read_key's IR tail for key `code` on `page`: the key it returns."""
+    e = ut.emu(img)
+    e.iram[0x45] = page
+    e.setR(7, code)
+    e.call(KEY_FILTER)
+    return e.R(7)
+
+
+def mute_key_run(img, page, mute, setup=None):
+    """The mute key's handler (0x1047) on an amp that is on, at `page`; returns (e, mute_state_set's
+    arguments)."""
+    e = ut.emu(img) if setup is None else setup
+    calls = []
+    e.hooks[MUTE_SET] = lambda em: (calls.append(em.R(7)), em.ret())
+    e.iram[0x45], e.iram[0x4F], e.iram[0x47], e.iram[0x2B], e.iram[0x31] = page, 1, 2, 1, 25
+    e.iram[0x43], e.iram[0x44] = 0x12, 0x34
+    e.sfr[0xA0] = 0xFF
+    set_mute(e, mute)
+    e.call(0x1047)
+    return e, calls
+
+
+def test_mute():
+    print("\nthe volume page while muted (RAM bit 0x22.1): the muted speaker for VOL, MUTE for the number, "
+          "the line dark red towards 0")
+    check("MUTE: the home name's face (%s), %d x %d at %d..%d, rows %d..%d: on the number's baseline (%d), inside "
+          "the roll box; the icon at %d,%d (%d rows, ending on the label cell's last row %d)" %
+          (bp.PF_NAME.raster, bp.MUTE_W, bp.PF_NAME.H, bp.VNUM_RIGHT - bp.MUTE_W + 1, bp.VNUM_RIGHT, bp.MUTE_Y,
+           bp.MUTE_Y + bp.PF_NAME.H - 1, bp.MUTE_Y - bp.PF_NAME.top, bp.VLBL_X, bp.MICON_Y, bp.PF_ICON.H,
+           bp.VLBL_Y + bp.PF_MONO.H - 1),
+          bp.MUTE_Y - bp.PF_NAME.top == bp.VNUM_Y - bp.PF_VNUM.top and bp.ROLL_X0 < bp.VNUM_RIGHT - bp.MUTE_W + 1 and
+          bp.ROLL_Y0 <= bp.MUTE_Y and bp.MUTE_Y + bp.PF_NAME.H - 1 <= bp.ROLL_Y1 and
+          bp.MICON_Y + bp.PF_ICON.H == bp.VLBL_Y + bp.PF_MONO.H and bp.MLINE == 0x58E3)
+    # hn_volpage, muted
+    bad = []
+    for inp in range(1, 9):
+        for vol in (0, 25, 60):
+            e = muted_page(vol, inp)
+            if not vol_ok(e) or bytes(e.xram[bp.HN_NUM:bp.HN_NUM + 2]) != b"M\0" or split_of(e) != bp.VLINE_X or \
+                    spring_state(e) != (0, 0) or not f0_clear(e):
+                bad.append((inp, vol, vol_diff(e)))
+    check("hn_volpage muted, inputs 1-8 x volumes 0, 25, 60: the page = vol_model (icon, MUTE, the line all track, "
+          "the dB caption of the volume), HN_NUM \"M\", the spring still at 0", not bad, str(bad[:2]))
+    e = muted_page(25)
+    e.lcd.save_png(os.path.join(HERE, "build", "unit_volpage_muted.png"))
+    c0 = e.cycles
+    e.call(LAB["hn_volpage"])
+    ms = (e.cycles - c0) * 1000 / CLOCK_HZ
+    check("the whole muted page in %.1f ms" % ms, ms < 20 and vol_ok(e))
+    for theme in ((0xF8, 0x00), (0x07, 0xE0)):
+        e = muted_page(60, 3, theme)
+        check("tint %02X%02X, COAXIAL 60, muted: = vol_model (the icon and MUTE red in every tint)" % theme,
+              vol_ok(e), vol_diff(e))
+    # hn_draw_volume, the page not on screen
+    bad = []
+    for v in range(61):
+        e = emu(); e.iram[0x2B] = 1
+        set_mute(e, True)
+        e.setR(7, v); e.call(0x5936)
+        if not vol_ok(e, v, DYNAMIC) or not f0_clear(e):
+            bad.append((v, vol_diff(e, v, DYNAMIC)))
+    check("0x5936 muted, steps 0-60, the page not on screen: MUTE, the line all track and the dB caption at once",
+          not bad, str(bad[:2]))
+    # muting on the idle page: label, line and caption at once, MUTE rolls in, the spring retracts
+    worst = 0.0
+    for v in (25, 9, 60):
+        e = page_at(v)
+        base = screen(e)
+        set_mute(e, True)
+        key(e, v)
+        now = vol_parts(e, v, split=bp.VLINE_SPLIT[v])
+        ok = (e.xram[bp.HR_F], e.xram[bp.HR_DIR]) == (1, 0) and f0_clear(e) and \
+            bytes(e.xram[bp.HR_OLD:bp.HR_OLD + 3]).split(b"\0")[0] == str(v).encode() and \
+            bytes(e.xram[bp.HN_NUM:bp.HN_NUM + 2]) == b"M\0"
+        check("%2d, mute on the idle page: the icon for VOL and the fill dark red at once, the number untouched, "
+              "roll armed (HR_F 1, upwards, HR_OLD %r, HN_NUM \"M\")" % (v, str(v)),
+              ok and screen(e) == overlay(base, now, (bp.VF_VOL, bp.VF_LINE, bp.VF_CAP)))
+        bad, w = roll_run(e, str(v), bp.MUTE_TEXT, up=True)
+        worst = max(worst, w)
+        check("%2d -> MUTE: 14 frames, each the box = roll_box (the number in grey, then MUTE in that share of red), "
+              "nothing outside it; the last = the muted page" % v,
+              not bad and vol_ok(e, v, split=bp.VLINE_SPLIT[v]), str(bad[:2]))
+        n, ok, tw = settle(e, v, fill_px(v) << bp.SPRING_Q, 0)
+        worst = max(worst, tw)
+        check("%2d muted: the fill retracts to 0 in %d ticks as spring_model tick by tick, dark red; then the page = "
+              "hn_volpage's muted page" % (v, n), ok and vol_ok(e), vol_diff(e))
+    # roll and spring in the same ticks, as the driver runs them
+    e = page_at(60)
+    set_mute(e, True)
+    key(e, 60)
+    n, ok, tw = settle(e, 60, fill_px(60) << bp.SPRING_Q, 0)
+    worst = max(worst, tw)
+    check("60, mute, the roll and the spring together (hn_step): at rest after %d ticks = the muted page; worst "
+          "tick %.2f ms" % (n, tw), ok and vol_ok(e) and tw <= STEP_LIMIT, vol_diff(e))
+    # unmuting on the idle page
+    for v, v2 in ((25, 25), (25, 26), (25, 24), (9, 10), (10, 9)):
+        e = muted_page(v)
+        base = screen(e)
+        set_mute(e, False)
+        key(e, v2)
+        now = vol_parts(e, v2, split=bp.VLINE_X)
+        ok = (e.xram[bp.HR_F], e.xram[bp.HR_DIR]) == (1, 1 if v2 < v else 0) and f0_clear(e) and \
+            bytes(e.xram[bp.HR_OLD:bp.HR_OLD + 2]) == b"M\0"
+        check("muted %2d, unmuted at %2d: VOL for the icon and the dB caption at once, roll armed (HR_F 1, HR_DIR %d, "
+              "HR_OLD \"M\")" % (v, v2, 1 if v2 < v else 0),
+              ok and screen(e) == overlay(base, now, (bp.VF_VOL, bp.VF_LINE, bp.VF_CAP)))
+        bad, w = roll_run(e, bp.MUTE_TEXT, str(v2), up=v2 >= v)
+        worst = max(worst, w)
+        check("MUTE -> %2d: 14 frames, each the box = roll_box; the last = the static page, the line still at 0" % v2,
+              not bad and vol_ok(e, v2, split=bp.VLINE_X), str(bad[:2]))
+        n, ok, tw = settle(e, v2, 0, 0)
+        worst = max(worst, tw)
+        check("%2d unmuted: the fill grows from 0 in the accent as spring_model (%d ticks); then the page = "
+              "hn_volpage's" % (v2, n), ok and vol_ok(e), vol_diff(e))
+    check("worst roll frame / tick with MUTE %.2f ms (at most %g)" % (worst, STEP_LIMIT), worst <= STEP_LIMIT)
+    STEP_MS["mute_roll"] = worst
+    # MUTE stays whatever the volume does; the same state again does nothing but the caption
+    e = muted_page(25)
+    key(e, 30)
+    check("muted, the volume changes to 30 on the idle page: no roll, MUTE stays, the dB caption follows",
+          e.xram[bp.HR_F] == 0 and vol_ok(e, 30) and f0_clear(e), vol_diff(e, 30))
+    # a mute change cut by another one mid-roll
+    e = page_at(25)
+    set_mute(e, True); key(e, 25)
+    roll_run(e, "25", bp.MUTE_TEXT, frames=5, up=True)
+    set_mute(e, False); key(e, 25)
+    ok = e.xram[bp.HR_F] == 1 and bytes(e.xram[bp.HR_OLD:bp.HR_OLD + 2]) == b"M\0"
+    bad, _ = roll_run(e, bp.MUTE_TEXT, "25", up=True)
+    check("mute, then unmute at frame 5: restarts from MUTE, 14 frames back to 25, no leftovers", ok and not bad and
+          vol_ok(e, 25, split=bp.VLINE_SPLIT[25]), str(bad[:2]))
+    # during a wipe: the label, the text and the caption only where revealed, in their final state; no roll
+    bad = []
+    for vf in (0, bp.VF_VOL, bp.VF_NUM, bp.VF_VOL | bp.VF_NUM | bp.VF_CAP, bp.VF_ALL):
+        for was, now_m in ((False, True), (True, False), (True, True)):
+            e = emu(); e.iram[0x2B] = 1
+            e.xram[bp.HN_MODE], e.xram[bp.HN_VF], e.xram[bp.HN_VOL] = 1, vf, 37
+            for k, ch in enumerate(b"M\0" if was else b"37\0"):
+                e.xram[bp.HN_NUM + k] = ch
+            set_mute(e, now_m)
+            e.setR(7, 37); e.call(0x5936)
+            want = {b for b in (bp.VF_NUM, bp.VF_CAP) if vf & b} | ({bp.VF_VOL} if vf & bp.VF_VOL and was != now_m else set())
+            if screen(e) != vol_model(e, 37, want) or e.xram[bp.HR_F] != 0 or not f0_clear(e):
+                bad.append((bin(vf), was, now_m, vol_diff(e, 37, want)))
+    check("wipe running, the mute state changing or not, 5 sets of revealed elements: MUTE / the number and the "
+          "caption where revealed, the label only if revealed and changed, the line left to the spring, no roll",
+          not bad, str(bad[:2]))
+    # an entry while muted, step by step: the same steps reveal the same elements, in their muted look
+    runs = {}
+    for m in (False, True):
+        ref = muted_page(25) if m else page_at(25)
+        e = emu(); fill_screen(e, 0x1234)
+        e.iram[0x47], e.iram[0x2B], e.iram[0x31], e.iram[0x4F] = 2, 1, 25, 1
+        set_mute(e, m)
+        e.call(LAB["hn_enter_vol"])
+        e.setR(7, 25); e.call(0x5936)
+        before = screen(e)
+        flags, times, wrong = [], [], []
+        for k in range(1, N + 1):
+            times.append(run_steps(e, 1)[0])
+            flags.append(e.xram[bp.HN_VF])
+            rev = {b for b in VOL_NAMES if flags[-1] & b}
+            want = before if EASE[k] == EASE[0] and k < N else entry_screen(
+                vol_parts(ref, split=split_of(e)), before, EASE[k], k == N, bp.ORANGE, rev)
+            if m and screen(e) != want:
+                wrong.append(k)
+        runs[m] = (flags, times, wrong, e)
+    e = runs[True][3]
+    check("entry while muted: every step = the old page, the edge, the revealed elements of the muted page; the "
+          "same elements at the same steps as unmuted", not runs[True][2] and runs[True][0] == runs[False][0],
+          str(runs[True][2][:4]))
+    check("entry while muted: the fill never grows (split %d), the page at its end = hn_volpage's muted page, mode 0"
+          % split_of(e), split_of(e) == bp.VLINE_X and vol_ok(e) and e.xram[bp.HN_MODE] == 0, vol_diff(e))
+    wm = max(runs[True][1])
+    print("    muted entry step times (ms): " + " ".join("%.1f" % t for t in runs[True][1]))
+    check("entry while muted: worst step %.2f ms (unmuted %.2f; at most %g)" % (wm, max(runs[False][1]), STEP_LIMIT),
+          wm <= STEP_LIMIT)
+    STEP_MS["entry_muted"] = wm
+
+
+def test_mute_key():
+    print("\nthe mute key: hn_mute_key (the 0x1047 hook) and read_key's page-2 filter (hn_key_p2, the 0x3DD1 hook)")
+    # the toggle itself, against the stock handler
+    for mute in (False, True):
+        b, cb = mute_key_run(BASE, 1, mute)
+        e, ce = mute_key_run(NEW, 1, mute)
+        same = (muted(e), ce, e.sfr[0xA0], e.iram[0x43], e.iram[0x44]) == \
+            (muted(b), cb, b.sfr[0xA0], b.iram[0x43], b.iram[0x44])
+        check("home, %s: the toggle as stock (0x22.1 %d, mute_state_set %s, P2 0x%02X, unmute countdown %s)" %
+              ("muted" if mute else "playing", muted(e), ce, e.sfr[0xA0],
+               "10" if (e.iram[0x43], e.iram[0x44]) == (0, 10) else "untouched"),
+              same and muted(e) != mute and ce == ([] if mute else [0]))
+        check("home, %s: then page 2 through hn_enter_vol (entry at step 0, x 318, nothing drawn), HN_NUM %s, "
+              "both timers 200 (stock: page 1, refresh in 10)" % ("muted" if mute else "playing",
+                                                                  "the volume" if mute else "\"M\""),
+              e.iram[0x45] == 2 and e.xram[bp.HN_MODE] == 1 and e.xram[bp.HN_STEP] == 0 and
+              not any(e.lcd.gram) and (e.iram[0x3F], e.iram[0x40], e.iram[0x27], e.iram[0x28]) == (0, 200, 0, 200) and
+              bytes(e.xram[bp.HN_NUM:bp.HN_NUM + 3]) == (b"25\0" if mute else b"M\0\0") and b.iram[0x45] == 1 and
+              (b.iram[0x27], b.iram[0x28]) == (0, 10))
+    # on the open page: no wipe, the roll
+    for mute in (False, True):
+        pg = muted_page(25) if mute else page_at(25)
+        e, ce = mute_key_run(NEW, 2, mute, setup=pg)
+        check("the page open, %s: toggled (mute_state_set %s), page 2 kept, no wipe, the roll armed, timers 200" %
+              ("muted" if mute else "playing", ce),
+              muted(e) != mute and ce == ([] if mute else [0]) and e.iram[0x45] == 2 and e.xram[bp.HN_MODE] == 0 and
+              e.xram[bp.HR_F] == 1 and (e.iram[0x3F], e.iram[0x40]) == (0, 200))
+    # the exit turned round
+    e = page_at(25)
+    e.iram[0x59] = 1
+    e.call(LAB["hn_clear"])
+    run_steps(e, 12)
+    x = e.xram[bp.HN_X] << 8 | e.xram[bp.HN_X + 1]
+    e, ce = mute_key_run(NEW, 1, False, setup=e)
+    check("during the exit (page 1, step 12, x %d): toggled, page 2, the exit turned round (mode 1, step %d)" %
+          (x, e.xram[bp.HN_STEP]), muted(e) and e.iram[0x45] == 2 and e.xram[bp.HN_MODE] == 1 and
+          e.xram[bp.HN_STEP] == N - 12)
+    # read_key's filter: every key code on five pages
+    diff = {}
+    for page in (1, 2, 3, 7, 13):
+        for code in range(256):
+            a, b = key_filter(BASE, page, code), key_filter(NEW, page, code)
+            if a != b:
+                diff[(page, code)] = (a, b)
+    check("read_key, IR, 256 key codes on pages 1, 2, 3, 7, 13: as fast-lcd except the mute key 0x1C on page 2 "
+          "(0x15 \"home\" there, kept here)", diff == {(2, 0x1C): (0x15, 0x1C)}, str(sorted(diff.items())[:4]))
+    check("page 2 still turns every other key but 0x1A, 0x1B, 0x1F into \"home\"",
+          all(key_filter(NEW, 2, c) == (c if c in (0x1A, 0x1B, 0x1C, 0x1F) else 0x15) for c in range(256)))
 
 
 def test_spring():
@@ -1637,7 +1925,8 @@ class Watch:
     def _start(self, em):
         mode, rf = em.xram[bp.HN_MODE], em.xram[bp.HR_F]
         anim = mode or rf or em.xram[bp.SP_V] or em.xram[bp.SP_V + 1] or \
-            (mode == 0 and em.xram[bp.HN_VF] == bp.VF_ALL and spring_state(em)[0] != fill_px(min(em.xram[bp.HN_VOL], 60)) << bp.SPRING_Q)
+            (mode == 0 and em.xram[bp.HN_VF] == bp.VF_ALL and spring_state(em)[0] !=
+             (0 if muted(em) else fill_px(min(em.xram[bp.HN_VOL], 60)) << bp.SPRING_Q))
         self._open = (em.cycles, mode, rf) if anim else None
         if anim:                             # STEP_END runs on every main pass: hook it only now
             em.hooks[STEP_END] = self._end
@@ -2252,6 +2541,258 @@ def roll_scenarios():
         audio_checks(label, ref, new, quiet=True)
 
 
+def audio_state(amp):
+    """The amp's audio state now (the last value of every register and pin but the backlight)."""
+    return {k: v for k, v in amp.state.items() if k != BACKLIGHT}
+
+
+def power_on(wait=9.5, vol=25):
+    """Both images powered on (USB playing), at home, the speaker volume vol in RAM 0x31, the unmute
+    hook counting."""
+    amps = [Amp(REF), Amp(NEW)]
+    for amp in amps:
+        amp.unmutes = []
+        amp.e.hooks[UNMUTE_CALL] = lambda em, amp=amp: amp.unmutes.append(em.cycles / CLOCK_HZ)
+        amp.set_pin(0xC0, 5, 0)
+        amp.boot()
+        amp.press(NEC_POWER)
+        amp.wait(wait)
+        amp.e.iram[0x31] = vol
+    return amps
+
+
+def press_both(amps, cmd, secs):
+    for amp in amps:
+        amp.press(cmd)
+    for amp in amps:
+        amp.wait(secs)
+
+
+def roll_boxes(w, new):
+    """Collect (tick record, the roll box's pixels) after every tick that drew a roll frame."""
+    boxes = []
+
+    def at_tick(rec):
+        if rec[2]:
+            boxes.append((rec, [[px(new.e, xx, yy) for yy in range(bp.ROLL_Y0, bp.ROLL_Y1 + 1)]
+                                for xx in range(bp.ROLL_X0, bp.ROLL_X1 + 1)]))
+    w.on_tick = at_tick
+    return boxes
+
+
+def roll_checks(label, boxes, old, new_text, up=True, unmute=False):
+    """14 frames on consecutive ticks, each box = roll_box of the mock's frame. unmute: the stock
+    unmute (mute_state_set(1), 10 ticks after the key: milliseconds of I2C) runs in one of the roll's
+    ticks, whose frame then ends in the next Timer0 tick: still one frame per main-loop tick, the 14
+    of them within 15 Timer0 ticks."""
+    frames, t0s = [b[0][2] for b in boxes], [b[0][3] for b in boxes]
+    if unmute:
+        ticks_ok = bool(t0s) and t0s == sorted(t0s) and t0s[-1] - t0s[0] <= 14
+    else:
+        ticks_ok = bool(t0s) and t0s == list(range(t0s[0], t0s[0] + 14))
+    check("%s%s -> %s: 14 frames %s" % (label, old, new_text, "within 15 Timer0 ticks (the unmute's work in one)"
+                                         if unmute else "on consecutive ticks"),
+          frames == list(range(1, 15)) and ticks_ok, str((frames, t0s)))
+    bad = []
+    for n, (rec, got) in enumerate(boxes, 1):
+        is_old, dy, ink = roll_frame(n, up)
+        fb = [[None] * W for _ in range(H)]
+        roll_box(fb, old if is_old else new_text, dy, ink)
+        if any(got[xx - bp.ROLL_X0][yy - bp.ROLL_Y0] != fb[yy][xx] for xx in range(bp.ROLL_X0, bp.ROLL_X1 + 1)
+               for yy in range(bp.ROLL_Y0, bp.ROLL_Y1 + 1)):
+            bad.append(n)
+    check("%seach frame's box = roll_box" % label, not bad, str(bad))
+
+
+def home_muted_ok(label, amps, w, mark):
+    """2.6 s later: the exit ran, the home shows the state (the red icon while muted)."""
+    ref, new = amps
+    for amp in amps:
+        amp.wait(2.6)
+    st = [s for s in w.since(mark) if s[1] == 2]
+    check("%sthen the %d-step exit, home = home_model (the icon %s)" % (label, N, "red" if muted(new.e) else "white"),
+          len(st) == N and new.page == 1 and new.e.xram[bp.HN_MODE] == 0 and home_ok(new.e), home_diff(new.e))
+
+
+def mute_scenarios():
+    """The mute key, whole firmware. fast-lcd goes home on it (and on the volume page only goes home,
+    without toggling); this image toggles the same way and shows the volume page. So the audio must
+    match fast-lcd's wherever fast-lcd toggles too, and the screens are held to the models."""
+    print("\nThe mute key (NEC 0x%02X), whole firmware, against fast-lcd" % NEC_MUTE)
+    # ---- from home: mute, back home, unmute
+    label = "mute_home    "
+    ref, new = amps = power_on()
+    w = Watch(new)
+    mark = w.mark()
+    press_both(amps, NEC_MUTE, 1.0)
+    st = wipe_checks(label, w, mark, 1)
+    ev = [c for c, nm, d in new.events[mark[1]:]]
+    check("%sthe mute's audio writes (%d) all before the first step; nothing drawn before it" % (label, len(ev)),
+          bool(ev) and bool(st) and max(ev) < st[0][0] and all(f[0] >= st[0][0] for f in w.fills[mark[2]:]))
+    check("%sboth muted; fast-lcd at home, here page 2; same power, volumes, input, output" % label,
+          muted(ref.e) and muted(new.e) and ref.page == 1 and new.page == 2 and state(ref)[1:] == state(new)[1:])
+    check("%sthe muted volume page = vol_model, at rest (the line all track)" % label,
+          vol_ok(new.e) and split_of(new.e) == bp.VLINE_X and new.e.xram[bp.HR_F] == 0, vol_diff(new.e))
+    new.lcd.save_png(os.path.join(HERE, "build", "mute_home.png"))
+    home_muted_ok(label, amps, w, mark)
+    check("%sstill muted in both, same state" % label, muted(ref.e) and muted(new.e) and state(ref) == state(new))
+    new.lcd.save_png(os.path.join(HERE, "build", "mute_home_after.png"))
+    mark = w.mark()
+    t_press = new.t
+    before = [len(a.unmutes) for a in amps]
+    press_both(amps, NEC_MUTE, 1.0)
+    wipe_checks("unmute_home  ", w, mark, 1)
+    un = [a.unmutes[b:] for a, b in zip(amps, before)]
+    ok = len(un[0]) == 1 and len(un[1]) == 1
+    check("unmute_home  both unmuted: one unmute %s after the key, no later than fast-lcd + 0.10 s" %
+          ("%.2f s" % (un[1][0] - t_press) if ok else "?"),
+          ok and un[1][0] - un[0][0] <= 0.10 and not muted(ref.e) and not muted(new.e), str(un))
+    check("unmute_home  the volume page = vol_model (the number, VOL, the fill in the accent)",
+          new.page == 2 and vol_ok(new.e), vol_diff(new.e))
+    home_muted_ok("unmute_home  ", amps, w, mark)
+    audio_checks(label, ref, new)
+    STEP_MS["mute_home"] = w.worst()
+    check("%sworst tick %.2f ms (at most %g)" % (label, w.worst(), STEP_LIMIT), w.worst() <= STEP_LIMIT)
+
+    # ---- on the open page: fast-lcd only goes home; here MUTE rolls in, and out again
+    label = "mute_page    "
+    ref, new = amps = open_page(vol=24)
+    for amp in amps:
+        amp.unmutes = []
+        amp.e.hooks[UNMUTE_CALL] = lambda em, amp=amp: amp.unmutes.append(em.cycles / CLOCK_HZ)
+    w = Watch(new)
+    check("%spage open at 25 and at rest before the key" % label, new.page == 2 and vol_ok(new.e) and
+          new.e.iram[0x31] == 25)
+    mark, tmark = w.mark(), len(w.ticks)
+    boxes = roll_boxes(w, new)
+    press_both(amps, NEC_MUTE, 0.9)
+    w.on_tick = None
+    check("%sfast-lcd: home, not muted (read_key made the key \"home\"); here: page 2, muted, no wipe" % label,
+          ref.page == 1 and not muted(ref.e) and new.page == 2 and muted(new.e) and not w.since(mark))
+    roll_checks(label, boxes, "25", bp.MUTE_TEXT)
+    splits = [t[4] for t in w.ticks[tmark:]]
+    check("%sthe fill retracts with the spring: split %d -> %d over %d ticks, never growing" %
+          (label, splits[0] if splits else -1, splits[-1] if splits else -1, len(splits)),
+          bool(splits) and splits[-1] == bp.VLINE_X and all(b <= a for a, b in zip(splits, splits[1:])))
+    worst = max((t[5] for t in w.ticks[tmark:]), default=0)
+    check("%sworst tick %.2f ms (at most %g)" % (label, worst, STEP_LIMIT), worst <= STEP_LIMIT)
+    check("%sthen at rest: the muted page (vol_model)" % label, vol_ok(new.e), vol_diff(new.e))
+    new.lcd.save_png(os.path.join(HERE, "build", "mute_page.png"))
+    ref.press(NEC_MUTE)                      # fast-lcd, at home: now it mutes too
+    ref.wait(0.5)
+    new.wait(0.5)
+    check("%sthe audio state = fast-lcd's once it is muted from home (NJW1194, DAC, pins)" % label,
+          muted(ref.e) and audio_state(ref) == audio_state(new) and state(ref)[1:] == state(new)[1:],
+          str(sorted(set(audio_state(ref).items()) ^ set(audio_state(new).items()), key=repr)[:4]))
+    tmark = len(w.ticks)
+    boxes = roll_boxes(w, new)
+    t_press = new.t
+    press_both(amps, NEC_MUTE, 0.9)
+    w.on_tick = None
+    label = "unmute_page  "
+    check("%sboth unmuted; here still page 2, no wipe" % label,
+          not muted(ref.e) and not muted(new.e) and new.page == 2 and not w.since(mark))
+    roll_checks(label, boxes, bp.MUTE_TEXT, "25", unmute=True)
+    splits = [t[4] for t in w.ticks[tmark:]]
+    check("%sthe fill grows back: split %d -> %d, never shrinking" % (label, splits[0] if splits else -1,
+                                                                    splits[-1] if splits else -1),
+          bool(splits) and splits[-1] == bp.VLINE_SPLIT[25] and all(b >= a for a, b in zip(splits, splits[1:])))
+    ok = len(ref.unmutes) == 1 and len(new.unmutes) == 1
+    check("%sone unmute in each, here %s after the key, fast-lcd's %s after its own" %
+          (label, "%.2f s" % (new.unmutes[0] - t_press) if ok else "?", "%.2f s" % (ref.unmutes[0] - ref.t + 0.9) if ok else "?"),
+          ok and abs((new.unmutes[0] - t_press) - (ref.unmutes[0] - (ref.t - 0.9))) <= 0.10, str((ref.unmutes, new.unmutes)))
+    check("%sat rest: the static page (vol_model); the audio state = fast-lcd's" % label,
+          vol_ok(new.e) and audio_state(ref) == audio_state(new), vol_diff(new.e))
+    home_muted_ok(label, amps, w, mark)
+    check("%ssame page, power, volumes, input, output" % label, state(ref) == state(new))
+    STEP_MS["mute_page"] = w.worst()
+
+    # ---- a volume key while muted: from home (stock: unmutes and opens the page) and on the muted page
+    label = "muted_vol    "
+    ref, new = amps = power_on()
+    w = Watch(new)
+    press_both(amps, NEC_MUTE, 3.75)         # muted, the page shown and gone again; between two home refreshes
+    check("%smuted and back home before the key" % label, muted(new.e) and new.page == 1 and state(ref) == state(new))
+    mark = w.mark()
+    press_both(amps, NEC_VOL_UP, 1.0)
+    vol_entry_checks("muted_vol", new, w, mark)
+    check("%sboth unmuted by the key, same state; the volume page = vol_model" % label,
+          not muted(ref.e) and not muted(new.e) and state(ref) == state(new) and new.page == 2 and vol_ok(new.e),
+          vol_diff(new.e))
+    audio_checks(label, ref, new, quiet=True)
+    label = "muted_pagevol "
+    ref, new = amps = power_on()
+    w = Watch(new)
+    press_both(amps, NEC_MUTE, 1.0)          # here: the muted page, open
+    mark, tmark = w.mark(), len(w.ticks)
+    boxes = roll_boxes(w, new)
+    v0 = new.e.iram[0x31]
+    press_both(amps, NEC_VOL_DOWN, 1.0)
+    w.on_tick = None
+    check("%sVol- on the open muted page: both unmuted at %d, page 2 in both, same state, no wipe here" %
+          (label, new.e.iram[0x31]), not muted(ref.e) and not muted(new.e) and state(ref) == state(new) and
+          new.page == 2 and new.e.iram[0x31] == v0 - 1 and not w.since(mark))
+    roll_checks(label, boxes, bp.MUTE_TEXT, str(v0 - 1), up=False, unmute=True)
+    check("%sat rest: the static page (vol_model): VOL, the number, the fill in the accent" % label,
+          vol_ok(new.e), vol_diff(new.e))
+    audio_checks(label, ref, new, quiet=True)
+    STEP_MS["muted_vol"] = w.worst()
+    check("%sworst tick %.2f ms (at most %g)" % (label, w.worst(), STEP_LIMIT), w.worst() <= STEP_LIMIT)
+
+    # ---- during the wipes
+    label = "mute_in_entry "
+    ref, new = amps = power_on()
+    w = Watch(new)
+    mark = w.mark()
+    for amp in amps:
+        amp.press(NEC_VOL_UP)
+    for amp in amps:
+        amp.wait(0.10)
+    step_at = new.e.xram[bp.HN_STEP]
+    press_both(amps, NEC_MUTE, 1.0)
+    st = w.since(mark)
+    check("%smute at entry step %d: the entry runs on (%d steps), fast-lcd goes home unmuted; here page 2, muted"
+          % (label, step_at, len(st)), 0 < step_at < N and [s[1] for s in st] == [1] * N and ref.page == 1 and
+          not muted(ref.e) and new.page == 2 and muted(new.e) and new.e.xram[bp.HN_MODE] == 0)
+    check("%sat rest: the muted page (vol_model), nothing of the unmuted one left" % label, vol_ok(new.e),
+          vol_diff(new.e))
+    ref.press(NEC_MUTE)
+    ref.wait(0.5)
+    new.wait(0.5)
+    check("%sthe audio state = fast-lcd's once it is muted from home" % label,
+          audio_state(ref) == audio_state(new) and state(ref)[1:] == state(new)[1:])
+    home_muted_ok(label, amps, w, mark)
+    STEP_MS["mute_in_entry"] = w.worst()
+    check("%sworst tick %.2f ms (at most %g)" % (label, w.worst(), STEP_LIMIT), w.worst() <= STEP_LIMIT)
+
+    label = "mute_in_exit  "
+    ref, new = amps = open_page()
+    w = Watch(new)
+    for amp in amps:
+        amp.wait(0.9)
+    for _ in range(40):
+        if new.e.xram[bp.HN_MODE] == 2:
+            break
+        for amp in amps:
+            amp.wait(0.005)
+    for amp in amps:
+        amp.wait(0.10)
+    x_at, mode_at = new.e.xram[bp.HN_X] << 8 | new.e.xram[bp.HN_X + 1], new.e.xram[bp.HN_MODE]
+    mark = w.mark()
+    press_both(amps, NEC_MUTE, 1.0)
+    xs = [s[3] for s in w.since(mark) if s[1] == 1]
+    check("%smute during the exit (x %d): both muted (page 1 in both at the key); here the exit turns round: "
+          "entry steps from x %d leftwards" % (label, x_at, xs[0] if xs else -1),
+          mode_at == 2 and muted(ref.e) and muted(new.e) and ref.page == 1 and new.page == 2 and bool(xs) and
+          xs[0] <= x_at and xs == [EASE[k] for k in range(N + 1 - len(xs), N + 1)])
+    check("%sat rest: the muted page (vol_model); same power, volumes, input, output" % label,
+          vol_ok(new.e) and new.e.xram[bp.HN_MODE] == 0 and state(ref)[1:] == state(new)[1:], vol_diff(new.e))
+    audio_checks(label, ref, new, quiet=True)
+    home_muted_ok(label, amps, w, mark)
+    STEP_MS["mute_in_exit"] = w.worst()
+    check("%sworst tick %.2f ms (at most %g)" % (label, w.worst(), STEP_LIMIT), w.worst() <= STEP_LIMIT)
+
+
 def tint_scenarios():
     """The status line's tint across an input change, whole firmware: input_apply (0x5640) draws the
     new input's placeholder through 0x4BC9 long before the periodic refresh runs the loader (2-3 s).
@@ -2449,8 +2990,29 @@ def outcome(amp):
         (e.sfr[0xA0], e.sfr[0x80] & 0x46, e.sfr[0xC0] & 0x41)
 
 
+MUTE_STATES = ("home", "volume", "volume_hp")     # where the mute key differs from fast-lcd on purpose
+
+
+def mute_job(st):
+    """The mute key where this image differs on purpose: it toggles and shows the volume page; fast-lcd
+    goes home on it, and on the volume page does not even toggle. Compared with fast-lcd muted from
+    home (after its volume page has timed out): everything but the page must match, the page is 2,
+    and the screen is the muted volume page (the line wherever its spring is)."""
+    base = reach(REF, st)
+    if base.page == 2:
+        base.wait(2.6)
+    base.press(NEC_MUTE)
+    base.wait(0.5)
+    new = run(NEW, st, NEC_MUTE)
+    ob, on = outcome(base), outcome(new)
+    ok = muted(base.e) and muted(new.e) and base.page == 1 and vol_ok(new.e, split=split_of(new.e))
+    return st, NEC_MUTE, (2,) + ob[1:], on, ok, False
+
+
 def job(args):
     st, cmd = args
+    if cmd == NEC_MUTE and st in MUTE_STATES:
+        return mute_job(st)
     base, new = run(REF, st, cmd), run(NEW, st, cmd)
     ob, on = outcome(base), outcome(new)
     ok = screen_ok(base, new)
@@ -2475,6 +3037,8 @@ def sweep():
     a1, a2 = run(NEW, "volume", NEC_VOL_UP), run(NEW, "volume", NEC_VOL_UP)
     check("snapshot runs are repeatable", outcome(a1) == outcome(a2) and a1.lcd.gram == a2.lcd.gram)
     print("  reached all states in %.0f s" % (time.time() - t0), flush=True)
+    print("    the mute key (0x%02X) in %s: against fast-lcd muted from home, page 2 and the muted volume page "
+          "expected" % (NEC_MUTE, ", ".join(MUTE_STATES)))
     jobs = [(st, cmd) for st in SWEEP_STATES for cmd in range(256)]
     with mp.get_context("fork").Pool() as pool:
         res = pool.map(job, jobs, chunksize=8)
@@ -2500,8 +3064,9 @@ def report_steps():
 
 GROUPS = {
     "unit": [image_diff, test_home, test_status_tint, test_name_ptr, test_draw_volume, test_volpage,
-             test_step, test_roll, test_spring, test_enter_vol, test_home_tail, test_align],
-    "tour": [tour, input_scenarios, key_scenarios, flag_exit_scenarios, roll_scenarios, tint_scenarios, edge_scan],
+             test_step, test_roll, test_mute, test_mute_key, test_spring, test_enter_vol, test_home_tail, test_align],
+    "tour": [tour, input_scenarios, key_scenarios, flag_exit_scenarios, roll_scenarios, mute_scenarios, tint_scenarios,
+             edge_scan],
     "int1": [int1],
     "sweep": [sweep],
 }

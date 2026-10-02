@@ -70,7 +70,8 @@ features/
     build_patch.py, emu_test.py   build build/flash_fastlcd.bin, lockstep UI tour vs stock
   house-numerals/                 House Numerals home and volume page, on top of fast-lcd,
                                   built with tools/patch/uikit.py; hn10 to hn12 tried on the amp
-                                  on 2026-09-30; see its README
+                                  on 2026-09-30; hn13 (the muted volume page) emulator-verified;
+                                  see its README
     build_patch.py, emu_test.py   build build/flash_house_numerals.bin (hn10: the mock's home
                                    and volume page in its own typefaces, non-blocking wipes
                                    with the mock's cubic ease, the number roll and the line's spring), home and
@@ -188,7 +189,7 @@ INCLUDES (a fix linked into that image):
 stock                      85e8ac50…
 ├── direct-select          'v1.4 tbenr ds2'    0x9400..0x944B  9b7e8b93… known  [fix, hook 0x5D10; included by house-numerals]
 ├── fast-lcd               'v1.4 tbenr fast3'  0x9700..0x977C  30c1e6fe… known
-│   └── house-numerals     'v1.4 tbenr hn12'   0x9800..0xEF99  5f406b5d… known
+│   └── house-numerals     'v1.4 tbenr hn13'   0x9800..0xF091  1e5691d8… known
 │         + direct-select  fix linked into house-numerals
 │         + fix-auto-off   fix linked into house-numerals
 │         + strings        fix linked into house-numerals
@@ -322,6 +323,11 @@ Flattened graph, 2026-09-30: direct-select became a fix on stock (its standalone
 byte-identical to ds2), fast-lcd, fix-auto-off and strings moved onto stock (`fast3`,
 `aof3`, `str3`), and house-numerals includes direct-select (`hn12`, hn11.1 with the same
 code at other addresses). All emulator-verified; hn12 was flashed on 2026-09-30 and works.
+
+hn13 (`v1.4 tbenr hn13`, 2026-10-02) adds the mock's MUTE state to the volume page: the mute
+key toggles as stock and then shows the volume page (red speaker, "MUTE", the line empty)
+instead of staying home, and it also toggles while the page is open, where stock only closed
+the page. Emulator-verified; not yet tried on the amp.
 
 ## What the custom firmware adds
 
@@ -575,7 +581,7 @@ Measured from the images; the code/EEPROM split is the chip's own setting (0xF40
 
 | Region | Size | Used | Free |
 |---|---|---|---|
-| Code flash, 0x0000..0xF3FF | 62464 bytes | 61338 bytes (features/house-numerals hn12) | ~1.1 KB |
+| Code flash, 0x0000..0xF3FF | 62464 bytes | 61586 bytes (features/house-numerals hn13) | 878 bytes |
 | EEPROM area, 0xF400..0xFDFF | 2560 bytes, 5 sectors of 512 | sectors at offsets 0x0000, 0x0200, 0x0400 | 2 sectors, 1 KB |
 | Internal direct RAM, 0x00..0x7F | 128 bytes | all (registers, bit flags, variables up to 0x7F) | none |
 | Internal indirect RAM, 0x80..0xFF | 128 bytes | stack from 0x88 (`mov SP,#0x88` at 0x44A5) | stack headroom only |
@@ -662,7 +668,9 @@ first, single writes after it.
   then rate index 1..12 (`uart1_isr`, `xmos_format_take` 0x408B). The meaning of each class
   and index is in the jump tables after 0x408B and still to be tabulated.
 - **Key handlers, resolved in the emulator.** 0x1047 (key 0x1C, NEC 0x09) is the mute
-  toggle, 0x10BE (key 0x14, NEC 0x08) toggles Dimmer, 0x106D (key 0x0A, NEC 0x0E) is "BT
+  toggle (it goes home first; it runs on page 1 only: in a menu `dispatch_key` turns the key
+  into "home" at 0x0C23, and on the volume page `read_key` does at 0x3DD6, so there the key
+  closes the page without muting; house-numerals hn13 changes both, see its README), 0x10BE (key 0x14, NEC 0x08) toggles Dimmer, 0x106D (key 0x0A, NEC 0x0E) is "BT
   Reconnect", 0x10E1 (four-press combo 0x38) is "BT list clear", 0x0F62 (key 0x59) steps
   the EQ. None is a hidden service function.
 - **Power-on sequence timing.** The delays in 0x5AAB, 0x24D6 and 0x5D66 govern switching
