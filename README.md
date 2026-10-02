@@ -71,7 +71,7 @@ features/
   house-numerals/                 House Numerals home and volume page, on top of fast-lcd,
                                   built with tools/patch/uikit.py; hn10 to hn12 tried on the amp
                                   on 2026-09-30, hn13 and the pop fixes' builds (hn14, hn15)
-                                  on 2026-10-02; hn16 emulator-verified; see its README
+                                  on 2026-10-02, hn16 the same day; see its README
     build_patch.py, emu_test.py   build build/flash_house_numerals.bin (hn10: the mock's home
                                    and volume page in its own typefaces, non-blocking wipes
                                    with the mock's cubic ease, the number roll and the line's spring), home and
@@ -395,8 +395,7 @@ change any more, through the menu, the Source key or direct-select. The standalo
 emulator-verified and has not been flashed.
 
 hn16 (`v1.4 tbenr hn16`) is hn14 with both fixes: start-volume, the MUTE state, fix-volume-pop
-and fix-menu-input in one image. Emulator-verified; not yet flashed as this image. Each part
-was tried on the amp in one of the branch builds above.
+and fix-menu-input in one image. Flashed on 2026-10-02: the fixes work.
 
 ## What the custom firmware adds
 
@@ -801,6 +800,20 @@ first, single writes after it.
   line) low afterwards; whether that matters on the amp is untested (`docs/bus-map.md`).
   `features/fix-menu-input` takes the whole cycle out; if an input ever needs it, that is where
   it will show.
+- **Pop at power-off.** A small pop on the Power key, heard on the amp on 2026-10-02 (hn16), the
+  same at volume 0 and with the mute key on; the mute key itself is silent. With mute on, the
+  only pins power-off moves are the supply enables: P4.4 low, then P0.0 and P4.0 low 100 ms
+  later; P2.7 stays low, so the speakers stay connected. So the pop comes with the supplies
+  going. Whether stock pops too is not known. One difference from stock: fast-lcd's quick
+  clear shortens the time from the amp mute (P2.2) to P4.4 low from 150 ms to 11 ms, which
+  cannot be the whole cause, since the pop is there when the amp was muted long before.
+  Tried on the amp the same day: with Output on Headphones (P2.7, P2.5 and P2.2 high) the
+  speakers pop at power-off just the same, and the switch to Headphones itself is silent. So
+  P2.7 does not take the speakers off the amplifier, and no pin the MCU drives is known to.
+  What is left is the order and spacing of the supply enables, which should not be changed
+  before the supplies are identified on the board. A build that holds P0.0 and P4.0 for 2 s
+  after P4.4 would at least tell which step pops; the amp is in that state for 5 s at every
+  power-on (`docs/bus-map.md` has the order).
 - **Which part makes the volume-key pop.** On Optical or Coaxial without lock, stock's first
   volume key sets P2.7 and P2.2 and opens the NJW1194 for a tick (`features/fix-volume-pop`
   removes all three). Which of them is audible is not known; it would tell P2.7's and

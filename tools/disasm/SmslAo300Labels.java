@@ -123,6 +123,8 @@ public class SmslAo300Labels extends GhidraScript {
         {0x5BA4, "bt_clear_pulse"},    // expander pin 0x14 low for about 0.2 s
         {0x5B7A, "expander_outputs_on"},// pin 0x14 high, 0x10 and 0x17 low (power-on)
         {0x408B, "xmos_format_take"},  // buffer valid (0x78 == 0xFF): copy 0x76 -> 0x75 (format class), 0x77 -> 0x73 (rate index 1..12); the only reader of the UART buffer
+        {0x5B0B, "power_off_audio"},   // main_tasks_on's power-off step (0x5B35): mute_state_set(0), expander P0_0 low, ui_clear_screen, clr P4.4, setb P2.2, 0x7B = 0.
+                                       // The clear is the only delay between the amp mute and P4.4 low: 150 ms in stock, 11 ms with fast-lcd
         {0x5B4F, "standby_enter"},     // lcd_bus_low, P0.0 and P4.0 low, backlight off, mute, P4.4 low
         {0x4DDC, "volume_apply"},      // R7 = volume (0x31): saves it in 0x5B, looks up 0x9289, njw1194_write(R7=0x10); with output 2 (0x2B) it uses g_volume_hp (0x52) instead of R7
         {0x492B, "settings_save_eeprom"}, // erase sector 0x0200, write the 12 bytes 0x0201..0x020C from RAM (see settings_load_eeprom). Called at 0x3446 when the

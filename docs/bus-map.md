@@ -220,6 +220,14 @@ at 0.4 s, backlight at 1.1 s, logo, P4.4 at 5.2 s, expander setup, resets P4.3 a
 clock generator, receiver, DAC reset and setup, input routing, tone, filter, volume, and
 the speaker unmute (P2.2 low) at 8.5 s.
 
+Power-off order (times from the Power key, emulator): NJW1194 and DAC muted by register at
+0, P2.2 high at 1 ms, expander P0_0 low, the screen cleared, P4.4 low (`power_off_audio`,
+0x5B0B), then in `standby_enter` P0.0 and P4.0 low 100 ms later and the NJW1194 selector set
+to 0x04. P2.7 and P2.5 are not written: on speakers P2.7 stays low through standby, on
+headphones it stays high and P2.5 goes low. Stock reaches P4.4 low at 150 ms and P0.0 / P4.0
+low at 252 ms; with fast-lcd's clear it is 11 ms and 112 ms. With the mute key on, the supply
+enables are the only pins that move.
+
 ## UART1
 
 `uart1_init` (0x59ED): 115200 baud, receive only. `standby_power_step` (0x55BC) moves it

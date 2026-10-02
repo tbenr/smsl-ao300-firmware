@@ -141,8 +141,8 @@ Earlier images:
 ## Status
 
 hn16: emulator-verified (all tests pass, including "fix-volume-pop in house-numerals" and
-"fix-menu-input in house-numerals"). Not yet tried on the amp as this image. Its two fixes were
-flashed on 2026-10-02 as the branch builds `d39d321c…` and `7a4af92f…` (hn13 plus the fixes,
+"fix-menu-input in house-numerals"). Flashed on the amp on 2026-10-02: the fixes work. Its two
+fixes were first flashed that day as the branch builds `d39d321c…` and `7a4af92f…` (hn13 plus the fixes,
 without the MUTE state): the pop on the first volume key on Optical without a signal is gone,
 and there is no pop on an input change any more, through the menu, the Source key or
 direct-select.
