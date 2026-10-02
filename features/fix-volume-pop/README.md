@@ -6,7 +6,8 @@ stock plus the fix; the RESET page shows `v1.4 tbenr vp1`.
 
 ## Status
 
-Verified on the amp on 2026-10-02, as part of house-numerals hn14: the pop on the first
+Verified on the amp on 2026-10-02, in a house-numerals branch build (hn13 plus this fix, sha256
+`d39d321c…`; its RESET page says `v1.4 tbenr hn14`, as the MUTE state's hn14 does): the pop on the first
 volume key on Optical without a signal is gone. Emulator-verified (all tests pass, including
 "fix-volume-pop in house-numerals"). The standalone image itself has not been flashed.
 
@@ -99,7 +100,7 @@ README's open questions.
 
 `fix_volume_pop.py` holds the fix on its own (`HOOK`, `PATCHES`, `emit(a)`, `XDATA = []`);
 `build_patch.py` here is only its standalone image. A build lists it in `INCLUDES` (README,
-"Feature graph"), as house-numerals does since hn14. `tools/build.py` checks that the hook
+"Feature graph"), as house-numerals does since hn16. `tools/build.py` checks that the hook
 is installed and the four patches applied, and `run_tests.py` runs "fix-volume-pop in <that
 image>": this test's `integration()` on the including image.
 

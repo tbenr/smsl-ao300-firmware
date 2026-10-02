@@ -201,7 +201,7 @@ ticks later (0x3375) the main loop sets P4.0 high and runs `expander_init` and
 DAC reset on P3.4, and the unmute. P2.2 is not set until the end of that (high for 75 ms just
 before the unmute), and on inputs 1 to 5 the format poll unmutes the NJW1194 and the DAC about
 0.5 s after the key, while P4.0 is still low. A pop is heard on the amp on such a change
-(2026-10-02); which of these steps makes it is open. Emulator times, hn14, from the Enter key:
+(2026-10-02); which of these steps makes it is open. Emulator times, house-numerals on fast-lcd, from the Enter key:
 P4.0 low at 0, high at 3.07 s, P4.3 and P2.1 low 3.08 to 3.18 s, P3.4 low 3.20 to 3.71 s, P2.2
 high 3.83 s, unmute 3.90 s.
 

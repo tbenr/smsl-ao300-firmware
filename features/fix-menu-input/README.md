@@ -7,13 +7,14 @@ image is stock plus the fix; the RESET page shows `v1.4 tbenr mi1`.
 
 ## Status
 
-Verified on the amp on 2026-10-02, as part of house-numerals hn15: no pop on an input change
+Verified on the amp on 2026-10-02, in a house-numerals branch build (hn13 plus fix-volume-pop and
+this fix, sha256 `7a4af92f…`, `v1.4 tbenr hn15`): no pop on an input change
 any more, through the menu, the Source key or direct-select. Emulator-verified (all tests
 pass, including "fix-menu-input in house-numerals"). The standalone image itself has not been
 flashed.
 
-The pop was heard on the amp the same day on an input change through the menu (hn14; stock
-code). Whether it came at the key or 3 to 4 s later was not noted.
+The pop was heard on the amp the same day on an input change through the menu (the branch
+build before it, `d39d321c…`; stock code). Whether it came at the key or 3 to 4 s later was not noted.
 
 ## What stock does
 
@@ -38,7 +39,7 @@ The Source key instead runs `input_step` and `input_apply` (0x5628, 0x5640): mut
 register, format poll in 10 ticks, unmute countdown 200 ticks, `input_set_hw`. direct-select
 calls `input_apply` too. Neither touches P4.0.
 
-What goes wrong on the menu's path, from the emulator (hn14, times from the Enter key):
+What goes wrong on the menu's path, from the emulator (house-numerals on fast-lcd; times from the Enter key):
 
 | Time | Event |
 |---|---|
@@ -101,7 +102,7 @@ use it).
 
 `fix_menu_input.py` holds the fix on its own (`HOOK`, `emit(a)`, `XDATA = []`);
 `build_patch.py` here is only its standalone image. A build lists it in `INCLUDES` (README,
-"Feature graph"), as house-numerals does since hn15. `tools/build.py` checks that the hook is
+"Feature graph"), as house-numerals does since hn16. `tools/build.py` checks that the hook is
 installed, and `run_tests.py` runs "fix-menu-input in <that image>": this test's
 `integration()` on the including image.
 

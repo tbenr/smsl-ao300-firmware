@@ -70,7 +70,8 @@ features/
     build_patch.py, emu_test.py   build build/flash_fastlcd.bin, lockstep UI tour vs stock
   house-numerals/                 House Numerals home and volume page, on top of fast-lcd,
                                   built with tools/patch/uikit.py; hn10 to hn12 tried on the amp
-                                  on 2026-09-30, hn13 to hn15 on 2026-10-02; see its README
+                                  on 2026-09-30, hn13 and the pop fixes' builds (hn14, hn15)
+                                  on 2026-10-02; hn16 emulator-verified; see its README
     build_patch.py, emu_test.py   build build/flash_house_numerals.bin (hn10: the mock's home
                                    and volume page in its own typefaces, non-blocking wipes
                                    with the mock's cubic ease, the number roll and the line's spring), home and
@@ -216,7 +217,7 @@ INCLUDES (a fix linked into that image):
 stock                       85e8ac50…
 ├── direct-select           'v1.4 tbenr ds2'    0x9400..0x944B  9b7e8b93… known  [fix, hook 0x5D10; included by house-numerals]
 ├── fast-lcd                'v1.4 tbenr fast3'  0x9700..0x977C  30c1e6fe… known
-│   └── house-numerals      'v1.4 tbenr hn15'   0x9800..0xEFDF  7a4af92f… known
+│   └── house-numerals      'v1.4 tbenr hn16'   0x9800..0xF0D7  7ee88992… known
 │         + direct-select   fix linked into house-numerals
 │         + fix-auto-off    fix linked into house-numerals
 │         + strings         fix linked into house-numerals
@@ -369,21 +370,33 @@ House-numerals includes it as hn13 (`v1.4 tbenr hn13`, hn12 otherwise); hn13 was
 2026-10-02 and works. The standalone image (`v1.4 tbenr sv1`) is emulator-verified and has not
 been flashed.
 
+The MUTE state of the volume page (2026-10-02): the mute key toggles as stock and then shows
+the volume page (red speaker, "MUTE", the line empty) instead of staying home, and it also
+toggles while the page is open, where stock only closed the page. Tried on the amp on
+2026-10-02 as a branch build on hn12 (sha256 `1e5691d8…`, without start-volume; its RESET page
+also says `v1.4 tbenr hn13`): works. hn14 (`v1.4 tbenr hn14`) is that merged with hn13, so it
+has start-volume and the MUTE state; emulator-verified, not yet flashed as this image.
+
 Heard on the amp on 2026-10-02 (hn13; stock code, so not new): on Optical with nothing
 connected the first volume key pops, later ones do not, and going round the sources arms it
 again. The emulator shows the cause, a volume key moving the mute pins when the receiver has
 no lock, and predicted that Coaxial right after Optical would be silent, which the amp
 confirmed. `features/fix-volume-pop` removes it (`v1.4 tbenr vp1`), and house-numerals
-includes it as hn14 (`v1.4 tbenr hn14`, hn13 otherwise). hn14 was flashed on 2026-10-02: that
+included it in a branch build on hn13 (sha256 `d39d321c…`; its RESET page says
+`v1.4 tbenr hn14`, like the MUTE state's hn14 above). That build was flashed on 2026-10-02: the
 pop is gone. The standalone image is emulator-verified and has not been flashed.
 
-Also heard on 2026-10-02 (hn14; stock code): a pop when an input is chosen in the menu. The
+Also heard on 2026-10-02 (on that build; stock code): a pop when an input is chosen in the menu. The
 menu switches by another path than the Source key: it turns P4.0 off for 3 s and sets every
 audio chip up again with the speaker path open. `features/fix-menu-input` makes the menu
-switch as the Source key does (`v1.4 tbenr mi1`), and house-numerals includes it as hn15
-(`v1.4 tbenr hn15`, hn14 otherwise). hn15 was flashed on 2026-10-02: no pop on an input
+switch as the Source key does (`v1.4 tbenr mi1`). The same branch's next build has both fixes
+(`v1.4 tbenr hn15`, sha256 `7a4af92f…`). It was flashed on 2026-10-02: no pop on an input
 change any more, through the menu, the Source key or direct-select. The standalone image is
 emulator-verified and has not been flashed.
+
+hn16 (`v1.4 tbenr hn16`) is hn14 with both fixes: start-volume, the MUTE state, fix-volume-pop
+and fix-menu-input in one image. Emulator-verified; not yet flashed as this image. Each part
+was tried on the amp in one of the branch builds above.
 
 ## What the custom firmware adds
 
@@ -683,7 +696,7 @@ Measured from the images; the code/EEPROM split is the chip's own setting (0xF40
 
 | Region | Size | Used | Free |
 |---|---|---|---|
-| Code flash, 0x0000..0xF3FF | 62464 bytes | 61408 bytes (features/house-numerals hn15) | 1056 bytes after the image, plus 988 unused inside it (0x93A7..0x96FF and 0x977D..0x97FF: the fixes' standalone slots, which an image that includes them leaves as 0xFF) |
+| Code flash, 0x0000..0xF3FF | 62464 bytes | 61656 bytes (features/house-numerals hn16) | 808 bytes after the image, plus 988 unused inside it (0x93A7..0x96FF and 0x977D..0x97FF: the fixes' standalone slots, which an image that includes them leaves as 0xFF) |
 | EEPROM area, 0xF400..0xFDFF | 2560 bytes, 5 sectors of 512 | sectors at offsets 0x0000, 0x0200, 0x0400 | 2 sectors, 1 KB |
 | Internal direct RAM, 0x00..0x7F | 128 bytes | all (registers, bit flags, variables up to 0x7F) | none |
 | Internal indirect RAM, 0x80..0xFF | 128 bytes | stack from 0x88 (`mov SP,#0x88` at 0x44A5) | stack headroom only |
@@ -772,11 +785,13 @@ first, single writes after it.
   then rate index 1..12 (`uart1_isr`, `xmos_format_take` 0x408B). The meaning of each class
   and index is in the jump tables after 0x408B and still to be tabulated.
 - **Key handlers, resolved in the emulator.** 0x1047 (key 0x1C, NEC 0x09) is the mute
-  toggle, 0x10BE (key 0x14, NEC 0x08) toggles Dimmer, 0x106D (key 0x0A, NEC 0x0E) is "BT
+  toggle (it goes home first; it runs on page 1 only: in a menu `dispatch_key` turns the key
+  into "home" at 0x0C23, and on the volume page `read_key` does at 0x3DD6, so there the key
+  closes the page without muting; house-numerals hn14 changes both, see its README), 0x10BE (key 0x14, NEC 0x08) toggles Dimmer, 0x106D (key 0x0A, NEC 0x0E) is "BT
   Reconnect", 0x10E1 (four-press combo 0x38) is "BT list clear", 0x0F62 (key 0x59) steps
   the EQ. None is a hidden service function.
-- **Pop on an input change through the menu.** Heard on the amp on 2026-10-02 (hn14; stock
-  code). `input_menu_select` (0x588B), unlike the Source key, mutes by register only, sets
+- **Pop on an input change through the menu.** Heard on the amp on 2026-10-02 (the `d39d321c…`
+  build; stock code). `input_menu_select` (0x588B), unlike the Source key, mutes by register only, sets
   P4.0 low for 3 s and then runs `expander_init` and `audio_chips_init` again (main loop,
   0x3375, countdown 0x41:0x42). The speaker mute pin P2.2 stays low until the very end of
   that, and on the digital inputs the format poll opens the NJW1194 and the DAC again about
