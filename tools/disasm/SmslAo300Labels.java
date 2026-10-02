@@ -128,7 +128,11 @@ public class SmslAo300Labels extends GhidraScript {
         {0x5B4F, "standby_enter"},     // lcd_bus_low, P0.0 and P4.0 low, backlight off, mute, P4.4 low
         {0x4DDC, "volume_apply"},      // R7 = volume (0x31): saves it in 0x5B, looks up 0x9289, njw1194_write(R7=0x10); with output 2 (0x2B) it uses g_volume_hp (0x52) instead of R7
         {0x492B, "settings_save_eeprom"}, // erase sector 0x0200, write the 12 bytes 0x0201..0x020C from RAM (see settings_load_eeprom). Called at 0x3446 when the
-                                       // countdown 0x37:0x38 (reset_timer_37: 50 main ticks) runs out, so about 0.5 s after a change, and after every power-on (filter_apply arms it)
+                                       // countdown 0x37:0x38 (reset_timer_37: 50 main ticks) runs out, so about 0.5 s after a change, and after every power-on (filter_apply arms it).
+                                       // Its first instruction is lcall ir_cmd_clear, with the new-command bit 0x20.4 left alone: a command nec_decode stored after
+                                       // read_key's test of that bit in the same main-loop pass is read as command 0, key 0xFF (README, open questions)
+        {0x5DA1, "ir_cmd_clear"},      // g_ir_cmd = 0. Called by timer0_isr when g_ir_release_timer runs out (0x3EB7) and by settings_save_eeprom
+        {0x5BE0, "countdown8_dec"},    // R3:R2:R1 -> one byte: if non-zero, decrement; C set when that made it 0 (countdown16_dec for one byte). timer0_isr uses it
         {0x5CF6, "clamp_hp_30"},       // R7 = min(R7, 30)
         {0x5275, "output_apply"},      // R7 = output 1 speakers / 2 headphones. On a change (0x5287): save armed, mute, g_volume_hp = clamp_hp_30 (0x5296), volume_apply.
                                        // The only volume cap in stock; nothing caps at power-on
@@ -254,6 +258,20 @@ public class SmslAo300Labels extends GhidraScript {
         {0x0F50, "vol_key_tail_draw"},      // vol_key_tail from its draw: volpage_draw_volume(0x31), 0x27:0x28 = 0x3F:0x40 = 200 (hn_mute_key ends here)
         {0x1052, "key_1c_toggle"},          // cpl 0x22.1; muted: mute_state_set(0), clr P2.5; unmuted: 0x43:0x44 = 10
         {0x3ED9, "t0_return_home"},         // 0x3F:0x40 reaches 0 -> page 1, redraw
+        {0x3EAC, "t0_ir_release"},          // timer0_isr: countdown8_dec(g_ir_release_timer); at 0 ir_cmd_clear, so a repeat code after 300 ms of silence does nothing
+        // nec_decode (INT0, every falling edge): Timer1 (12T, 2 MHz) since the last edge -> g_ir_pulse, Timer1 restarted
+        {0x269B, "nec_bit"},                // g_ir_state 2: 1800..2600 counts = 0, 4000..4800 = 1, shifted into g_ir_shift from the top; else g_ir_error.
+                                            // After 16 bits the address must be 12 34 (0x2708)
+        {0x272F, "nec_frame_done"},         // bit 32: g_ir_cmd = third byte (the fourth, its complement, is not checked); setb 0x20.4 unless the command is 0x08;
+                                            // g_ir_repeat_cnt = 0
+        {0x2741, "nec_idle_edge"},          // g_ir_state 0: leader, repeat code or error
+        {0x2766, "nec_leader"},             // 26000..31000 counts (13.5 ms): g_ir_state = 2, g_ir_bit_cnt = 0, g_ir_cmd = 0, shift register cleared
+        {0x279A, "nec_repeat"},             // 20000..25800 counts (11.25 ms). Commands 0x0A, 0x0B, 0x02, 0x06: the first repeat is skipped, every later one sets
+                                            // 0x20.4 again. Command 0x08 (0x27C8): g_key08_timer = 20; at the 10th repeat g_ir_cmd = 0x0E with 0x20.4, timer 0
+        {0x27FA, "nec_exit"},               // g_ir_error or 0x20.4 set: g_ir_state = 0, g_ir_release_timer = 30. The first edge of a frame or repeat comes with
+                                            // Timer1 stopped at 0 (timer1_isr on overflow, 32.8 ms), so it ends here as an error and arms the timer
+        {0x338B, "main_key08_release"},     // main_tick_tasks: g_key08_timer reaches 0 (200 ms after the last repeat of a short hold) -> inject_key_08
+        {0x343B, "main_save_tick"},         // main_tick_tasks: g_save_timer reaches 0 -> settings_save_eeprom (0x3446). format_poll_tick and signal_monitor run before it in the pass
         {0x0BBD, "key_arm_screen_off"},     // dispatch_key, dimmer 2: setb P0.6 (not for key 0x1F), g_screen_off = (dimmer-1)*500
         {0x33DB, "screen_off_tick"},        // main_tick_10ms, dimmer 2: countdown16_dec(g_screen_off); reaching 0 -> clr P0.6 (backlight off)
         {0x3335, "main_tick_10ms"},         // runs once per 0x20.7 tick flag; missed ticks are lost
@@ -321,6 +339,11 @@ public class SmslAo300Labels extends GhidraScript {
         // 0x14: items in the list on screen (menu_list_render); 0x15: visible rows, 5 (init record at 0x5836); 0x16: main-menu item kept while a sub-page is open
         {0x26, "g_power_on_flag"}, // EEPROM 0x0002: non-zero, the amp turns on by itself after a cold power-up (standby_power_step)
         {0x37, "g_save_timer_hi"}, {0x38, "g_save_timer_lo"}, // reset_timer_37 arms it to 50; at 0 (0x3446) settings_save_eeprom
+        {0x34, "g_ir_release_timer"}, // Timer0 ticks; nec_exit arms it to 30 after a command or an error, t0_ir_release clears g_ir_cmd at 0
+        {0x50, "g_key08_timer_hi"}, {0x51, "g_key08_timer_lo"}, // main ticks; 20 from every repeat of NEC 0x08 (nec_repeat), 0 at its 10th; at 0 main_key08_release
+        // bit 0x20.4: new IR command in g_ir_cmd. Set by nec_decode (frame done, repeats) and inject_key_08; read_key tests and clears it (0x3DA4), then ir_cmd_to_key.
+        // bits 0x20.7 and 0x20.1: set by timer0_isr every 10 ms. 0x20.7 is the main tick: main_tick_tasks runs its countdowns only when it is set (0x332F).
+        // 0x20.1 gates read_key's branch at 0x3DF4 (0x4E7D), taken when no IR command is pending
         {0x27, "g_osd_timer_hi"},  {0x28, "g_osd_timer_lo"},  {0x29, "g_dimmer_mode"},
         // 0x27:0x28, page 1: home_refresh_periodic countdown (10 after a render, 50 after a refresh)
         {0x2B, "g_output"},        {0x2C, "g_filter"},        {0x2F, "g_screen_off_hi"},

@@ -585,6 +585,14 @@ house-numerals tour went from 0xAF to 0xB3: stock's own delay leaves at SP 0xA0 
 `timer3_isr`'s deeper frame on top. Running Timer3 at the real rate costs about 7% more
 emulator time than not running it.
 
+`Amp.press` sets what a finished frame leaves for the main loop: the command in 0x6A and bit
+0x20.4. It does not run the decoder, so the release timer 0x34 is not armed and 0x6A keeps the
+command until the next press or settings save. A press on the tick of a settings save (50 main
+ticks after a setting change: 0.50 s after a Vol+ on hn16, 0.52 s on fast-lcd, 0.67 s on stock)
+is lost to a stock race, see "Open questions"; a wait of whole ticks ends just after a Timer0
+tick, inside the window, so in a scenario this is not rare but certain. Keep presses off that
+tick unless the race is what the test is about.
+
 `Amp` has no EEPROM: reads return 0, so the emulated amp boots into standby with every
 setting at its clamp. Tests seed single reads through a hook on 0x5970 (fix-auto-off), or
 model the whole EEPROM behind the stock IAP routines (start-volume: read 0x5970, write
@@ -824,6 +832,32 @@ first, single writes after it.
   1.9 s early in the emulator, right after the DAC setup. On USB, Bluetooth and AUX the key
   only writes the volume and the mute holds. Stock behaviour, not reported as audible, and
   not changed by fix-volume-pop.
+- **A key lost to the settings save (stock race).** Found in the emulator on 2026-10-02, not
+  yet looked for on the amp. `settings_save_eeprom` (0x492B) starts with `lcall ir_cmd_clear`
+  (0x5DA1: `g_ir_cmd` 0x6A = 0) and leaves the new-command bit 0x20.4 alone. It runs from the
+  main loop (0x3446) when the save countdown 0x37:0x38 runs out, 50 main ticks after a setting
+  change such as a volume step. A command whose last bit `nec_decode` takes in that one
+  main-loop pass, after `read_key` tested 0x20.4 (0x3DA4) and before the clear, keeps its bit
+  and loses its code: the next pass looks up command 0, which is 0xFF in the table at 0x9398.
+  On the volume page `read_key` turns that into key 0x15 at 0x3DD6, so the page closes and the
+  volume does not step; on the other pages 0xFF is no key and the press does nothing (read from
+  the listing, not run). Shown with whole NEC frames sent through the INT0 handler, on the
+  stock image as on hn16. On hn16 a second Vol+ whose last edge comes 0 to 760 clocks into the
+  save's tick goes home; 20 clocks before the tick or 800 into it, the volume steps (stock: the
+  same at 100-clock steps). Nothing in the decoder's state guards it (`g_ir_state`,
+  `g_ir_repeat_cnt`, the release timer 0x34), so `Amp.press`, which sets only 0x6A and the bit,
+  shows the same thing. The window is the part of that pass before the save: 32 us when the
+  pass is otherwise idle, and 2.9 ms when the 100 ms format poll (inputs 1..5, I2C) falls on
+  the same tick, as it does on fast-lcd for a Vol+ 9.0 s after Power. The save comes 0.67 s
+  after the Vol+ on stock (the volume page's draw swallows ticks), 0.52 s on fast-lcd and 0.50
+  s on hn16. So on the amp it takes a second key about that long after the first, timed to
+  within 32 us, or 3 ms on a format-poll tick: rare, and it would look like a remote glitch.
+  Not known: why stock clears the command there, whether it has ever happened on the amp, and
+  what the erase itself costs. STC's IAP is believed to hold the CPU while it erases and writes
+  (milliseconds for a sector erase; not checked against the STC8G manual, and `Amp` does it in
+  no time), and `eeprom_write` masks interrupts per byte, so a frame under way then may lose
+  edges and be dropped by the decoder. A fix would replace the call at 0x492B with one that
+  keeps a pending command.
 - **Power-on sequence timing.** The delays in `post_power_on` (0x5585), `audio_chips_init`
   (0x50D1), 0x24D6 and 0x5D66 govern switching speed and the click that SMSL fixed once;
   worth tabulating if faster switching is wanted. (0x5AAB, named here before, has no delay:
@@ -852,7 +886,12 @@ first, single writes after it.
   negated byte sum. Record 0xFF is the flash image.
 - IR path: NEC decoder in the INT0 handler (0x2681) stores the command byte at RAM 0x6A;
   `ir_cmd_to_key` (0x5D10) maps it through the 15-byte table at 0x9398; the dispatcher
-  (0x0BB4) switches on the result through a Keil switch helper at 0x2072.
+  (0x0BB4) switches on the result through a Keil switch helper at 0x2072. The decoder times
+  the falling edges with Timer1, checks the address bytes 12 34 and sets bit 0x20.4 for
+  `read_key`. A held Vol+, Vol-, Up or Down sets the bit again on every repeat code but the
+  first. NEC 0x08 acts on release (200 ms after its last repeat, `inject_key_08`) and becomes
+  0x0E at its tenth repeat. 300 ms after the last frame or repeat the Timer0 ISR clears 0x6A
+  (0x34, 0x3EAC), which ends the repeats.
 - Inputs live in RAM 0x47 (1..6); `input_apply` (0x5640) switches the hardware via
   `input_set_hw` (0x24D6) and saves the setting to EEPROM.
 - Power flag is RAM 0x4F (0 = standby). Source on the remote while in standby resets the
