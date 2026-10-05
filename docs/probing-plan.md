@@ -95,6 +95,20 @@ with it in standby (`docs/bus-map.md`, "Layer 3, item 1"): "TV on" is readable f
 input, which is what an auto-switch to HDMI needs. The USB port's reading with a host
 playing is untested (the USB dumps stay deferred).
 
+Built on it the same day: `features/auto-switch`, stage 1 (to HDMI when the TV comes on, to
+Bluetooth when a phone connects, from any input, only while the selected input is silent).
+Flashed the same day; the TV wake confirmed on the amp (Optical to HDMI about a second after
+the TV woke). The Bluetooth half cannot fire as the firmware stands: the module is not
+discoverable while another input is selected (expander P0_0 low off the Bluetooth input).
+A connected phone drops as soon as another input is selected, so P0_0 is a hard enable.
+Keeping P0_0 high while the amp is on would make the module connectable from every input,
+and then a phone that reconnects on its own would pull a silent amp to Bluetooth; the user
+does not want devices connecting on their own, so as2 enables HDMI only and the module keeps
+its stock behaviour. Noted as an option for stage 3's menu: "Bluetooth auto-switch", off by
+default, which when on keeps the module enabled on every input (a filter on the one write
+where input_set_hw lowers P0_0) and puts Bluetooth back in ENABLED. Stages 2 (Optical
+and Coaxial through a receiver scan) and 3 (a menu with a per-source mask) are still to do.
+
 Only after layer 2, one register per build or per command, each taken from a datasheet
 first.
 

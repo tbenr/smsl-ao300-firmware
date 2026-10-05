@@ -310,6 +310,10 @@ public class SmslAo300Labels extends GhidraScript {
         {0x3A82, "small_text_start_x_stored"}, // small_text_render: same shape (hooked, features/house-numerals)
         {0x0F48, "vol_key_tail"},            // common tail of the volume keys: volume_apply (the lcall at 0x0F4A is hooked by features/fix-volume-pop: vp_apply), 0x5D7D, draw (0x5936), arm page timers
         {0x3DA9, "read_key_ir_translate"},   // lcall ir_cmd_to_key (hooked, features/probe: pr_key)
+        {0x3438, "main_tick_signal_monitor_call"}, // main_tick_tasks, tick path: lcall signal_monitor (hooked, features/auto-switch: as_tick)
+        {0xF000, "as_tick"},                 // features/auto-switch (standalone image; the probe image has pr_* from 0xF100): signal_monitor, then the paced poll
+        {0xF073, "as_eval"},                 // features/auto-switch: every 100 ms, hold counters, active bits, the edge, the silent check, input_apply
+        {0xF12B, "as_rates"},                // features/auto-switch: rate codes 0..15 -> 1 for a real stream
         {0xF100, "pr_key"},                  // features/probe: NEC 0x16, amp on, home page -> pr_dump, "no key"; else ir_cmd_to_key
         {0xF11A, "pr_dump"},                 // features/probe: the dump on UART1 moved to the header pins (P_SW1), ES off meanwhile
         {0xF1C1, "pr_fs"},                   // features/probe pr3: receiver register 0x37 (rate calculator target) to ports 0..7, 0x38 polled per port, stock's target restored
@@ -380,7 +384,8 @@ public class SmslAo300Labels extends GhidraScript {
         {0x76, "g_uart_byte0"},    {0x77, "g_uart_byte1"},    // uart1_isr: the message bytes before the 0xFF terminator
         {0x78, "g_uart_valid"},    // 0xFF after a terminator; a third message byte would overwrite it
         {0x79, "g_uart_index_hi"}, {0x7A, "g_uart_index_lo"},
-        {0x7E, "g_format_tag_drawn"},  // home_draw_format_tag: the format (0x3D) its tag shows; the box is cleared when it changes
+        {0x7E, "g_format_tag_drawn"},
+        // features/auto-switch, XDATA 0x01D0..0x01D6: phase (AUX), hdmi raw, bt raw, hdmi count, bt count, active bits, armed  // home_draw_format_tag: the format (0x3D) its tag shows; the box is cleared when it changes
     };
 
     static final int TABLE_ADDR = 0x9398;

@@ -428,6 +428,15 @@ lines stay at 0. The clock generator's status reads 0x51 (CLKIN lost, PLL A stil
 lock). So on Bluetooth the firmware's signal presence is the module's P0_5 line, which
 follows the connection, and the receiver's lock follows it too.
 
+**The module is not discoverable while another input is selected** (tried on the amp,
+2026-10-05: on Optical the phone could not find the amp). The firmware lowers expander P0_0
+on every input switch and raises it only on Bluetooth, two seconds after the switch, so P0_0
+is the module's enable: a connected phone drops the moment another input is selected (tried
+the same day), so the module is off whenever P0_0 is low. (The connection line reading high
+on Optical in the first dumps was then the line's idle level with the module off, not a
+link.) A feature that wants Bluetooth activations from other inputs has to keep P0_0 high
+while the amp is on.
+
 **Twelfth dump, Coaxial selected, a 44.1 kHz stream playing.** The receiver on RXIN1 locks
 (0x38 = 0x39 = 08), channel status bytes 01 .. 02 (a consumer source), the lock pin P4.2
 low, INT1 high (it read low during the optical stream), the clock generator's status 0x01

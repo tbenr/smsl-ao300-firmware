@@ -40,7 +40,9 @@ from i2c import I2CBus       # noqa: E402
 import build_patch as bp     # noqa: E402
 import features              # noqa: E402  (tools/patch, on the path through build_patch)
 
-INTEGRATION = True           # `emu_test.py --in <feature>`: the fix's promises in that image
+INTEGRATION = True
+# `emu_test.py --in <feature>`: the fix's promises in that image
+STOCK_CODE_END = 0x9400      # patch code starts here in every image: writes from it are a feature's, not stock's
 import fix_menu_input as mi  # noqa: E402
 
 TEST_IMG = bp.OUT_IMAGE
@@ -311,7 +313,10 @@ class Run:
         return [(round((c / CLOCK_HZ) - m[3], 2), p) for c, p in self.pins[m[2]:]]
 
     def writes(self, m, dev=None):
-        return [x[3:6] for x in self.bus.log[m[1]:] if x[2] == "W" and (dev is None or x[3] == dev)]
+        """Register writes after the mark, from stock code only: a feature that polls a chip on its
+        own schedule (auto-switch's calculator target) is not part of either switching sequence."""
+        return [x[3:6] for x in self.bus.log[m[1]:] if x[2] == "W" and (dev is None or x[3] == dev)
+                and x[1] < STOCK_CODE_END]
 
     def audio(self, m):
         """Audio events after the mark, without their times. An NJW1194 write is its data and
@@ -332,7 +337,8 @@ class Run:
         e = self.amp.e
         ports = tuple(e.sfr[p] & mask for p, mask in ((0x80, 0x57), (P2, 0xFE), (0xB0, 0x7F), (P4, 0xFD)))
         njw = {k: v for k, v in self.amp.state.items() if k[0] == "njw"}
-        return ports, dict(self.bus.regs), njw
+        regs = {k: v for k, v in self.bus.regs.items() if k != (0x80, 0x37)}   # the calculator target: a feature
+        return ports, regs, njw                                                  # (auto-switch) moves it on its own clock
 
 
 def stock_cycle():

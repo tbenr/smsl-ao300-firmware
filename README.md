@@ -118,6 +118,16 @@ features/
                                    and 256-key sweeps, all 30 input pairs through the menu
                                    against stock and against the Source key
     fix_menu_input.asm            generated listing
+  auto-switch/                    stage 1 of the auto-switch (docs/probing-plan.md): to HDMI
+                                  when the TV comes on, from any input, only while the
+                                  selected input is silent (Bluetooth sensed, not enabled). A
+                                  fix on stock with the six fixes; as1 flashed and the TV wake
+                                  confirmed on 2026-10-05 (see its README)
+    auto_switch.py                the fix: ENABLED, HOLD, HOOK and emit(a)
+    build_patch.py, emu_test.py   build build/flash_autoswitch.bin; the tick hook per phase,
+                                   256-command sweep vs stock + the same fixes, whole-firmware
+                                   scenarios against direct-select's switches
+    auto_switch.asm               generated listing
   probe/                          layer 2 of docs/probing-plan.md: FN on the home page sends
                                   a read-only register dump (I2C address scan, expander,
                                   receiver and clock-generator registers, ports, RAM) over the
@@ -327,6 +337,12 @@ power-up; the bootloader is in ROM and survives. Every run is appended to
 `tools/flash/flash_ao300.log`, with raw packets when `-D` is given.
 
 ## Status
+
+Flashed on 2026-10-05 and confirmed by the user the same day: `features/auto-switch/build/flash_autoswitch.bin`
+(`v1.4 tbenr as1`), auto-switch stage 1. From Optical with nothing playing, the amp went to
+HDMI about a second after the TV came out of standby. The Bluetooth half cannot fire: the
+module is off whenever another input is selected, so a phone cannot connect there; as2 (not
+flashed) enables HDMI only.
 
 Flashed on 2026-10-05: `features/probe/build/flash_probe.bin` (pr2, `v1.4 tbenr pr2`), the
 read-only register dump on the FN button, over the forwarded serial port
@@ -816,7 +832,10 @@ first (`features/probe`; pr1 flashed on 2026-10-05, no dump captured yet), singl
   no result when the TV is in standby. "TV on" is readable from any input; an auto-switch to
   HDMI can poll it every tick at under 1 ms of main-loop time, with the target restored
   before stock's own read of the result register on Bluetooth, and left alone on HDMI.
-  Still to decide: the hold-off and what to do when the TV goes to standby.
+  Built as `features/auto-switch` stage 1 (the HDMI activation, a 1 s hold-off, no switch
+  away from a playing input); the TV wake confirmed on the amp on 2026-10-05. Bluetooth
+  stays out: its module is off on the other inputs, and keeping it on would let phones
+  reconnect on their own.
 - **Pin roles on the board.** `docs/bus-map.md` lists every expander and MCU pin the
   firmware drives or reads, with roles inferred from when they change. Matching them to
   the silkscreen nets (MUTE_AMP, MUTE_PRE, MUTE_HP, DIR_RST, DAC_MCK_SEL, relays) needs a
