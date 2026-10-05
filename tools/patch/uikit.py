@@ -1976,7 +1976,11 @@ def build_image(*, base_path, base_sha, code_addr, assemble, hooks, patches=(), 
                 version_text, out_image, out_listing, title, label_prefixes=("uk_",)):
     """Build a theme image. hooks: [(address, original 3 bytes, opcode, target label)];
     patches: [(address, original bytes, function(labels) -> new bytes, listing note)];
-    asserts: [(address, expected bytes, message)] checked on the base image."""
+    asserts: [(address, expected bytes, message)] checked on the base image.
+    assemble() returns (code, labels, asm) and may add a fourth item, data blocks placed inside
+    the base image: [(address, original bytes, new bytes of the same length, listing text)], for
+    stock data the image no longer reads (house-numerals keeps fonts in the stock big font's place).
+    The original bytes are asserted before they are overwritten, as a hook's are."""
     img = bytearray(open(base_path, "rb").read())
     sha = hashlib.sha256(img).hexdigest()
     if sha != base_sha:
@@ -1989,9 +1993,16 @@ def build_image(*, base_path, base_sha, code_addr, assemble, hooks, patches=(), 
         assert img[addr:addr + len(want)] == want, msg
     assert len(img) <= code_addr
 
-    code, labels, a = assemble()
+    res = assemble()
+    code, labels, a = res[:3]
+    blocks = res[3] if len(res) > 3 else ()
+    for addr, orig, new, _ in blocks:
+        assert len(new) == len(orig) and addr + len(new) <= len(img), "block at 0x%04X: size" % addr
+        assert img[addr:addr + len(orig)] == orig, "bytes at 0x%04X not as expected" % addr
     img += b"\xFF" * (code_addr - len(img))
     img += code
+    for addr, orig, new, _ in blocks:
+        img[addr:addr + len(new)] = new
 
     lines = []
     for addr, orig, op, target in hooks:
@@ -2002,6 +2013,9 @@ def build_image(*, base_path, base_sha, code_addr, assemble, hooks, patches=(), 
         new = fn(labels)
         lines.append("; 0x%04X: %s -> %s  (%s)" % (addr, orig[:len(new)].hex(" "), new.hex(" "), note))
         img[addr:addr + len(new)] = new
+    for addr, orig, new, _ in blocks:
+        lines.append("; 0x%04X..0x%04X: %d bytes of data in place of the stock bytes (sha256 %s)"
+                     % (addr, addr + len(new) - 1, len(new), hashlib.sha256(orig).hexdigest()[:8]))
 
     assert len(version_text) <= VERSION_MAX_LEN
     assert img[VERSION_PTR_ADDR] == 0x7A and img[VERSION_PTR_ADDR + 2] == 0x79
@@ -2018,7 +2032,11 @@ def build_image(*, base_path, base_sha, code_addr, assemble, hooks, patches=(), 
         f.write("\n".join(lines) + ("\n" if lines else ""))
         f.write("; version string %r at 0x%04X, pointer 0x%04X repointed\n\n" % (version_text, ver, VERSION_PTR_ADDR))
         f.write(a.listing())
+        for addr, orig, new, text in blocks:
+            f.write("\n; data block at 0x%04X..0x%04X\n\n%s" % (addr, addr + len(new) - 1, text))
     print("code %d bytes at 0x%04X..0x%04X" % (len(code), code_addr, code_addr + len(code) - 1))
+    for addr, orig, new, _ in blocks:
+        print("data block %d bytes at 0x%04X..0x%04X" % (len(new), addr, addr + len(new) - 1))
     print("\n".join(ln[2:] for ln in lines))
     print("labels: " + " ".join("%s=0x%04X" % (k, v) for k, v in labels.items() if k.startswith(label_prefixes)))
     print("version %r at 0x%04X" % (version_text, ver))

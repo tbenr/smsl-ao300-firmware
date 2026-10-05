@@ -393,6 +393,46 @@ def test_ease():
           all(abs(uikit.ease_cubic(1 - t / 64) - (1 - uikit.ease_cubic(t / 64))) < 1e-12 for t in range(65)))
 
 
+def test_build_image_blocks():
+    """build_image's data blocks: stock bytes asserted, then overwritten and listed."""
+    import tempfile
+    print("\nbuild_image data blocks (fonts in a dead stock area, as house-numerals does)")
+    base = BASE
+    addr, n = uikit.FONT_BIG, 16
+    code = b"\x22"                                 # ret
+
+    def assemble(orig):
+        def fn():
+            a = Asm(CODE_ADDR)
+            a.L("uk_t_ret")
+            a.data("ret", code)
+            fa = Asm(addr)
+            fa.L("uk_t_block")
+            fa.data("db 0..15", bytes(range(n)))
+            return a.resolve(), a.labels, a, [(addr, orig, fa.resolve(), fa.listing())]
+        return fn
+    with tempfile.TemporaryDirectory() as d:
+        out, lst = os.path.join(d, "t.bin"), os.path.join(d, "t.asm")
+        img = uikit.build_image(base_path=BASE_IMAGE, base_sha=BASE_SHA, code_addr=CODE_ADDR,
+                                assemble=assemble(base[addr:addr + n]), hooks=[], version_text="t",
+                                out_image=out, out_listing=lst, title="t", label_prefixes=("uk_t_",))
+        check("the block's bytes replace the stock bytes", img[addr:addr + n] == bytes(range(n)))
+        check("nothing else in the base changed but the version pointer",
+              {i for i in range(len(base)) if img[i] != base[i]} - set(range(addr, addr + n))
+              == {uikit.VERSION_PTR_ADDR + 1, uikit.VERSION_PTR_ADDR + 3})
+        check("the code follows at CODE_ADDR", img[CODE_ADDR:CODE_ADDR + 1] == code)
+        text = open(lst).read()
+        check("the listing names the block and lists it", "data block at 0x%04X" % addr in text and "uk_t_block:" in text)
+        try:
+            uikit.build_image(base_path=BASE_IMAGE, base_sha=BASE_SHA, code_addr=CODE_ADDR,
+                              assemble=assemble(b"\xAA" * n), hooks=[], version_text="t",   # glyph 0 is blank: 0x00 would match
+                              out_image=out, out_listing=lst, title="t")
+            ok = False
+        except AssertionError:
+            ok = True
+        check("a block whose stock bytes are not as expected is refused", ok)
+
+
 def main():
     print("uikit: %d bytes of kit code and test fonts at 0x%04X, XDATA 0x%04X..0x%04X, uk_text 0x%04X..0x%04X" %
           (len(IMG) - CODE_ADDR, CODE_ADDR, KIT.fill_n, KIT.FP + KIT.FP_SIZE - 1, TP_BASE, TP_BASE + KIT.TP_SIZE - 1))
@@ -406,6 +446,7 @@ def main():
     test_text_strings()
     test_text_clip_and_speed()
     test_text_rows()
+    test_build_image_blocks()
     test_ease()
     print("\nALL PASS" if not fails else "\nFAILURES: %s" % fails)
     sys.exit(1 if fails else 0)

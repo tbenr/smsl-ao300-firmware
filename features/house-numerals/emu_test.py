@@ -14,6 +14,10 @@
                               roll's frames, the spring, knob-speed repeats, a roll cut by
                               Menu / Source / Power), the mute key (from home, on the open page,
                               during the wipes, a volume key while muted), the stack check
+                              and stock_page_walk: every menu page, the value pages, BT clear, RESET,
+                              the front-panel keys that draw big text at home, a power cycle
+  Every emulator of this image traps the stock big glyph painters (BIG_FONT_PAINTERS): the
+  stock big font's bytes hold the theme's fonts since hn17, so reaching one fails the run.
   python3 emu_test.py int1    INT1 receiver event at a Vol+ press, 100 offsets, against fast-lcd
   python3 emu_test.py sweep   all 256 IR commands in five states, against fast-lcd (the mute key
                               where it differs on purpose: against fast-lcd muted from home)
@@ -30,14 +34,46 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(ROOT, "tools", "emu"))
 sys.path.insert(0, HERE)
 import uitest as ut                                             # noqa: E402
-from ao300 import Amp, CLOCK_HZ, NEC_POWER, NEC_DOWN, NEC_SOURCE, \
+from ao300 import Amp as StockAmp, CLOCK_HZ, NEC_POWER, NEC_UP, NEC_MENU, NEC_DOWN, NEC_SOURCE, \
     NEC_VOL_UP, NEC_VOL_DOWN, STATE_KEY                          # noqa: E402
 import build_patch as bp                                         # noqa: E402
 sys.path.insert(0, os.path.join(ROOT, "tools", "patch"))
 import pfont                                                     # noqa: E402
+import uikit                                                     # noqa: E402
 
 BASE = open(bp.BASE_IMAGE, "rb").read()
 NEW = open(bp.OUT_IMAGE, "rb").read()
+
+
+# ---- the stock big font is dead in this image --------------------------------------------------
+# The stock big font (0x6A23..0x7DD3) has exactly two readers, big_glyph_paint (big_text_render's
+# glyph loop) and bignum_digit (draw_num_big). The theme draws every big text itself and the
+# number painters are unreachable, so hn17 keeps its own fonts in that area. Every emulator of
+# this image traps both painters: reaching one fails the run with the return addresses on the
+# stack, and the whole-firmware scenarios, the sweep and the unit tests all run with the trap on.
+BIG_FONT_PAINTERS = {0x3F3C: "big_glyph_paint", 0x3F2A: "bignum_digit"}
+
+
+class BigFontReached(AssertionError):
+    pass
+
+
+def trap_big_font(e):
+    for pc, name in BIG_FONT_PAINTERS.items():
+        def trap(em, name=name, pc=pc):
+            sp = em.sfr[0x81]
+            words = ["%02X%02X" % (em.iram[i], em.iram[i - 1]) for i in range(sp, 0x88, -2)]
+            raise BigFontReached("%s (0x%04X) reached on page %d; stack (top first): %s"
+                                 % (name, pc, em.iram[0x45], " ".join(words)))
+        e.hooks[pc] = trap
+
+
+class Amp(StockAmp):
+    """ao300.Amp, with the big-font trap on every amp running this image."""
+    def __init__(self, image, **kw):
+        super().__init__(image, **kw)
+        if image == NEW:
+            trap_big_font(self.e)
 
 
 def reference_image():
@@ -61,7 +97,8 @@ def reference_image():
 
 
 REF = reference_image()
-LAB = bp.assemble()[1]
+_ASM = bp.assemble()
+LAB, BLOCKS = _ASM[1], _ASM[3]              # labels (the hole fonts' included); the data block in the big font's place
 W, H = 320, 170
 EASE = bp.EASE
 N = bp.STEPS                             # steps per wipe
@@ -77,7 +114,10 @@ def check(name, ok, detail=""):
 
 
 def emu(theme=(0xFF, 0xFF), img=NEW):
-    return ut.emu(img, theme)
+    e = ut.emu(img, theme)
+    if img == NEW:
+        trap_big_font(e)
+    return e
 
 
 px, screen, fill_screen, ink_in, stray = ut.px, ut.screen, ut.fill_screen, ut.ink_in, ut.stray
@@ -99,8 +139,16 @@ def image_diff():
         new = fn(LAB)
         check("patch 0x%04X: %s" % (addr, note), NEW[addr:addr + len(new)] == new, NEW[addr:addr + len(new)].hex(" "))
         want |= {addr + k for k in range(len(new)) if orig[k] != new[k]}
+    for addr, orig, new, _ in BLOCKS:
+        check("data block 0x%04X..0x%04X: %s in the stock big font's place (%d of %d bytes)"
+              % (addr, addr + len(new) - 1, ", ".join(f.name for f in bp.HOLE_FONTS), len(new), bp.FONT_HOLE_END - bp.FONT_HOLE),
+              NEW[addr:addr + len(new)] == new and addr == bp.FONT_HOLE and addr + len(new) <= bp.FONT_HOLE_END)
+        want |= {addr + k for k in range(len(new)) if orig[k] != new[k]}
+    check("the rest of the big font's place and the small font are stock",
+          NEW[bp.FONT_HOLE + len(BLOCKS[0][2]):bp.FONT_HOLE_END] == BASE[bp.FONT_HOLE + len(BLOCKS[0][2]):bp.FONT_HOLE_END]
+          and NEW[uikit.FONT_SMALL:bp.FONT_HOLE] == BASE[uikit.FONT_SMALL:bp.FONT_HOLE])
     changed = {i for i in range(len(BASE)) if BASE[i] != NEW[i]} - {vp + 1, vp + 3}
-    check("inside the base image only the hooks and the included patches changed (plus version pointer)", changed == want,
+    check("inside the base image only the hooks, the included patches and the data block changed (plus version pointer)", changed == want,
           str(sorted("%04X" % i for i in changed ^ want)))
     ver = (NEW[vp + 1] << 8) | NEW[vp + 3]
     check("version pointer -> %r" % bp.VERSION_TEXT,
@@ -1828,8 +1876,15 @@ def text_render(img, page, entry, buf, text, y):
 
 
 def test_align():
-    print("\npage-1 text (hooks 0x2A25 big, 0x3A82 small): ours at the name / status y, else x 16")
-    cases = (("big", 0x298B, 0x35, "USB", 40, 32, 30), ("small", 0x3A53, 0x50, "No signal", 100, 24, 14))
+    print("\nbig text (hook 0x2A25): always the theme's name painter; small text (hook 0x3A82): ours at the"
+          " status y on page 1, else x 16")
+    name = text_render(NEW, 1, 0x298B, 0x35, "USB", bp.NAME_Y)             # the home name path (hm_name)
+    check("big text at the name y on page 1: ink at x 16", ink_in(name, 16, bp.HNAME_Y, 60, bp.PF_NAME.H))
+    for page, y in ((1, 40), (3, 40), (3, bp.NAME_Y)):
+        n = text_render(NEW, page, 0x298B, 0x35, "USB", y)
+        check("big text on page %d at y %d: drawn by hm_name, not the stock glyphs (trapped)" % (page, y),
+              n.lcd.gram == name.lcd.gram)
+    cases = (("small", 0x3A53, 0x50, "No signal", 100, 24, 14),)
     for kind, entry, buf, text, y, h, cw in cases:
         n1, b1 = text_render(NEW, 1, entry, buf, text, y), text_render(BASE, 1, entry, buf, text, y)
         n3, b3 = text_render(NEW, 3, entry, buf, text, y), text_render(BASE, 3, entry, buf, text, y)
@@ -1840,8 +1895,7 @@ def test_align():
         check("%s at another y on page 1: margins left and right cleared" % kind,
               not ink_in(n1, 0, y, 16, h) and not ink_in(n1, 16 + tw, y, W - 16 - tw, h))
         check("%s on page 3 (menus): unchanged, centred" % kind, n3.lcd.gram == b3.lcd.gram)
-    for kind, entry, buf, text, y in (("big", 0x298B, 0x35, "COAXIAL", bp.NAME_Y),
-                                      ("small", 0x3A53, 0x50, "No signal", bp.STATUS_Y)):
+    for kind, entry, buf, text, y in (("small", 0x3A53, 0x50, "No signal", bp.STATUS_Y),):
         n3, b3 = text_render(NEW, 3, entry, buf, text, y), text_render(BASE, 3, entry, buf, text, y)
         check("%s at the home y %d on page 3: unchanged" % (kind, y), n3.lcd.gram == b3.lcd.gram)
     wide = "ABCDEFGHIJKLMNOPQRSTU"                    # 21 x 14 = 294 px: stays centred
@@ -3056,6 +3110,97 @@ def sweep():
     print("  sweep in %.0f s" % (time.time() - t0))
 
 
+# ---- every stock page, with the big-font trap on ----------------------------------------------
+KEY_INJECT = 0x3DAF                      # read_key, after ir_cmd_to_key and 0x536F: R7 = key code
+
+
+def key_injector(amp):
+    """Front-panel key codes (0x12 output toggle, 0x59 EQ show) have no NEC command: press NEC
+    0x00 (key 0xFF) and replace read_key's R7 at KEY_INJECT."""
+    cell = [None]
+
+    def inject(em):
+        if cell[0] is not None:
+            em.setR(7, cell[0])
+            cell[0] = None
+    amp.e.hooks[KEY_INJECT] = inject
+
+    def press_key(code):
+        cell[0] = code
+        amp.press(0x00)
+    return press_key
+
+
+MENU_ITEMS = ["Input", "Output", "EQ", "Treble", "Bass", "Filter", "Color", "BT Clear", "Dimmer", "RESET"]
+VALUE_PAGES = (7, 8)                     # Treble and Bass: Up / Down change the value
+LIST_PAGES = (4, 5, 6, 9, 10, 12)        # Up / Down move the cursor; Enter would apply (not pressed)
+VERSION_Y = 0x55                         # the RESET page: title y 4, name y 50, version y 85, hold text y 120
+
+
+def stock_page_walk():
+    """Every menu page, the value pages, the BT clear and RESET pages, the two front-panel keys that
+    draw big text at home (output toggle, EQ show) and a power cycle, lockstep with fast-lcd.
+    The point is the trap on the stock big-font painters (BIG_FONT_PAINTERS): the pages
+    themselves are stock and must stay identical to fast-lcd."""
+    print("\nEvery stock page with the big-font trap on, against fast-lcd")
+    amps = [Amp(REF), Amp(NEW)]
+    for amp in amps:
+        amp.set_pin(0xC0, 5, 0)
+        amp.boot()
+    ref, new = amps
+    keys = [key_injector(amp) for amp in amps]
+
+    def both(cmd, secs):
+        for amp in amps:
+            if cmd is not None:
+                amp.press(cmd)
+            amp.wait(secs)
+
+    def same(label):
+        if new.page == 13:                         # the RESET page shows this image's version text
+            rows = set(range(VERSION_Y, VERSION_Y + 24))
+            eq = all(px(new.e, x, y) == px(ref.e, x, y) for x in range(W) for y in range(H) if y not in rows)
+            label += " (version line apart)"
+        else:
+            eq = new.lcd.gram == ref.lcd.gram
+        check("%-28s page %2d: identical to fast-lcd" % (label, new.page), eq and new.page == ref.page,
+              "(pages %d / %d)" % (new.page, ref.page))
+
+    both(NEC_POWER, 8.0)
+    check("power on: home = home_model", home_ok(new.e), home_diff(new.e))
+    both(NEC_MENU_OPEN, 1.5)
+    same("menu")
+    for item, name in enumerate(MENU_ITEMS):
+        both(NEC_MENU_OPEN, 1.0)                   # Enter: item i opens page i + 4
+        same("%s (enter)" % name)
+        check("%-28s opened page %d" % (name, item + 4), new.page == item + 4, "(page %d)" % new.page)
+        if new.page in VALUE_PAGES + LIST_PAGES:
+            both(NEC_DOWN, 0.5)
+            same("%s down" % name)
+            both(NEC_UP, 0.5)
+            same("%s up" % name)
+        both(NEC_MENU, 1.0)                        # Back: page 3, the cursor on the item
+        same("%s (back)" % name)
+        if item < len(MENU_ITEMS) - 1:
+            both(NEC_DOWN, 0.5)
+            same("down to %s" % MENU_ITEMS[item + 1])
+    both(None, 9.5)
+    check("menu timeout: home = home_model", home_ok(new.e), home_diff(new.e))
+    for code, what in ((0x12, "output toggle"), (0x59, "EQ show")):
+        for k in keys:
+            k(code)
+        both(None, 0.5)
+        check("%-28s page 1, big text drawn by the theme (trap silent)" % ("key 0x%02X %s" % (code, what)),
+              new.page == 1, "(page %d)" % new.page)
+        both(None, 3.0)                            # the periodic refresh restores the home
+        check("%-28s home = home_model after the refresh" % ("key 0x%02X %s" % (code, what)),
+              home_ok(new.e), home_diff(new.e))
+    both(NEC_POWER, 3.0)
+    same("standby")
+    both(NEC_POWER, 8.0)
+    check("power on again: home = home_model", home_ok(new.e), home_diff(new.e))
+
+
 def report_steps():
     if STEP_MS:
         k, v = max(STEP_MS.items(), key=lambda kv: kv[1])
@@ -3066,7 +3211,7 @@ GROUPS = {
     "unit": [image_diff, test_home, test_status_tint, test_name_ptr, test_draw_volume, test_volpage,
              test_step, test_roll, test_mute, test_mute_key, test_spring, test_enter_vol, test_home_tail, test_align],
     "tour": [tour, input_scenarios, key_scenarios, flag_exit_scenarios, roll_scenarios, mute_scenarios, tint_scenarios,
-             edge_scan],
+             edge_scan, stock_page_walk],
     "int1": [int1],
     "sweep": [sweep],
 }

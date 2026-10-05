@@ -187,6 +187,29 @@ PF_VNAME = raster_font("pf_vname", "disp36", VNAME_CHARS, "the volume page's nam
 PF_VNUM = raster_font("pf_vnum", "num84", "0123456789", "the volume page's number")
 PFONTS = (PF_NAME, PF_STATUS, PF_MONO, PF_HVOL, PF_ICON, PF_BOX, PF_VNAME, PF_VNUM)
 
+# The stock big font (font_big, 0x6A23..0x7DD3) is dead in this image: big_text_render hands every
+# big text to hm_name (hook 0x2A25) and the stock number painters are unreachable, so no code reads
+# its 5040 bytes (emu_test.py traps big_glyph_paint and bignum_digit on every run). The fonts that
+# fill it best live there; the others stay in the code area. The small font stays: the menus,
+# the value pages and the RESET page still draw with it.
+FONT_HOLE, FONT_HOLE_END = uikit.FONT_BIG, 0x7DD3
+FONT_HOLE_SHA = "e082a9f85587aa8e71b9ef1a7b425ca0531b64d296f557d535f2ab42e87b6c87"   # the stock glyphs
+
+
+def hole_fonts(fonts, room):
+    """The subset of fonts with the most bytes that fits in room (fewest fonts on a tie)."""
+    best = ()
+    for mask in range(1, 1 << len(fonts)):
+        sub = tuple(f for k, f in enumerate(fonts) if mask >> k & 1)
+        size = sum(f.size() for f in sub)
+        if size <= room and (size, -len(sub)) > (sum(f.size() for f in best), -len(best)):
+            best = sub
+    return best
+
+
+HOLE_FONTS = hole_fonts(PFONTS, FONT_HOLE_END - FONT_HOLE)
+CODE_FONTS = tuple(f for f in PFONTS if f not in HOLE_FONTS)
+
 # where things go: x, baseline -> the cell's top row y = baseline + the font's top
 ICON_X, ICON_Y = LAYOUT["icon"]["x"], LAYOUT["icon"]["baseline"] + PF_ICON.top
 HVOL_X, HVOL_Y = LAYOUT["volume"]["x"], LAYOUT["volume"]["baseline"] + PF_HVOL.top
@@ -377,7 +400,7 @@ HOOKS = [STOCK_SITES[site] + (op, target) for site, op, target in (
     ("page_clear", 0x12, "hn_clear"),
     ("page2_entry", 0x02, "hn_volpage"),
     ("volpage_draw_volume", 0x02, "hn_draw_volume"),
-    ("big_text_start_x", 0x02, "hn_align_big"),
+    ("big_text_start_x", 0x02, "hm_name"),        # every big text is the theme's: the stock big font is never read
     ("small_text_start_x", 0x02, "hn_align_small"),
     ("home_refresh_tail", 0x02, "hn_home_tail"),
     ("tick", 0x12, "uk_tasks"),
@@ -399,7 +422,7 @@ KEY_P2_SITE = (0x3DD1, bytes([0xEB, 0x64, 0x1F]))       # read_key, IR, page 2: 
 HOOKS += [MUTE_KEY_SITE + (0x02, "hn_mute_key"), KEY_P2_SITE + (0x02, "hn_key_p2")]
 HOOKS += features.hooks(INCLUDES)      # the fixes linked in: their hooks ...
 FIX_PATCHES = features.patches(INCLUDES)   # ... and their in-place patches (strings: "Disconnected")
-VERSION_TEXT = "v1.4 tbenr hn16"
+VERSION_TEXT = "v1.4 tbenr hn17"
 
 
 rect = KIT.rect
@@ -445,7 +468,7 @@ def build_data(a):
     for lab, ch in (("hm_s_spk", "S"), ("hm_s_mute", "M"), ("hm_s_hp", "H"), ("hm_s_lb", "["), ("hm_s_rb", "]")):
         a.L(lab)
         a.data('db "%s",0' % ch, ch.encode() + b"\0")
-    for f in PFONTS:
+    for f in CODE_FONTS:
         f.emit(a)
 
 def build_primitives(a):
@@ -2428,8 +2451,11 @@ lcall 0x5916       ; the volume (hm_volume), R7 = volume
 lcall uk_acc""")
     rect(a, BAR_X, BAR_W, BAR_Y, BAR_H)
     S(a, "ljmp uk_fill")
-    for name, back, y, draw in (("hn_align_big", 0x2A28, NAME_Y, "hm_name"),
-                                ("hn_align_small", 0x3A85, uikit.STATUS_Y, "hm_status_r")):
+    # big_text_render's hook (0x2A25) goes straight to hm_name: on every page, at every y, the big
+    # text is the theme's (in practice only the input name, the EQ preset name and the output name
+    # at y 75 on page 1 reach it), so the stock big font is never read and its bytes hold fonts
+    # (FONT_HOLE). small_text_render keeps the stock small font for the other pages.
+    for name, back, y, draw in (("hn_align_small", 0x3A85, uikit.STATUS_Y, "hm_status_r"),):
         S(a, """
 ; %s: on page 1, the text at the stock y %d is ours (%s, then return from the stock renderer:
 ; nothing is pushed at this point); other page-1 texts start at x 16 (XDATA 0x04:0x05)
@@ -2845,12 +2871,28 @@ def build(a):
     build_home(a)
 
 
+def assemble_hole():
+    """HOLE_FONTS assembled in the stock big font's place; their labels go into the code's assembler."""
+    fa = Asm(FONT_HOLE)
+    fa.comment("fonts in the stock big font's place, 0x%04X..0x%04X (dead in this image)" % (FONT_HOLE, FONT_HOLE_END - 1))
+    for f in HOLE_FONTS:
+        f.emit(fa)
+    data = fa.resolve()
+    assert len(data) <= FONT_HOLE_END - FONT_HOLE, "hole fonts %d bytes, room %d" % (len(data), FONT_HOLE_END - FONT_HOLE)
+    return data, fa
+
+
 def assemble():
+    hole, fa = assemble_hole()
     a = Asm(CODE_ADDR)
+    a.labels.update(fa.labels)
     build(a)
     features.emit(a, INCLUDES)
     code = a.resolve()
-    return code, a.labels, a
+    base = open(BASE_IMAGE, "rb").read()
+    assert hashlib.sha256(base[FONT_HOLE:FONT_HOLE_END]).hexdigest() == FONT_HOLE_SHA, "stock big font not as expected"
+    blocks = [(FONT_HOLE, base[FONT_HOLE:FONT_HOLE + len(hole)], hole, fa.listing())]
+    return code, a.labels, a, blocks
 
 
 def main():
