@@ -5,7 +5,8 @@ A thin wrapper around stcgal that adds the checks the bare tool lacks. Every
 value it checks against was read from a real AO300 with `stcgal -D` and matched
 against the vendor updater's container.
 
-Subcommands (all need -p PORT, e.g. /dev/cu.usbserial-10):
+Subcommands (all need -p PORT, e.g. /dev/cu.usbserial-10 or a pyserial URL such as
+rfc2217://host:4000 for a port forwarded from another machine):
 
   identify            connect, print chip info, run all checks, reset. Writes nothing.
   dryrun              identify + clock calibration + baud switch + the pre-erase
@@ -38,6 +39,21 @@ try:
     import serial
 except ImportError:
     sys.exit("stcgal is not installed: pip install stcgal")
+
+# ---- pyserial URLs (rfc2217://, socket://) ---------------------------------
+# stcgal opens the port with serial.Serial(port=...), which only takes device paths.
+# Route anything that looks like a URL through serial.serial_for_url instead, so a
+# port forwarded from another machine works; plain device paths are untouched.
+_REAL_SERIAL = serial.Serial
+
+
+def open_port(port=None, **kw):
+    if isinstance(port, str) and "://" in port:
+        return serial.serial_for_url(port, **kw)
+    return _REAL_SERIAL(port=port, **kw)
+
+
+serial.Serial = open_port
 
 # ---- expected chip state (from the read-only handshake of the real amp) -----
 EXPECT_MAGIC = 0xF7DC                 # STC8C2K64S2
@@ -240,7 +256,7 @@ def cmd_flash(args, recover=False):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("-p", "--port", required=True, help="serial device, e.g. /dev/cu.usbserial-10")
+    ap.add_argument("-p", "--port", required=True, help="serial device, e.g. /dev/cu.usbserial-10, or a pyserial URL like rfc2217://host:4000")
     ap.add_argument("-D", "--debug", action="store_true", help="dump raw packets")
     ap.add_argument("--log", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "flash_ao300.log"),
                     help="append all output to this file (default: next to the script)")

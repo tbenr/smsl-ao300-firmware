@@ -22,6 +22,7 @@ tools/
   disasm/d51.py                   small recursive 8051 disassembler
   disasm/SmslAo300Labels.java     Ghidra script that names routines, globals and tables
   flash/flash_ao300.py            guarded stcgal-based flasher for macOS/Linux (see below)
+  flash/ser2net/                  ser2net in Docker: forward a remote adapter as rfc2217://
   emu/emu8051.py                  full 8051 emulator with STC8 clock counts and an ST7789
                                   model of the LCD bus (renders the screen to PNG); the
                                   Python reference implementation
@@ -303,7 +304,13 @@ or unplug and replug the mains. `flash` asks you to type FLASH first, before it 
 for the bootloader, so there is no pause between the handshake and the erase; `-y`
 after the image path skips the question. On Linux the port is usually `/dev/ttyUSB0`;
 if it vanishes mid-run (`Errno 5`), check `dmesg` for brltty or ModemManager
-grabbing the CH340. If a
+grabbing the CH340. `-p` also takes a pyserial URL, so an adapter on another machine
+can be reached through a forwarder such as `rfc2217://host:4000` (stock stcgal opens
+device paths only; the flasher routes URLs through `serial_for_url`). A ready-made
+ser2net setup in Docker is in `tools/flash/ser2net/`. `identify` passed this way on
+2026-10-05 (ser2net 4.6 on a Linux box, flasher on a Mac on the same LAN). `dryrun` and
+`flash` are not yet tried over the tunnel; they add the switch to 115200 baud, which
+travels as an RFC 2217 control command, so run `dryrun` before the first remote `flash`. If a
 flash fails after the erase, the amp has no firmware until `recover` is run from a cold
 power-up; the bootloader is in ROM and survives. Every run is appended to
 `tools/flash/flash_ao300.log`, with raw packets when `-D` is given.

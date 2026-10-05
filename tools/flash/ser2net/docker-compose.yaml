@@ -1,0 +1,13 @@
+services:
+  ser2net:
+    build: .
+    container_name: firmware-tunnel
+    restart: unless-stopped
+    ports:
+      - "4000:4000"            # "127.0.0.1:4000:4000" to reach it over an SSH tunnel only
+    devices:
+      # Stable path from `ls /dev/serial/by-id/`; adjust to your adapter. Mapped to the
+      # fixed name ser2net.yaml expects. The container waits (restarting) until it exists.
+      - /dev/serial/by-id/usb-1a86_USB_Serial-if00-port0:/dev/ttyUSB0
+    volumes:
+      - ./ser2net.yaml:/etc/ser2net/ser2net.yaml:ro
