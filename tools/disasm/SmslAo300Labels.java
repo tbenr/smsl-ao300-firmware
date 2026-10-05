@@ -309,6 +309,11 @@ public class SmslAo300Labels extends GhidraScript {
         {0x2A25, "big_text_start_x_stored"},   // big_text_render: clr A ; mov R0,#2 ; movx @R0,A (hooked, features/house-numerals)
         {0x3A82, "small_text_start_x_stored"}, // small_text_render: same shape (hooked, features/house-numerals)
         {0x0F48, "vol_key_tail"},            // common tail of the volume keys: volume_apply (the lcall at 0x0F4A is hooked by features/fix-volume-pop: vp_apply), 0x5D7D, draw (0x5936), arm page timers
+        {0x3DA9, "read_key_ir_translate"},   // lcall ir_cmd_to_key (hooked, features/probe: pr_key)
+        {0xF100, "pr_key"},                  // features/probe: NEC 0x16, amp on, home page -> pr_dump, "no key"; else ir_cmd_to_key
+        {0xF11A, "pr_dump"},                 // features/probe: the dump on UART1 moved to the header pins (P_SW1), ES off meanwhile
+        {0xF1BE, "pr_regs"},                 // features/probe: B registers from R1 of device R0 through i2c_read_reg16, 16 per line
+        {0xF206, "pr_tx"},                   // features/probe: A on UART1, polls TI
         {0x0D30, "volpage_enter_a"},         // mov 0x45,#2 before volume-entry site 0x0D33, in key_volume_up
         {0x0DB0, "volpage_enter_b"},         // mov 0x45,#2 before volume-entry site 0x0DB3, in key_volume_up2
         {0x0E57, "volpage_enter_c"},         // mov 0x45,#2 before volume-entry site 0x0E5A, in key_volume_down4

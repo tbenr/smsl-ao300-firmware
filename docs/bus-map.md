@@ -255,6 +255,108 @@ the bus data line.
 | 0x0E | 0x0A | 0x106D | on Bluetooth only: "BT Reconnect", pulses expander P0_0 low |
 | (combination) | 0x38 | 0x10E1 | "BT list clear" (`bt_list_clear`, 0x3C14): on Bluetooth pulses expander P0_4 low, else "It's not BT!" |
 
+## Hardware read-back (2026-10-05)
+
+The first probe dump (`features/probe`, pr2) from the amp, on Optical with no stream, speakers,
+volume 20, straight after a power-on. Kept outside the repository.
+
+- **The scan finds exactly the four chips: 0x62, 0x80, 0xB0, 0xC0.** Nothing else answers on
+  the bus.
+- **Every register stock writes reads back as written**: 74 registers of the expander, the
+  receiver and the clock generator, compared against the emulator trace.
+- **Expander**: ID register 0x10 reads 0x23, the AW9523B's. Inputs at that moment: P0_1,
+  P0_4, P0_5, P0_6 and P1_4, P1_5 high; P0_2, P0_3 low.
+- **Receiver**: register 0x38 (fs calculator) 0x00 and 0x39 (biphase information) 0x80, no
+  stream on the optical input; the undocumented-here registers read 0x25 = 01, 0x28 = 03,
+  0x29 = 0C, 0x2A/0x2B = FF, 0x35/0x36 = 02, 0x41 = FF, 0x46/0x47 = D7, 0x6E = 0F, 0x78 = 3D,
+  0x7D = 10, 0x7E = 06.
+- **Clock generator**: register 0 reads 0x71. By the Si5351 datasheet that is SYS_INIT 0,
+  LOL_B 1, LOL_A 1, LOS_CLKIN 1, LOS_XTAL 0, revision 1: a crystal is present and PLL A,
+  the one the table programs, reports loss of lock. Register 1 (sticky flags, never cleared)
+  reads 0xF8. Open: whether the part is a Si5351A or a clone with other status semantics, and
+  whether output 0 is running. Registers 0xB0 to 0xBB read FF 0C 00 00 00 30 1E 12 60 60 B8 02.
+- **Ports**: P0 FF, P1 00, P2 5B (P2.2, P2.5, P2.7 low: speakers, unmuted), P3 FF, P4 DF
+  (P4.5 low, P4.2 high), P5 30, P7 00.
+- **RAM**: page 1, input 2, powered, speakers, EQ 1, filter 1, volumes 20, bass and treble 9
+  (flat), dimmer 1, format 1, XMOS bytes 01 00 with the buffer valid, format code 0x2C.
+
+Polarity of the presence inputs, from `signal_present_update` (0x5232): USB present when P4.5
+is low; optical, coaxial and AUX when P4.2 is low; Bluetooth when expander P0_5 is high; HDMI
+when expander P1_4 is high. In this dump, taken on Optical with no stream, the optical lock
+read "absent" and the USB, Bluetooth and HDMI lines all read "present". Stock only evaluates
+the line of the selected input, so those three readings may be the idle levels of inputs
+that are not selected (a receiver held off, a module not enabled) rather than sources. Only
+dumps with each source switched off and on can tell.
+
+**Second dump, HDMI (ARC) selected, TV off.** Against the first:
+
+- The receiver's five per-input registers read as the routing table says for HDMI (0x34 =
+  03, 0x37 = 05, 0x42 = 10, 0x6B = 33, 0x6C = 00), expander P1_0 reads high, P2.4 low.
+- Receiver register 0x38 reads 0x58 (0x00 on Optical without a stream); 0x7D and 0x7E
+  changed too (10 06 to 00 02).
+- Expander P1_4, the HDMI presence line, still reads high with the TV off.
+- **The clock generator's status went from 0x71 to 0x51: PLL A reports lock on HDMI and
+  loss of lock on Optical without a stream.** So its reference is not a free-running
+  crystal of its own; it moves with the input, which points at a clock from the receiver
+  (register 0x37 is the one the routing changes along with it). Which clock, and what
+  output 0 feeds, is still open.
+
+**Third dump, HDMI selected, TV on and sending audio over ARC.** Against the second, one
+byte differs: receiver register 0x7D reads 0x50 (0x00 with the TV in standby). The HDMI presence line P1_4, the clock
+generator's status, the ports and the RAM are the same. So between the TV off and on, with
+HDMI selected, the expander line the firmware polls for HDMI does not move. The user saw the
+status line say "Digital Input" in both states, with a brief "Disconnected" around the
+moment the TV came out of standby: the TV keeps the ARC link up in standby, the line
+follows the link and dropped only while it renegotiated. So P1_4 high is "link present",
+not "audio playing"; register 0x7D is the one byte that moved between the link idle and
+audio arriving.
+
+**Fourth dump, HDMI selected, TV on and muted.** Receiver 0x7D reads 0x10 and 0x7E 0x00. The
+three HDMI states, same routing, everything else in the dump identical:
+
+| TV | 0x7D | 0x7E |
+|---|---|---|
+| standby, link up | 00 | 02 |
+| on, muted | 10 | 00 |
+| on, audio over ARC | 50 | 02 |
+
+So with HDMI selected, bit 4 of 0x7D says the TV is awake and bit 6 says audio is flowing,
+which is what an auto-switch needs. Not yet known: whether 0x7D still reflects ARC while
+another input is selected, since the routing registers (0x34, 0x37, 0x42, 0x6B, 0x6C)
+change per input and the first dump, on Optical, read 0x7D = 10 and 0x7E = 06 with no
+optical stream. Dumps on Optical with the TV muted and playing would tell.
+
+**Fifth dump, Optical selected, no optical stream, TV on and muted.** Against the first
+(Optical, just after a power-on, TV presumably in standby): receiver 0x38 reads 0x80 (was
+00), 0x7D 00 (was 10), 0x7E 00 (was 06), and the firmware's format code (RAM 0x4E, 0x58)
+reads 0xE1 (was 0x2C). The two dumps differ in more than the TV's state (time since
+power-on), so this pair alone does not say whether 0x7D follows ARC on Optical; the sixth
+dump, same state with the TV playing, is the comparison that does.
+
+**Sixth dump, Optical selected, no optical stream, TV playing over ARC.** Against the fifth,
+the firmware's state is identical and the receiver differs in three registers: 0x7D reads
+0x60 (was 00), 0x7E 06 (was 00), 0x38 00 (was 80). Register 0x7D over all six dumps:
+
+| Selected | TV | 0x7D | 0x7E |
+|---|---|---|---|
+| HDMI | standby, link up | 00 | 02 |
+| HDMI | on, muted | 10 | 00 |
+| HDMI | on, audio | 50 | 02 |
+| Optical | just after power-on | 10 | 06 |
+| Optical | on, muted | 00 | 00 |
+| Optical | on, audio | 60 | 06 |
+
+**Bit 6 of receiver register 0x7D is set exactly when audio is arriving over ARC, with HDMI
+selected and with Optical selected.** The firmware never reads it. By the PCM9211 datasheet
+(section 8.5.59) register 0x7D is the GPIO input data register for the MPIO_A and MPIO_B
+pins, and 0x7E the same for MPIO_C: live pin levels, no reset value. So the bit is a wire on
+the board, from the HDMI receiver into one of the PCM9211's multipurpose pins, which the MCU
+can only reach through this register. An auto-switch to HDMI can poll it from the main loop
+on the other inputs (the format poll already reads the receiver every 100 ms). Register
+0x38 is the DIR sample-frequency result; its bit 7 toggled between dumps and is not yet
+understood. Which MPIO pin bit 6 is, and what the HDMI receiver drives it with, is for the
+board.
+
 ## What this opens up
 
 Reachable from MCU code without new hardware, none of it tried:

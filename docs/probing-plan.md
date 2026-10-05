@@ -29,13 +29,14 @@ nothing is measured.
 - **XMOS messages.** Tabulate the jump tables after `xmos_format_take` (0x408B): what each
   format class and rate index means.
 
-## Layer 2: a read-only probe build
+## Layer 2: a read-only probe build (done: flashed and the first dump captured 2026-10-05)
 
-`features/probe/`, on stock, including direct-select, fix-auto-off and strings, with its own
-`VERSION_TEXT`. Stock has about 24 KB of code space free; the theme image has about 1 KB.
+`features/probe/`, on stock, including the six fixes every image for the amp carries, version
+`v1.4 tbenr pr1`. The design below is what was built; its README has the dump format and the
+steps on the amp.
 
-- **Trigger.** One unused NEC command, home page, amp on (the way direct-select hooks its
-  commands). Nothing runs unless that command arrives.
+- **Trigger.** The remote's FN button (NEC 0x08; pr1 used the free code 0x16), home page,
+  amp on. Nothing runs unless that command arrives.
 - **Channel.** The programming header, 115200 baud, to the USB-serial adapter used for
   flashing. With the amp on, UART1 sits on P3.6/P3.7, and P3.7 is the bus data line: the
   routine must switch P_SW1 to the header pins, send, wait for the last byte to leave, and
@@ -55,16 +56,26 @@ nothing is measured.
 - **Read hazards.** Some status registers clear when read (the receiver's error flags,
   the expander's input ports clear its interrupt). Harmless for the amp, but compare dumps
   with that in mind.
-- **Tests** (AGENTS.md): the dump run at its hook with `i2c.py` supplying the chips (use
-  `absent` for the scan); the bytes captured with an `sfr_watch` on SBUF, checked against
+- **Tests** (AGENTS.md): the dump run at its hook with `i2c.py` supplying the chips
+  (`absent` for the scan); the bytes captured with an `sfr_watch` on SBUF, checked against
   the model; P_SW1 restored and SBUF never written while it selects P3.6/P3.7; the sweep of
-  all 256 commands against the base in every state the hook reads; the image diff; a
-  full-firmware scenario from reset, since the hook is in the key path.
+  all 256 commands against stock plus the same fixes in every state the hook reads; the
+  image diff; a full-firmware scenario from reset, since the hook is in the key path. All in
+  `features/probe/emu_test.py`, passing.
 - **On the amp.** The user says go for the flash and again for the serial listener. Take
   one dump per input, with and without a signal, and keep them outside the repository.
 
 Layer 2 answers: is anything else on the bus; do the chips hold the values the trace says;
 which expander inputs and MCU pins move when a cable or headphone is plugged in.
+
+First dump, 2026-10-05 (`docs/bus-map.md`, "Hardware read-back"): nothing else on the bus,
+every written register reads back, the expander is an AW9523B, and the clock generator
+reports PLL A unlocked on Optical without a stream and locked on HDMI (second dump, TV
+off): its reference comes with the input, probably from the receiver. Six dumps on
+2026-10-05 (HDMI and Optical, TV in standby, muted and playing) found the ARC activity bit
+the firmware never reads: receiver register 0x7D bit 6. Still to take: Optical with an
+optical stream; Coaxial, Bluetooth, USB and AUX with and without a stream; headphones in;
+a second read of the clock generator's status after its sticky flags are cleared.
 
 ## Layer 3: single writes
 

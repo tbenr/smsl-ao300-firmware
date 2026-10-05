@@ -118,6 +118,17 @@ features/
                                    and 256-key sweeps, all 30 input pairs through the menu
                                    against stock and against the Source key
     fix_menu_input.asm            generated listing
+  probe/                          layer 2 of docs/probing-plan.md: FN on the home page sends
+                                  a read-only register dump (I2C address scan, expander,
+                                  receiver and clock-generator registers, ports, RAM) over the
+                                  programming header at 115200 baud. Standalone on stock with
+                                  the six fixes; pr1 flashed 2026-10-05, pr2 (FN) emulator-
+                                  verified (see its README)
+    probe.py                      the fix: HOOK and emit(a)
+    build_patch.py, emu_test.py   build build/flash_probe.bin; hook test on the I2C model,
+                                   256-command sweep vs stock + the same fixes, cold power-up
+                                   scenario with the dump, standby and a menu
+    probe.asm                     generated listing
 
 ghidraPRG/                    * Ghidra project (import original/extracted/flash.bin as
                                 8051:BE:16:default, block CODE at 0)
@@ -316,6 +327,14 @@ power-up; the bootloader is in ROM and survives. Every run is appended to
 `tools/flash/flash_ao300.log`, with raw packets when `-D` is given.
 
 ## Status
+
+Flashed on 2026-10-05: `features/probe/build/flash_probe.bin` (pr2, `v1.4 tbenr pr2`), the
+read-only register dump on the FN button, over the forwarded serial port
+(`rfc2217://`). The amp came back, and the first dump arrived on the header at 115200 baud:
+1204 bytes, the format the emulator predicted, every register stock writes reading back as
+written (`docs/bus-map.md`, "Hardware read-back"). pr1 (the same on NEC 0x16) was flashed
+the same day and replaced by pr2 before a dump was taken.
+
 
 Verified on hardware on 2026-09-28: `features/direct-select/build/flash_patched.bin`
 flashed with `tools/flash/flash_ao300.py` over a USB-serial adapter from macOS. All six
@@ -772,20 +791,31 @@ power-on, so stock times out there too.
 
 Things still worth investigating to complete the picture of what the MCU code can do.
 `docs/probing-plan.md` has the plan for finding out on the amp: a read-only probe build
-first, single writes after it.
+first (`features/probe`; pr1 flashed on 2026-10-05, no dump captured yet), single writes after it.
 
 - **HDMI auto-switch feasibility.** The ARC receiver's signal-present line reaches the
-  MCU through expander pin 0x1C and is already polled for the status display. Unknown: whether
-  that line is live while another input is selected (the receiver may be held in reset
-  or muxed off via P2.4 when HDMI is not active). A debug build that shows the pin state
-  on screen while on USB would answer it; if live, auto-switch is a small main-loop
-  addition.
+  MCU through expander pin 0x1C and is already polled for the status display. The first
+  probe dumps of 2026-10-05 read it high on Optical and on HDMI with the TV in standby
+  and on, while the screen said "Digital Input" throughout, with a brief "Disconnected" as
+  the TV woke: the line is the ARC link, which the TV keeps up in standby, not audio
+  activity. An auto-switch on it would switch to HDMI whenever the TV is plugged in. An
+  activity signal exists: with HDMI selected, the receiver's register 0x7D read 0x00 with
+  the TV in standby, 0x10 with the TV on and muted, 0x50 with ARC audio arriving, and
+  nothing else in the dump moved; and on Optical it read 0x00 with the TV muted and 0x60
+  with the TV playing, so bit 6 of that register is "ARC audio arriving" whatever input is
+  selected. By the PCM9211 datasheet 0x7D is the GPIO input register of its MPIO_A/B pins:
+  the HDMI receiver drives an activity line into the PCM9211, and the MCU reads it there
+  (`docs/bus-map.md`, "Hardware read-back"). Auto-switch is therefore feasible: a main-loop
+  poll of that bit on the other inputs, then the Source path to HDMI. Still to decide: the
+  hold-off, and what to do when the TV goes quiet.
 - **Pin roles on the board.** `docs/bus-map.md` lists every expander and MCU pin the
   firmware drives or reads, with roles inferred from when they change. Matching them to
   the silkscreen nets (MUTE_AMP, MUTE_PRE, MUTE_HP, DIR_RST, DAC_MCK_SEL, relays) needs a
   board photo or a meter. Still needed before touching power sequencing.
 - **Clock generator.** The chip at I2C 0xC0 (Si5351 register layout): which part, which
-  crystal, and what its output clocks.
+  crystal, and what its output clocks. Its status register read 0x71 on the amp: by the
+  Si5351 datasheet, crystal present and PLL A unlocked. Either the part reports status
+  differently or the output it is programmed for is not what runs the audio.
 - **DAC bits stock never sets.** Register 0x090000 bit 0 and bit 1, the PCM volume
   registers 0x090001/0x090002 and the path controls 0x090003/0x090004: check each against
   the CS43131 datasheet before a patch uses it (digital volume, de-emphasis).
