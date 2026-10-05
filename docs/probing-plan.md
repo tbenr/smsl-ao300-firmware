@@ -83,12 +83,14 @@ first.
 
 1. **Balance**: a per-channel offset on the NJW1194 volume codes. Analogue, every input.
    Needs the datasheet check that the two volume words are the two channels.
-2. **Custom EQ presets**: other bass and treble levels in `eq_apply`'s presets, within
-   the range `tone_write` already produces.
-3. **Sample rate on the status line for every digital input**: the receiver register is
+2. **Sample rate on the status line for every digital input**: the receiver register is
    already polled.
-4. **DAC options**: de-emphasis, the high-pass filter, per-channel digital volume. Digital
+3. **DAC options**: de-emphasis, the high-pass filter, per-channel digital volume. Digital
    inputs only, and only after the register check.
+4. **Custom EQ presets**: other bass and treble levels in `eq_apply`'s presets. Convenience
+   only: the Tone preset with the Treble and Bass menus already reaches every pair, -9 to
+   +9 dB each. The tone words carry only level, direction and on/off, so the two bands'
+   corner frequencies cannot be moved from firmware.
 
 Out of reach from the MCU: a parametric EQ (no DSP in the signal path of the non-USB
 inputs), the XMOS firmware, the Bluetooth stack, the HDMI receiver, the class-D stage.

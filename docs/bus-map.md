@@ -225,8 +225,10 @@ Reachable from MCU code without new hardware, none of it tried:
 
 - **Balance.** The NJW1194 takes a volume code per channel and stock always sends the same
   one to both. It works on every input, AUX included.
-- **Custom presets.** The presets are constants in `eq_apply`, one bass and one treble
-  level each.
+- **Custom presets, convenience only.** The presets are constants in `eq_apply`, one bass
+  and one treble level each. They add no sound the amp cannot already make: the Treble and
+  Bass menus step through all 19 levels, -9 to +9 dB (checked in the emulator), and the Tone
+  preset applies them. A changed preset is a named shortcut to one such pair.
 - **DAC options stock never sets**: de-emphasis and the high-pass filter (0x090000), the
   per-channel digital volume (0x090001, 0x090002), and whatever 0x090003 and 0x090004 offer
   besides mute. Digital inputs only.
