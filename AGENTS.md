@@ -51,7 +51,9 @@ rules apply to anyone working here, human or agent.
 - `build_patch.py` checks the base image's sha256 and asserts the original bytes at every
   hook before it changes them. Hooks use as few bytes as possible (an LJMP or a
   repointed branch). New code is appended after the current end of the patch area and
-  stays below 0xF400.
+  stays below 0xF400. Data may also take a stock area the image provably no longer reads
+  (house-numerals keeps fonts in the stock big font's place): the build asserts the stock
+  bytes it overwrites, and the tests trap every stock reader of that area on every run.
 - Internal RAM is full. New variables go in XDATA from 0x0100. Leave the EEPROM
   sectors in use (offsets 0x0000, 0x0200, 0x0400) alone.
 - Each build sets its own `VERSION_TEXT` (20 characters at most), so the RESET page

@@ -3,9 +3,18 @@
 A reduced build of study 3 ("House Numerals", after SMSL's SU and DO series screens) from
 `features/ui-theme/ui_themes.html`. Built on top of fast-lcd, with direct-select, fix-auto-off,
 strings, start-volume, fix-volume-pop and fix-menu-input included. The RESET page shows
-`v1.4 tbenr hn16`.
+`v1.4 tbenr hn17`.
 
-This is image hn16 (sha256 `7ee88992…`): hn14 with `features/fix-volume-pop` and
+This is image hn17 (sha256 `782eb508…`): hn16 with the stock big font's area reclaimed. The
+big-text hook (0x2A25) goes straight to `hm_name`, so no code path paints with the stock big
+glyphs any more (the tests trap both stock painters on every run, and a walk through every
+stock page ran clean on hn16 before anything moved), and the fonts that fill the area best
+(pf_mono, pf_hvol, pf_box, pf_vname: 5015 bytes) sit at 0x6A23..0x7DB9 in its place. The image
+ends at 0xDD19, 5054 bytes earlier than hn16; nothing on the screen changed. Flashed on
+2026-10-05 (the first flash over the ser2net tunnel) and checked on the amp: the RESET page,
+every big text at home, the moved fonts, every menu page and a power cycle all look as before.
+
+hn16 (sha256 `7ee88992…`) was hn14 with `features/fix-volume-pop` and
 `features/fix-menu-input` linked in. Nothing in this layer changed, and the theme's code is at
 the same addresses as in hn14.
 - **fix-volume-pop.** On Optical and Coaxial without a signal the volume keys no longer move
@@ -140,6 +149,10 @@ Earlier images:
 
 ## Status
 
+hn17: all tests pass (the stock big-font trap on every run, `stock_page_walk` added). Flashed on
+the amp on 2026-10-05 over the ser2net tunnel: the RESET page shows hn17, every big text at home,
+the fonts moved into the big font's area, every menu page and a power cycle look as before.
+
 hn16: emulator-verified (all tests pass, including "fix-volume-pop in house-numerals" and
 "fix-menu-input in house-numerals"). Flashed on the amp on 2026-10-02: the fixes work. Its two
 fixes were first flashed that day as the branch builds `d39d321c…` and `7a4af92f…` (hn13 plus the fixes,
@@ -257,9 +270,12 @@ EQ key and the rest all call these painters in their own order, so they all draw
   computed the start x; nothing is on the stack. On page 1 at the name's or the status line's y
   our routine draws the buffer and returns for the renderer. The name's scan also sets or
   clears 0x22.4 (a narrow-character flag it shares with the mute logic); the hand-over keeps
-  that (tested). Other page-1 texts start at x 16 as in hn4.1; other pages are stock. Big text
-  at y 75 that is not a name (the EQ key's preset name, `eq_show` 0x3881) is drawn in the
-  display face too: `NAME_CHARS` has A-Z, space, `.` and `-`.
+  that (tested). Other small page-1 texts start at x 16 as in hn4.1; small text on the other
+  pages is stock. Every big text, on any page and at any y, is `hm_name`'s since hn17 (up to
+  hn16 only page 1 at y 75 was, and the rest fell through to the stock glyphs): the input
+  name, the EQ key's preset name (`eq_show` 0x3881) and the output name after a toggle (0x52F3)
+  all arrive at y 75 on page 1, and nothing else does (the tests trap the stock big glyph
+  painter). `NAME_CHARS` has A-Z, space, `.` and `-`.
 - **No flicker.** Each element draws its cells with their background, then clears only what a
   longer text left to the right (`hm_rest`: to x 319 for the name and the status line, to the
   next element for the icon and the volume). The stock refresh redraws everything every 0.5 s;
@@ -296,7 +312,8 @@ EQ key and the rest all call these painters in their own order, so they all draw
   the tag mono16 3122 (the same set plus `x`, and the caption's minus sign and infinity as `_`
   and `~`: it is also the volume page's small face), the home volume num33 906, the three
   icons 403, the box edges 44; the volume page's name disp36 943 (the letters of the six input
-  names) and its numerals num84 2161.
+  names) and its numerals num84 2161. Since hn17 pf_mono, pf_hvol, pf_box and pf_vname (5015
+  bytes) sit in the stock big font's place, 0x6A23..0x7DB9 (see "Memory").
 
 ### Layout: `layout.json` and `sizing.html`
 
@@ -806,7 +823,7 @@ the volume page. Every stock byte is asserted by
 | 0x2106 | `12 5D 42` lcall `ui_clear_screen` | lcall `hn_clear` | `ui_render_page`'s clear: page 2 starts the entry, page 1 with the volume page on screen starts the exit; otherwise cancel + stock clear |
 | 0x2143 | `02 21 67` ljmp `volpage_render` | ljmp `hn_volpage` | page-2 jump-table entry |
 | 0x5936 | `AB 07 E5` | ljmp `hn_draw_volume` | number, line and dB caption; only recorded during a wipe |
-| 0x2A25 | `E4 78 02` | ljmp `hn_align_big` | page 1: at y 75 `hm_name` draws and returns; other texts start at x 16 |
+| 0x2A25 | `E4 78 02` | ljmp `hm_name` | every big text is the theme's name painter (display face at x 16), which returns from the stock renderer; the stock big font is never read, and its bytes hold fonts (hn17) |
 | 0x3A82 | `E4 78 02` | ljmp `hn_align_small` | page 1: at y 135 `hm_status` draws and returns; other texts start at x 16 |
 | 0x5C99 | `02 59 16` | ljmp `hn_home_tail` | `home_refresh`'s tail: the volume, then the accent bar |
 | 0x5744 | `30 11 0B` (`home_draw_output_icon`) | ljmp `hm_icon` | the icon |
@@ -833,6 +850,14 @@ the volume page. Every stock byte is asserted by
 | 0x0D33, 0x0DB3, 0x0E5A, 0x0F02 | `12 5D 42 7B FF …` | `12 DE 54 80 11` (lcall `hn_enter_vol` ; sjmp site+0x16) | volume-key entry sites A-D |
 
 ## Memory
+
+hn17: the image is 56602 bytes (0x9800..0xDD19 with the version string), 5054 less than hn16.
+The stock big font (`font_big_32x30`, 0x6A23..0x7DD3, 5040 bytes) is dead in this image, so
+`build_patch.py` puts the fonts that fill it best there (`hole_fonts`: pf_mono 3122, pf_vname
+943, pf_hvol 906, pf_box 44 = 5015 bytes at 0x6A23..0x7DB9; the last 25 bytes stay stock) as a
+data block the kit's `build_image` asserts against the stock bytes before writing. `hn_align_big`
+(39 bytes) went: the hook points at `hm_name`. 5862 bytes are left under the 0xF400 split. The
+small font stays in use (menus, Treble and Bass, RESET). The figures below are hn16's and hn14's.
 
 hn16: the image is 61656 bytes (0x9800..0xF0D7 with the version string), 47 more than hn14:
 fix-volume-pop's 24 bytes at 0xF099 and fix-menu-input's 23 at 0xF0B1; 808 bytes are left under
@@ -896,6 +921,14 @@ the 0xF400 split. The figures below are hn14's.
   tour measured 0xAF (Timer0 ISR on top).
 
 ## Emulator results
+
+Every emulator of this image (unit tests, scenarios, sweep) traps the stock big glyph painters,
+`big_glyph_paint` 0x3F3C and `bignum_digit` 0x3F2A: reaching one fails the run with the return
+addresses on the stack. `stock_page_walk` (group `tour`) opens every menu page, moves on the
+list and value pages, shows the BT clear and RESET pages, injects the two front-panel key codes
+that draw big text at home (0x12 output toggle, 0x59 EQ show) and power-cycles, lockstep with
+fast-lcd (identical screens, the RESET page's version line apart). Run on hn16 before the fonts
+moved, the whole suite never hit the trap: that is the evidence the area was unused.
 
 `python3 tools/run_tests.py` gives **ALL PASS** for every feature (hn14: 161 s wall,
 house-numerals 161 s, about half of it the sweep). `emu_test.py` has four groups: `unit`, `tour`,
