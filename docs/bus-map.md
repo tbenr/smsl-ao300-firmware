@@ -406,6 +406,28 @@ inputs are selected; whether the adapter's 5V pin is wired to the header is not 
 in the firmware. The USB and AUX dumps are deferred (user's call, 2026-10-05) until the
 cable is moved or the adapter isolated.
 
+**Ninth dump, Bluetooth selected, a Bluetooth stream playing.** The receiver sits on RXIN0
+(0x34 = 00), locked at 44.1 kHz (0x38 = 08, 0x39 = 08), channel status bytes 04 .. 0B,
+output ports automatic (0x6B = 0x6C = 00), lock pin P4.2 low, INT1 high. Expander P0_0
+reads high (the module enabled), P0_5 high (signal present), and the three status lines
+P0_1, P0_2, P0_3 all low. By `main_tick_tasks` (0x3399) those three make the code in RAM
+0x25 as P0_2 * 4 + P0_1 * 2 + P0_3, and `status_bt_text` (0x4F63) names it: 0 SBC, 1 aptX,
+2 AAC, 3 aptX HD, 4 LDAC, 5 to 7 LHDC. So the module reports the codec on
+three lines, and this stream was SBC. On Optical in the first dump P0_1 read high, a code
+the firmware does not evaluate off the Bluetooth input.
+
+**Tenth dump, Bluetooth connected and paused.** Identical to the ninth but for the sampled
+port lines (0x7D 30, 0x7E 00): the receiver stays locked at 44.1 kHz, the signal-present
+line stays high, the codec lines keep SBC. The module keeps its S/PDIF running with digital
+silence while paused, so to the firmware a paused Bluetooth source is a playing one.
+
+**Eleventh dump, Bluetooth input, phone disconnected.** The receiver loses lock (0x39 = 88,
+0x38 = 00, channel status bytes 00), the lock pin P4.2 goes high, and expander P0_5, the
+Bluetooth signal-present line, goes low; the module's enable line stays high and the codec
+lines stay at 0. The clock generator's status reads 0x51 (CLKIN lost, PLL A still reporting
+lock). So on Bluetooth the firmware's signal presence is the module's P0_5 line, which
+follows the connection, and the receiver's lock follows it too.
+
 The clock generator's CLKIN carries a signal only with an S/PDIF stream on the receiver:
 the receiver's recovered clock. Its XTAL input is always present (a crystal, or the
 receiver's buffered crystal output). PLL A: locked on HDMI and on Optical with a stream,
