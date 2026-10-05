@@ -31,6 +31,27 @@ then stock's input_apply, so it looks and sounds like a Source press.
 `ENABLED` in `auto_switch.py` lists the sources that may trigger a switch (HDMI by default),
 `HOLD` the hold-off. Stage 3 moves these into a menu and the EEPROM.
 
+## Supported combinations
+
+An activation is a source starting; the amp switches to it only while the selected input is
+silent. Rows are the source that starts, columns what the switch needs from the selected
+input. "Stage" refers to `docs/probing-plan.md`.
+
+| Source that starts | Sensed how | Switch from USB | from Optical | from Coaxial | from Bluetooth | from HDMI | from AUX | Status |
+|---|---|---|---|---|---|---|---|---|
+| HDMI (TV wakes) | rate calculator on the HDMI I2S port | yes | yes | yes | yes | n/a | yes | **stage 1, built**; confirmed on the amp from Optical, the others emulator-only |
+| Bluetooth (phone connects) | module connection line, expander P0_5 | sensed | sensed | sensed | n/a | sensed | sensed | sensed, **disabled**: the module is off unless Bluetooth is selected, so nothing can connect; a stage 3 option could keep it on |
+| USB (host starts playing) | rate calculator on the XMOS I2S port, untested | n/a | possible | possible | possible | possible | possible | not built; the USB dumps are deferred |
+| Optical (stream starts) | the S/PDIF receiver moved onto it, lock read | possible | n/a | only while Coaxial is silent | only while Bluetooth is silent | possible | possible | stage 2, not built |
+| Coaxial (stream starts) | the same | possible | only while Optical is silent | n/a | only while Bluetooth is silent | possible | possible | stage 2, not built |
+| AUX (analogue) | nothing to sense | no | no | no | no | no | no | not possible |
+
+"Silent" for the selected input: USB, no activity on P4.5; Optical and Coaxial, no lock on
+P4.2; Bluetooth, no phone on P0_5; HDMI, no rate on the receiver's main port, i.e. the TV
+off; AUX, always. An activation that finds the selected input playing is dropped, and so is
+one that arrives while a menu is open; the amp never switches back on its own when a source
+goes quiet.
+
 ## How it senses
 
 - **HDMI**: the receiver's sample-rate calculator (PCM9211 register 0x37 selects the port,
