@@ -428,6 +428,19 @@ lines stay at 0. The clock generator's status reads 0x51 (CLKIN lost, PLL A stil
 lock). So on Bluetooth the firmware's signal presence is the module's P0_5 line, which
 follows the connection, and the receiver's lock follows it too.
 
+**Twelfth dump, Coaxial selected, a 44.1 kHz stream playing.** The receiver on RXIN1 locks
+(0x38 = 0x39 = 08), channel status bytes 01 .. 02 (a consumer source), the lock pin P4.2
+low, INT1 high (it read low during the optical stream), the clock generator's status 0x01
+(locked, CLKIN present) as with the optical stream. The firmware's format code reads 0x2C,
+which with the optical 48 kHz stream read 0x30: `format_read` turns the receiver's rate
+code into these status codes (8 to 0x2C, 9 to 0x30), and 0x2C is also the power-on value.
+Coaxial behaves as Optical in every register but the input select.
+
+**Thirteenth dump, headphones plugged in** (same state as the twelfth otherwise). Nothing
+changed but the sampled port lines: P2.6 reads high as in every dump, expander P0_6 high as
+in every dump, the output setting still speakers. The jack is not sensed by anything the
+MCU can read; the speaker/headphone choice is the Output menu only, as the stock UI implies.
+
 The clock generator's CLKIN carries a signal only with an S/PDIF stream on the receiver:
 the receiver's recovered clock. Its XTAL input is always present (a crystal, or the
 receiver's buffered crystal output). PLL A: locked on HDMI and on Optical with a stream,

@@ -77,9 +77,11 @@ and the PCM9211 datasheet gave the receiver's wiring: the HDMI receiver's I2S on
 its S/PDIF on RXIN3, the DIR parked on RXIN3 on USB and AUX. Deferred: USB and AUX dumps
 (the adapter drops off the Linux box on those two inputs while the amp's USB cable is in
 that box; unplug the cable or isolate the adapter first), which would confirm that
-register 0x39 shows the ARC stream there. Still to take: Bluetooth with and without a
-stream; Coaxial with a stream; headphones in; a second read of the clock generator's status
-after its sticky flags are cleared.
+register 0x39 shows the ARC stream there. Taken the same day: Bluetooth playing, paused and
+disconnected (the module's codec and connection lines), Coaxial with a stream, and
+headphones in (no jack sense exists). Thirteen dumps in all. Still open: a second read of
+the clock generator's status after its sticky flags are cleared, and the two deferred
+inputs.
 
 ## Layer 3: single writes
 

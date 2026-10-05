@@ -332,8 +332,9 @@ Flashed on 2026-10-05: `features/probe/build/flash_probe.bin` (pr2, `v1.4 tbenr 
 read-only register dump on the FN button, over the forwarded serial port
 (`rfc2217://`). The amp came back, and the first dump arrived on the header at 115200 baud:
 1204 bytes, the format the emulator predicted, every register stock writes reading back as
-written (`docs/bus-map.md`, "Hardware read-back"). pr1 (the same on NEC 0x16) was flashed
-the same day and replaced by pr2 before a dump was taken.
+written. Thirteen dumps were taken that day across HDMI, Optical, Coaxial and Bluetooth, with
+and without streams, and with headphones in (`docs/bus-map.md`, "Hardware read-back"). pr1
+(the same on NEC 0x16) was flashed the same day and replaced by pr2 before a dump was taken.
 
 
 Verified on hardware on 2026-09-28: `features/direct-select/build/flash_patched.bin`
