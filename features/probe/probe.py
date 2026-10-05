@@ -20,6 +20,10 @@ The dump (hex, ASCII, CRLF lines):
     B0 10: .. .. .. ..
     80 20: ..                        digital receiver registers 0x20..0x7F
     C0 00: ..                        clock generator registers 0x00..0xBF
+    FS: r0 r1 r2 r3 r4 r5 r6 r7      the receiver's rate calculator (register 0x38) pointed at each
+                                     of its ports in turn: DIR, ADC, AUXIN0 (the HDMI receiver's
+                                     I2S), AUXIN1 (the XMOS), AUXIN2, main out, AUX out, DIT; bit 7
+                                     set = no result within the wait, bits 3:0 the rate code
     P: p0 p1 p2 p3 p4 p5 p7          the MCU ports as read
     R: ..                            RAM: page, input, power, output, EQ, filter, volume, volume hp,
                                      bass, treble, dimmer, format, 0x75, 0x73, 0x76, 0x77, 0x78,
@@ -29,6 +33,12 @@ The dump (hex, ASCII, CRLF lines):
 Reads go through the stock i2c_read_reg16 (0x4CDF), the scan through the stock bit-bang
 primitives. The DAC (0x62) is not read: its registers take a three-byte address and stock has
 no read routine for it.
+
+The FS line is the one write this probe makes (pr3, layer 3 item 1 of docs/probing-plan.md):
+the receiver's register 0x37 selects which port its sample-rate calculator measures, a
+measurement block outside the audio path. pr_fs reads stock's value, points it at ports 0 to
+7 in turn, polls 0x38 until the result is for that port (bit 7 clear, bits 6:4 = port, up to
+64 reads), and writes stock's value back. Nothing else is written.
 
 UART1: with the amp on, stock keeps UART1 on P3.6/P3.7 (the XMOS line; P3.7 is also the bus
 data line). The dump switches P_SW1 to P3.0/P3.1 (the header) for its duration and restores
@@ -63,6 +73,9 @@ DEVICES = [(0xB0, 0x00, 0x14), (0x80, 0x20, 0x60), (0xC0, 0x00, 0xC0)]   # (addr
 RAM_LIST = [0x45, 0x47, 0x4F, 0x2B, 0x39, 0x2C, 0x31, 0x52, 0x35, 0x2A, 0x29, 0x3D, 0x75, 0x73, 0x76, 0x77,
             0x78, 0x4E, 0x58]
 HEAD, SCAN, PINS, RAM, END, CRLF = "\r\nPROBE 1\r\nSCAN", "", "\r\nP:", "\r\nR:", "\r\nEND\r\n", "\r\n"
+FS = "\r\nFS:"
+I2C_WRITE_REG = 0x4FAD                # R7 device, R4:R5 register, R3 data
+DIR, FS_TARGET, FS_RESULT, FS_PORTS, FS_POLLS = 0x80, 0x37, 0x38, 8, 64
 
 
 def emit(a):
@@ -124,6 +137,7 @@ mov 0x%02X,#0x%02X          ; B: register count
 lcall pr_regs
 """ % (dev, first, B, count))
     S(a, """
+lcall pr_fs
 mov DPTR,#pr_s_pins
 lcall pr_str
 """)
@@ -154,6 +168,53 @@ lcall 0x%04X                ; delay_long: the last stop bit leaves
 pop 0x%02X                  ; P_SW1 back (P3.6/P3.7 while the amp is on)
 pop 0x%02X                  ; IE back: ES on again
 ret
+
+; pr_fs: the receiver's rate calculator on each port. Stock's target (0x37) saved on the stack
+; and restored; per port: write the target, poll 0x38 until bit 7 is clear and bits 6:4 name
+; that port (a result left from the previous port is skipped), at most FS_POLLS reads; print
+; the last value read. R0 port, B poll counter; i2c_write_reg uses R1, R2, R4, R7.
+pr_fs:
+mov DPTR,#pr_s_fs
+lcall pr_str
+mov R7,#0x80              ; receiver
+mov R4,#0x00
+mov R5,#0x37              ; calculator target
+lcall 0x4CDF                ; i2c_read_reg16: stock's target
+mov A,R7
+push ACC
+mov R0,#0x00
+pr_fs_port:
+mov A,R0
+mov R3,A                    ; data: the port
+mov R4,#0x00
+mov R5,#0x37
+mov R7,#0x80
+lcall 0x4FAD                ; i2c_write_reg: target = port
+mov 0xF0,#64              ; B: polls left
+pr_fs_poll:
+mov R7,#0x80
+mov R4,#0x00
+mov R5,#0x38              ; calculator result
+lcall 0x4CDF                ; i2c_read_reg16 -> R7
+mov A,R7
+jb ACC.7,pr_fs_again        ; still calculating
+swap A
+anl A,#0x07
+cjne A,0x00,pr_fs_again     ; a result for another port (R0 is direct 0x00)
+sjmp pr_fs_done
+pr_fs_again:
+djnz 0xF0,pr_fs_poll
+pr_fs_done:
+mov A,R7
+lcall pr_sp_hex
+inc R0
+cjne R0,#8,pr_fs_port
+pop ACC
+mov R3,A                    ; stock's target back
+mov R4,#0x00
+mov R5,#0x37
+mov R7,#0x80
+ljmp 0x4FAD                 ; i2c_write_reg, then return
 
 ; pr_regs: registers R1.. of device R0, B of them, 16 per line, through i2c_read_reg16.
 pr_regs:
@@ -218,8 +279,8 @@ ret
 """ % (DELAY_LONG, P_SW1, IE, I2C_READ_REG16, B, SBUF, TI_BIT, TI_BIT))
     a.L("pr_hexdigits")
     a.data('db "0123456789ABCDEF"', b"0123456789ABCDEF")
-    for name, text in (("pr_s_head", HEAD), ("pr_s_pins", PINS), ("pr_s_ram", RAM), ("pr_s_end", END),
-                       ("pr_s_crlf", CRLF)):
+    for name, text in (("pr_s_head", HEAD), ("pr_s_fs", FS), ("pr_s_pins", PINS), ("pr_s_ram", RAM),
+                       ("pr_s_end", END), ("pr_s_crlf", CRLF)):
         a.L(name)
         a.data("db %r, 0" % text, text.encode("ascii") + b"\0")
     a.L("pr_ramlist")

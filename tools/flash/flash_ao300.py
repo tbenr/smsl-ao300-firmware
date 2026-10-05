@@ -111,7 +111,8 @@ KNOWN_IMAGES = {
     "7a4af92f44d7c22a775706b33d28133299c0937b7424e3a73b444dda4f3054e6": "fast-lcd fast3 + House Numerals v15, the pop fixes' second branch build (hn13 + fix-volume-pop + fix-menu-input: no supply cycle and no pop on an input change through the menu; without the MUTE state), 'v1.4 tbenr hn15'; hn16 is this merged with the MUTE state",
     "7ee88992ee9a5bb3cbf8f4cb5ccc3896c376a8c2be19931e549f22e2d5dbea5a": "fast-lcd fast3 + House Numerals v16 (hn14 + fix-volume-pop + fix-menu-input: the MUTE state, start-volume and both pop fixes in one image), 'v1.4 tbenr hn16' (features/house-numerals/build/flash_house_numerals.bin)",
     "24bd8f2e9b41360ee8c29cbe2ab61aeab2f801b1d307947120a654fa45f240f0": "stock + probe pr1 (NEC 0x16 on the home page dumps the I2C address scan, the expander, receiver and clock-generator registers, the ports and RAM over the header at 115200 baud; read-only) + the six fixes, 'v1.4 tbenr pr1' (flashed 2026-10-05, superseded by pr2)",
-    "280c3f996fe20b95050f9a9d2e0adecbf1520ce9a5f9f670d2108fc2dff98284": "stock + probe pr2 (the same dump on the remote's FN button, NEC 0x08, instead of 0x16) + the six fixes, 'v1.4 tbenr pr2' (features/probe/build/flash_probe.bin)",
+    "280c3f996fe20b95050f9a9d2e0adecbf1520ce9a5f9f670d2108fc2dff98284": "stock + probe pr2 (the same dump on the remote's FN button, NEC 0x08, instead of 0x16) + the six fixes, 'v1.4 tbenr pr2' (flashed 2026-10-05, thirteen dumps; superseded by pr3)",
+    "b4836c461f554ae2ed707bdfc48e7c9fb00fa5692f2f7a44f4757504d3bf3776": "stock + probe pr3 (pr2 plus the FS line: the receiver's rate calculator pointed at each of its eight ports and restored, the probe's one register write) + the six fixes, 'v1.4 tbenr pr3' (features/probe/build/flash_probe.bin)",
 }
 
 

@@ -441,6 +441,48 @@ changed but the sampled port lines: P2.6 reads high as in every dump, expander P
 in every dump, the output setting still speakers. The jack is not sensed by anything the
 MCU can read; the speaker/headphone choice is the Output menu only, as the stock UI implies.
 
+## Layer 3, item 1: the receiver's rate calculator on every port (pr3, 2026-10-05)
+
+Probe pr3 adds the FS line: register 0x37 pointed at each of the receiver's eight ports in
+turn, register 0x38 read until it names that port, stock's target written back. First dump,
+Optical selected with no optical stream, TV playing over ARC, the amp's USB cable still in
+the Linux box:
+
+| Port | 0x38 | Reading |
+|---|---|---|
+| 0 DIR | 00 | out of range: no optical stream |
+| 1 ADC | 19 | 48 kHz |
+| 2 AUXIN0, the HDMI receiver's I2S | 28 | **44.1 kHz: the TV's ARC audio, seen from Optical** |
+| 3 AUXIN1, the XMOS's I2S | 3A | 64 kHz code |
+| 4 AUXIN2 (no pins: MPIO_B is the AUX output) | 4A | 64 kHz code |
+| 5 main output port (source AUXIN1 on Optical) | 5A | 64 kHz code, as port 3 |
+| 6 AUX output port (source DIR, unlocked) | 6A | 64 kHz code |
+| 7 DIT | 70 | out of range |
+
+Every port returned a result within the wait. The 64 kHz code on the ports with no real
+stream (an idle XMOS, an unlocked DIR, a port without pins) is the calculator's reading of
+whatever clock is there, not a stream; the AUXIN0 reading is a real rate.
+
+Second pr3 dump, same state with the TV muted: the HDMI port still reads 28, 44.1 kHz. The
+TV keeps its ARC stream running with digital silence while muted, so the calculator sees
+the stream's clock, not whether there is sound on it. (Port 4 read 40 instead of 4A: the
+idle code wanders.)
+
+Third pr3 dump, same state with the TV in standby: the HDMI port reads A9, bit 7 set, no
+result within the 64 polls: no clock on the port. The ports with no stream read 30, 40, 50,
+60 this time (rate 0, out of range) where the first dump had the 64 kHz code: the idle
+readings wander between "out of range" and the 64 kHz code, the ADC's 48 kHz and the HDMI
+port's 44.1 kHz are steady.
+
+**Result.** From Optical, with one register write and no change to the audio path, the
+receiver's calculator reports the HDMI port's rate whenever the TV is awake and streaming
+(muted or not) and no result when it is in standby. "TV on" is therefore readable from
+any input, and an auto-switch to HDMI can rest on it: a valid rate code (8, 9, 0xB, 0xC,
+0xE or 0xF) with bit 7 clear on port 2 means the TV is on; anything else, including the
+wandering idle codes, means it is not. The same port 3 reading would do for a USB host,
+untested while the USB dumps are deferred. The calculator result register is also what
+stock reads on Bluetooth, so there the poll must restore the target before stock's read.
+
 The clock generator's CLKIN carries a signal only with an S/PDIF stream on the receiver:
 the receiver's recovered clock. Its XTAL input is always present (a crystal, or the
 receiver's buffered crystal output). PLL A: locked on HDMI and on Optical with a stream,

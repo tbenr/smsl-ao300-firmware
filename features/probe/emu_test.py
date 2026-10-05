@@ -3,12 +3,14 @@
 
   * the image differs from stock only in the hook's target bytes (0x3DAA..0x3DAB), the
     included fixes' hooks and patches, the version pointer and the appended code;
-  * the hook, run from read_key with the I2C slave model answering for four chips and a
-    seeded register file: the text on UART1 is exactly the dump the model implies (scan,
-    the three register files, ports, RAM), every byte leaves with P_SW1 on the header pins and
-    ES off, P_SW1 and IE come back, the bus saw reads and address probes only, no audio chip
-    was written, and the amp's state afterwards is stock's for a command it ignores (the
-    Dimmer setting untouched);
+  * the hook, run from read_key with the I2C slave model answering for four chips, a seeded
+    register file and a model of the receiver's rate calculator (a result per port, one port
+    that never finishes, a stale result right after each target change): the text on UART1
+    is exactly the dump the model implies (scan, the three register files, the FS line, ports,
+    RAM), every byte leaves with P_SW1 on the header pins and ES off, P_SW1 and IE come back,
+    the bus saw reads, address probes and writes of the calculator target only, that target
+    is back at stock's value, no audio chip was written, and the amp's state afterwards is
+    stock's for a command it ignores (the Dimmer setting untouched);
   * all 256 NEC commands through read_key and dispatch_key against a reference the test
     builds (stock plus the same fixes, without the probe; build/reference.bin), on the home
     and volume pages, in a menu, in standby and on page 0: identical but for FN on the
@@ -38,7 +40,10 @@ INTEGRATION = True           # `emu_test.py --in <feature>`: the probe's promise
 TEST_IMG = bp.OUT_IMAGE
 BASE_IMG = bp.BASE_IMAGE
 READ_KEY, DISPATCH_KEY_IF_ANY = 0x3DA2, 0x5D6E
-NJW_WRITE, DAC_WRITE, I2C_WRITE_REG, EXPANDER_WRITE_PIN = 0x54EA, 0x4D8A, 0x4FAD, 0x1A7C
+NJW_WRITE, DAC_WRITE, EXPANDER_WRITE_PIN = 0x54EA, 0x4D8A, 0x1A7C
+RECEIVER, FS_TARGET, FS_RESULT = 0x80, 0x37, 0x38
+# the calculator model: the port's rate code, or None for a port that never finishes (bit 7 stays set)
+FS_RATES = {0: 9, 1: None, 2: 8, 3: 0xC, 4: None, 5: 8, 6: None, 7: None}
 SBUF, SCON, P_SW1, IE = 0x99, 0x98, 0xA2, 0xA8
 NO_KEY = 0x16                # a command stock ignores: the reference for the state after a dump
 PRESENT = {0x62, 0x80, 0xB0, 0xC0}
@@ -98,6 +103,36 @@ def seed(bus):
     for dev, first, count in pr.DEVICES:
         for reg in range(first, first + count):
             bus.inputs[(dev, reg)] = (dev * 3 + reg * 7 + 1) & 0xFF
+    bus.inputs.pop((RECEIVER, FS_TARGET), None)        # the target reads back as written
+    calculator(bus)
+
+
+def calculator(bus, stale_reads=1):
+    """Model of the receiver's rate calculator behind register 0x38: the result for the port in
+    0x37 (FS_RATES), 0x80 (calculating) for a port with no result; for the first reads after a
+    target change, the previous target's finished result (what a real one hands back before it
+    restarts)."""
+    state = {"target": bus.regs.get((RECEIVER, FS_TARGET), bus.inputs.get((RECEIVER, FS_TARGET), 0)),
+             "reads": 99, "last": None}
+
+    def result(port):
+        rate = FS_RATES.get(port)
+        return 0x80 if rate is None else (port << 4) | rate
+
+    def read_fn(dev, reg):
+        if dev != RECEIVER or reg != FS_RESULT:
+            return None
+        target = bus.regs.get((RECEIVER, FS_TARGET), state["target"])
+        if target != state["target"]:
+            state["last"] = result(state["target"]) if FS_RATES.get(state["target"]) is not None else None
+            state["target"], state["reads"] = target, 0
+        state["reads"] += 1
+        if state["reads"] <= stale_reads and state["last"] is not None:
+            return state["last"]
+        return result(target)
+    bus.read_fn = read_fn
+    bus.fs_result = result
+    bus.fs_expected = "".join(" %02X" % result(port) for port in range(pr.FS_PORTS))
 
 
 def ports(e):
@@ -114,21 +149,30 @@ def expected(bus, e, ram=None):
         for reg in range(first, first + count):
             if reg % 16 == 0:
                 s += pr.CRLF + "%02X %02X:" % (dev, reg)
-            s += " %02X" % bus.inputs.get((dev, reg), bus.regs.get((dev, reg), 0))
+            if (dev, reg) == (RECEIVER, FS_RESULT):          # the calculator's result for stock's target
+                s += " %02X" % bus.fs_result(bus.regs.get((RECEIVER, FS_TARGET), 0))
+            else:
+                s += " %02X" % bus.inputs.get((dev, reg), bus.regs.get((dev, reg), 0))
+    s += pr.FS + bus.fs_expected
     s += pr.PINS + "".join(" %02X" % p for p in ports(e))
     s += pr.RAM + "".join(" %02X" % (e.iram[a] if ram is None else ram[a]) for a in pr.RAM_LIST)
     return s + pr.END
 
 
 def bus_problems(bus, mark=0):
-    """Transfers after mark that are not a register read or an address-only probe."""
+    """Transfers after mark that are not a register read, an address-only probe, or a write of the
+    receiver's calculator target."""
     bad = []
     for entry in bus.log[mark:]:
         kind, dev, reg, v = entry[2:6]
-        if kind == "R" or (reg is None and v == ()):
+        if kind == "R" or (reg is None and v == ()) or (dev, reg) == (RECEIVER, FS_TARGET):
             continue
         bad.append(I2CBus.format(entry))
     return bad
+
+
+def target_writes(bus, mark=0):
+    return [v for c, site, kind, dev, reg, v, ok in bus.log[mark:] if kind == "W" and (dev, reg) == (RECEIVER, FS_TARGET)]
 
 
 # ---- bare CPU: one command through read_key (and dispatch_key) ---------------------------------------
@@ -151,8 +195,7 @@ def cpu(image, cmd, power, page):
     seed(e.bus)
     e.out = uart(e)
     e.writes = []
-    for addr, name in ((NJW_WRITE, "njw"), (DAC_WRITE, "dac"), (I2C_WRITE_REG, "i2c_write"),
-                       (EXPANDER_WRITE_PIN, "expander")):
+    for addr, name in ((NJW_WRITE, "njw"), (DAC_WRITE, "dac"), (EXPANDER_WRITE_PIN, "expander")):
         e.hooks[addr] = lambda em, name=name: em.writes.append(name)
     return e
 
@@ -192,7 +235,10 @@ def hook_test(img_path=TEST_IMG, base_path=BASE_IMG, label="the standalone image
           f.out and all(sw == 0 and es == 0 for _, sw, es in f.out))
     check("P_SW1 and IE restored", f.sfr[P_SW1] == 0x40 and f.sfr[IE] == 0x90, "%02X %02X" % (f.sfr[P_SW1], f.sfr[IE]))
     bad = bus_problems(f.bus)
-    check("the bus saw register reads and address probes only (%d transfers)" % len(f.bus.log), not bad, str(bad[:3]))
+    check("the bus saw reads, address probes and the calculator target only (%d transfers)" % len(f.bus.log),
+          not bad, str(bad[:3]))
+    tw = target_writes(f.bus)
+    check("the calculator target: ports 0..7, then stock's value back", tw == list(range(pr.FS_PORTS)) + [0], str(tw))
     check("no audio chip written", not f.writes, str(f.writes[:4]))
     check("the Dimmer setting untouched (stock's FN toggles it)", f.iram[0x29] == 1, "%d" % f.iram[0x29])
     check("ran to the end of read_key", not f.capped, "" if not f.capped else "steps capped")
@@ -259,6 +305,7 @@ class Run:
         e.hooks[EEPROM_WRITE] = write
         e.hooks[EEPROM_ERASE] = erase
         self.out = uart(e)
+        calculator(self.bus)
         self.bus.inputs[(0x80, 0x39)] = 0x00
         self.amp.set_pin(0xC0, 2, 1)                  # no lock
         self.amp.boot(12.0)
@@ -303,8 +350,10 @@ def scenario(img_path, label):
     check("every byte left with P_SW1 on the header pins and ES off",
           all(sw == 0 and es == 0 for _, sw, es in r.out[m[0]:]))
     check("P_SW1 back on the XMOS line, ES on", e.sfr[P_SW1] == 0x40 and e.sfr[IE] & 0x10)
-    check("nothing written to any chip during the dump", not r.audio_writes(m) and not bus_problems(r.bus, m[2]),
-          str(r.audio_writes(m)[:3] + bus_problems(r.bus, m[2])[:3]))
+    check("nothing written to any chip during the dump but the calculator target",
+          not r.audio_writes(m) and not bus_problems(r.bus, m[2]), str(r.audio_writes(m)[:3] + bus_problems(r.bus, m[2])[:3]))
+    check("the calculator target is back at stock's value (USB: 00)", r.bus.regs.get((RECEIVER, FS_TARGET)) == 0
+          and target_writes(r.bus, m[2])[-1] == 0, str(target_writes(r.bus, m[2])))
     check("the Dimmer setting untouched by the dump", e.iram[0x29] == 1, "%d" % e.iram[0x29])
     v = e.iram[0x31]
     r.key(NEC_VOL_UP, 2.0)

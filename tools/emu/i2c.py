@@ -15,9 +15,10 @@ stock bit-bang primitives instead of decoding the pins:
 
 They are the only code that touches the bus: i2c_read_reg16 (0x4CDF), i2c_write_reg
 (0x4FAD) and dac_write (0x4D8A) are built on them. Every address ACKs unless it is listed in
-`absent`. A read returns `inputs[(device, register)]` if set, else the last value written
-there, else 0. Device addresses are the 8-bit write addresses the firmware uses (0xB0, 0x80,
-0xC0, 0x62).
+`absent`. A read returns what `read_fn(device, register)` gives if that is set and not None,
+else `inputs[(device, register)]` if set, else the last value written there, else 0; `read_fn`
+is for registers whose value depends on earlier writes (a measurement result). Device
+addresses are the 8-bit write addresses the firmware uses (0xB0, 0x80, 0xC0, 0x62).
 
 Each log entry is (cycle, site, kind, device, register, value, acked): `site` is the address
 of the call into the stock routine that made the transfer, kind "R" or "W". The DAC's
@@ -34,6 +35,7 @@ class I2CBus:
         self.absent = set(absent)
         self.regs = {}                 # (device, register) -> last value written
         self.inputs = {}               # (device, register) -> value a read returns
+        self.read_fn = None            # fn(device, register) -> value, or None to fall through
         self.log = []
         self._cur = None
         self._ack = False
@@ -71,7 +73,11 @@ class I2CBus:
         if n == 0:
             reg = c["bytes"][-1] if c["bytes"] else 0
             key = (c["dev"], reg)
-            v = 0xFF if c["dev"] in self.absent else self.inputs.get(key, self.regs.get(key, 0))
+            v = self.read_fn(c["dev"], reg) if self.read_fn else None
+            if v is None:
+                v = self.inputs.get(key, self.regs.get(key, 0))
+            if c["dev"] in self.absent:
+                v = 0xFF
             c["read"] = (reg, v)
         em.pins[P3] = (SDA, SDA if (c["read"][1] >> (7 - n)) & 1 else 0)
 

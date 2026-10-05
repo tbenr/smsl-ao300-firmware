@@ -85,6 +85,16 @@ inputs.
 
 ## Layer 3: single writes
 
+Item 1, built 2026-10-05 as probe pr3 (not yet flashed): the receiver's rate calculator
+pointed at each of its eight ports in turn and restored (`features/probe`, the FS line). If
+AUXIN0 and AUXIN1 report a rate when the HDMI source or the USB host plays while another
+input is selected, stream presence on HDMI and USB is readable from any input without
+touching the audio path. Flashed and run the same day: on Optical with the TV playing over
+ARC, the HDMI port reports 44.1 kHz with the TV playing and with it muted, and no result
+with it in standby (`docs/bus-map.md`, "Layer 3, item 1"): "TV on" is readable from any
+input, which is what an auto-switch to HDMI needs. The USB port's reading with a host
+playing is untested (the USB dumps stay deferred).
+
 Only after layer 2, one register per build or per command, each taken from a datasheet
 first.
 

@@ -3,8 +3,9 @@
 Layer 2 of `docs/probing-plan.md`. One remote button makes the amp send what its chips
 hold, as text, through the 4-pin programming header. It only reads. pr1 (on NEC 0x16) was
 flashed on 2026-10-05 and replaced the same day by pr2 (the FN button), which was flashed
-and gave the first dump: 1204 bytes, as the emulator predicted (`docs/bus-map.md`,
-"Hardware read-back").
+and gave thirteen dumps, the first 1204 bytes as the emulator predicted (`docs/bus-map.md`,
+"Hardware read-back"). pr3 adds the FS line, the first write of layer 3; emulator-verified,
+not yet flashed.
 
 ## What it does
 
@@ -18,6 +19,7 @@ B0 00: 00 00 10 00 6E 30 00 00 00 00 00 00 00 00 00 00
 B0 10: 00 13 FF FF
 80 20: ...            six lines, registers 0x20 to 0x7F
 C0 00: ...            twelve lines, registers 0x00 to 0xBF
+FS: 09 80 28 3C 80 58 80 80
 P: p0 p1 p2 p3 p4 p5 p7
 R: 01 01 01 01 01 01 14 14 09 09 01 05 00 00 00 00 00 D1 D1
 END
@@ -28,13 +30,20 @@ END
 - `B0`, `80`, `C0`: the expander, the digital receiver and the clock generator, read with
   the stock `i2c_read_reg16`. A register that never acknowledges reads as 00 after five tries.
   The DAC is not read: its registers take a three-byte address and stock has no read routine.
+- `FS` (pr3): the receiver's sample-rate calculator pointed at each of its eight ports in
+  turn, DIR, ADC, AUXIN0 (the HDMI receiver's I2S), AUXIN1 (the XMOS's I2S), AUXIN2, main
+  output port, AUX output port, DIT. Each byte is register 0x38 for that port: bit 7 set
+  means no result within the wait (no clock on that port), else bits 6:4 repeat the port
+  and bits 3:0 give the rate code (8 = 44.1 kHz, 9 = 48 kHz, 0xC = 96 kHz). This is the
+  probe's one register write, to the calculator target 0x37, a measurement block outside the
+  audio path; stock's value is read first and written back after the eight ports.
 - `P`: ports P0, P1, P2, P3, P4, P5, P7 as read from the pins.
 - `R`: RAM, in this order: page, input, power, output, EQ, filter, volume, headphone volume,
   bass, treble, dimmer, format, 0x75, 0x73 (the XMOS message), 0x76, 0x77, 0x78 (the UART
   buffer), format configured, format read.
 
-The dump takes about 130 ms, during which the main loop waits, as it does for a stock input
-switch. The command is then swallowed, so the short press does not toggle Dimmer as it does
+The dump takes about 210 ms (longer when ports have no clock: up to 64 polls each), during
+which the main loop waits, as it does for a stock input switch. The command is then swallowed, so the short press does not toggle Dimmer as it does
 in stock while this image is flashed; the Dimmer menu and FN's long hold ("BT Reconnect",
 which the decoder delivers as 0x0E) are as stock. A short press is reported once, on release,
 so a press never dumps twice. In standby or in a menu FN goes to the stock path. `COMMAND`

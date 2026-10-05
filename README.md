@@ -809,9 +809,14 @@ first (`features/probe`; pr1 flashed on 2026-10-05, no dump captured yet), singl
   (`docs/bus-map.md`, "Hardware read-back"). What does exist: the HDMI receiver's S/PDIF
   output is wired to the receiver's RXIN3, and on USB and AUX the firmware parks the DIR
   there, so register 0x39 reports lock and rate when ARC audio arrives, with no write. An
-  auto-switch from USB or AUX is therefore a read-only poll; from Optical, Coaxial or
-  Bluetooth it would need the DIR moved to RXIN3 while the selected input is silent, a
-  write. To confirm with a dump on USB, TV playing then muted.
+  auto-switch from USB or AUX is therefore a read-only poll. Better, and settled by probe
+  pr3 on 2026-10-05 (`docs/bus-map.md`, "Layer 3, item 1"): the receiver's sample-rate
+  calculator, pointed at the HDMI receiver's I2S port with one register write outside the
+  audio path, reports 44.1 kHz from Optical whenever the TV is awake (muted or playing) and
+  no result when the TV is in standby. "TV on" is readable from any input; an auto-switch to
+  HDMI can poll it every tick at under 1 ms of main-loop time, with the target restored
+  before stock's own read of the result register on Bluetooth, and left alone on HDMI.
+  Still to decide: the hold-off and what to do when the TV goes to standby.
 - **Pin roles on the board.** `docs/bus-map.md` lists every expander and MCU pin the
   firmware drives or reads, with roles inferred from when they change. Matching them to
   the silkscreen nets (MUTE_AMP, MUTE_PRE, MUTE_HP, DIR_RST, DAC_MCK_SEL, relays) needs a
