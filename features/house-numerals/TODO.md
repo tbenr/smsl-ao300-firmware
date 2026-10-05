@@ -1,6 +1,7 @@
 # House Numerals: what is left
 
-State as of hn10.1 (`v1.4 tbenr hn10.1`, tried on the amp on 2026-09-30, works). The reference is
+State as of hn14 (`v1.4 tbenr hn14`, emulator-verified, not yet tried on the amp as this image:
+hn13 works on the amp, and so does the MUTE state's branch build on hn12, both 2026-10-02). The reference is
 study 3 in `features/ui-theme/ui_themes.html`.
 
 ## Missing against the mock
@@ -21,10 +22,13 @@ Volume page:
   target (the float one never quite does); settles in at most 0.63 s.
 - **Sizing.** `sizing.html` covers the home only; the volume page's positions are constants
   in `build_patch.py` (`V*`). A second tab with the same save path (`layout.json`,
-  `"volume"`) would let the sizes be picked by eye. Flash is tight: 1185 bytes left.
-- **MUTE state** (red speaker, "MUTE" at 64 px, dark-red line): unreachable in this firmware
-  (the mute key goes home, the volume keys unmute first). Only worth doing if a muted volume
-  page is wanted on purpose.
+  `"volume"`) would let the sizes be picked by eye. Flash is tight: 855 bytes left.
+- **MUTE state: the face.** Done in hn14 (the mute key shows the page), with "MUTE" in the home
+  name's face (disp54, in the image already). The mock's is the numerals' face at 64 px: its
+  raster is there (`num64`, with M, U, T, E), 503 bytes for the four glyphs.
+- **MUTE state: the line during a wipe.** A mute in mid-entry leaves the part of the fill drawn
+  so far in the accent until the spring has retracted it (the mock turns it dark red at once).
+  Redrawing it would need the line right of the edge in two halves (`uk_fill` widths).
 
 Wipes:
 - **Timing.** hn10 uses the mock's cubic ease, 0.32 s (32 ticks) each way. The mock's exit takes

@@ -1,0 +1,8 @@
+# ser2net 4.x: expose the USB-serial adapter on the amp as an RFC 2217 port.
+# telnet(rfc2217) is required: stcgal switches 2400 -> 115200 baud mid-session
+# and the client sends that change as a Telnet control command.
+connection: &firmware-tunnel
+  accepter: telnet(rfc2217),tcp,4000
+  connector: serialdev,/dev/ttyUSB0,2400e81,local
+  options:
+    kickolduser: true

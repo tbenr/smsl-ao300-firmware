@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the "House Numerals" image for the SMSL AO300 (on top of fast-lcd), hn10.
+"""Build the "House Numerals" image for the SMSL AO300 (on top of fast-lcd), hn14.
 
 A reduced build of study 3 in features/ui-theme/ui_themes.html:
 
@@ -23,6 +23,13 @@ A reduced build of study 3 in features/ui-theme/ui_themes.html:
             slides out, the new one in, one number a frame in the mock's grey, in a clip box,
             uk_textc) and changes the target of the line's spring (the mock's k 200, c 28, as a
             fixed-point matrix per tick), which redraws only the columns it moved.
+  muted     the mock's MUTE state of the volume page (RAM bit 0x22.1): the home's muted speaker
+            in red for "VOL", "MUTE" in red for the number (the home name's face, on the number's
+            baseline; it rolls in and out like a number), the line's fill dark red towards 0.
+            The mute key shows the page: its handler 0x1047 (hn_mute_key) toggles as stock and
+            then opens page 2 as the volume keys do, instead of going home; read_key's page-2
+            filter (0x3DD1, hn_key_p2) lets the key through, so it also toggles on the open
+            page. A volume key unmutes first, as stock.
   wipes     a 2-px accent edge sweeps across the screen with the mock's cubic ease, STEPS (32)
             steps of one 10 ms main-loop tick each: right to left into the volume page, left to
             right back home. Nothing blocks: the main loop's tick path (main_tasks_on's
@@ -66,7 +73,8 @@ from uikit import (hi, lo, S, st_imm16, ld16, st16, FONTS, SMALL_MAP, BIG_MAP, B
                    VOL_ENTRY_SITES, VOL_ENTRY_ORIG, vol_entry_bytes, VERSION_PTR_ADDR, VERSION_MAX_LEN)
 
 BASE = "fast-lcd"                   # image this builds on (tools/patch/features.py)
-INCLUDES = ["direct-select", "fix-auto-off", "strings"]   # fix features linked into this image
+INCLUDES = ["direct-select", "fix-auto-off", "strings", "start-volume", "fix-volume-pop",
+            "fix-menu-input"]      # fix features linked into this image
 BASE_IMAGE = features.image(BASE)
 BASE_SHA = "30c1e6fe785dc725037e5925d53f5b82305618037532b4a0cd7397a0774f560b"
 OUT_IMAGE = os.path.join(HERE, "build", "flash_house_numerals.bin")
@@ -81,6 +89,7 @@ TRACK = 0x18E3                      # #1d1d1d
 WHITE = 0xFFFF
 RED = 0xF800                        # #ff0000, the muted icon
 FAINT = uikit.rgb565(0x4D, 0x52, 0x57)   # #4d5257, the volume page's "max 60"
+MLINE = uikit.rgb565(0x5A, 0x1D, 0x19)   # #5a1d19, the position line's fill while muted
 
 # XDATA
 HN_N = 0x0100                       # uk_fill's work area (4 bytes, see KIT below)
@@ -238,6 +247,21 @@ assert VCAP_Y + PF_MONO.H <= 170 and VCAP_END < VCAPR_X and VLINE_SPLIT[60] == V
 assert VLINE_MID - VLINE_X <= 255 and VLINE_X + VLINE_W - VLINE_MID <= 255
 assert all(PF_MONO.width(t) >= 8 * PF_MONO.width("0") for t in VCAP_TEXTS)   # 8 cells (the infinity is 1 px wider)
 
+# the volume page while muted (the mock's S.muted; RAM bit 0x22.1): the home's muted speaker in red
+# in place of "VOL", its bottom row the label cell's, "MUTE" in red in place of the number, on the
+# number's baseline, in the home name's face (the mock: the numerals' face at 64 px; the name's is
+# already in the image with these letters), and the line's fill dark red towards 0.
+MUTE_TEXT = "MUTE"
+MUTE_KEY = 0x4D                                                 # "M" as the number's text: hn_num_at draws MUTE_TEXT
+MUTE_SP = NAME_SP
+MUTE_Y = 112 + PF_NAME.top
+MUTE_W = PF_NAME.width(MUTE_TEXT, MUTE_SP)
+MICON_W = PF_ICON.width("M") + VLBL_SP                          # the icon's cell (uk_text adds the label's spacing)
+MICON_Y = VLBL_Y + PF_MONO.H - PF_ICON.H
+assert set(MUTE_TEXT) <= set(NAME_CHARS) and RED == 0xF800       # hn_num_at masks a roll frame's grey to its red
+assert MUTE_KEY == ord(MUTE_TEXT[0]) and not chr(MUTE_KEY).isdigit()
+assert 0 <= MICON_Y < VLBL_Y and VDIV_X < VLBL_X and VLBL_X + MICON_W - 1 < VLBL_END
+
 # ---- the number roll (the mock's this.k, 0.14 s): ROLL_FRAMES frames, one per tick. The panel is
 # write-only and uk_text streams its cells, so two translucent numbers cannot be mixed: each frame
 # draws one number on black, the old one while the mock's ease e < 0.5, then the new one, at the
@@ -275,6 +299,9 @@ assert VNUM_RIGHT - VNUM_MAXW + 1 > ROLL_X0       # hn_num_at fills the columns 
 assert VLBL_Y + PF_MONO.H - 1 < ROLL_Y0 and ROLL_Y1 < VLINE_Y and VDIV_X < ROLL_X0
 assert VCAP_Y > ROLL_Y1 and VNAME_END < ROLL_X0 and VSTAT_END < ROLL_X0
 assert VNUM_RIGHT - min(PF_VNUM.width(str(v)) for v in range(61)) + 1 - ROLL_X0 <= 255   # uk_fill widths
+# ... and MUTE the same way
+assert ROLL_Y0 <= MUTE_Y and MUTE_Y + PF_NAME.H - 1 <= ROLL_Y1
+assert ROLL_X0 < VNUM_RIGHT - MUTE_W + 1 and MICON_Y + PF_ICON.H - 1 < ROLL_Y0
 
 # ---- the spring on the position line (the mock's spring(s, target, dt, 200, 28), integrated at
 # 240 Hz): one step per 10 ms tick. Linear with the target fixed, so a tick is a 2 x 2 matrix on
@@ -366,9 +393,13 @@ HOOKS = [STOCK_SITES[site] + (op, target) for site, op, target in (
     ("format_tag_clear", 0x02, "hm_fmt_clear"),
     ("format_tag_clear_changed", 0x12, "hm_fmt_clear"),
 )]
+# the mute key: its handler, and read_key's page-2 filter so the key reaches it on the open volume page
+MUTE_KEY_SITE = (0x1047, bytes([0xE5, 0x45, 0x64]))     # key_1c: mov A,0x45 ; xrl A,#1 (the handler up to 0x106C)
+KEY_P2_SITE = (0x3DD1, bytes([0xEB, 0x64, 0x1F]))       # read_key, IR, page 2: mov A,R3 ; xrl A,#0x1F
+HOOKS += [MUTE_KEY_SITE + (0x02, "hn_mute_key"), KEY_P2_SITE + (0x02, "hn_key_p2")]
 HOOKS += features.hooks(INCLUDES)      # the fixes linked in: their hooks ...
 FIX_PATCHES = features.patches(INCLUDES)   # ... and their in-place patches (strings: "Disconnected")
-VERSION_TEXT = "v1.4 tbenr hn12"
+VERSION_TEXT = "v1.4 tbenr hn16"
 
 
 rect = KIT.rect
@@ -386,6 +417,8 @@ def build_data(a):
     a.data('db "VOL",0', b"VOL\0")
     a.L("str_max")
     a.data('db "max 60",0', b"max 60\0")
+    a.L("str_mute")
+    a.data('db "%s",0' % MUTE_TEXT, MUTE_TEXT.encode() + b"\0")
     a.L("str_dbinf")
     a.data('db "  _~ dB ",0     ; volume 0: minus infinity', b"  _~ dB \0")
     a.comment("number roll, frames 1..%d (frame %d is hv_num): cell row offset for a step up (a step down "
@@ -449,7 +482,7 @@ def build_painter(a):
 
 
 def build_volume_page(a):
-    bit = {v: v.bit_length() - 1 for v in (VF_NUM, VF_LINE, VF_CAP)}
+    bit = {v: v.bit_length() - 1 for v in (VF_VOL, VF_NUM, VF_LINE, VF_CAP)}
     S(a, """
 ; hn_draw_volume: replaces volpage_draw_volume 0x5936 (R7 speaker volume). Records the value
 ; (HN_VOL, HN_NUM; the text shown so far in HR_OLD). On the volume page, idle: the dB caption now,
@@ -457,6 +490,9 @@ def build_volume_page(a):
 ; itself (hn_spring). During a wipe: the number and the caption only if the wipe has revealed them
 ; (in their final state), else the wipe draws them when it reveals them. Page not on screen and no
 ; wipe: the number, the line and the caption at once (hn_dyn_now).
+; Muted (0x22.1): HN_NUM is "M", which hn_num_at draws as MUTE. When the mute state shown changes
+; (the old text was "M" xor muted now; F0), the text rolls as a changed number does and the label
+; (hv_vol) and the line (its fill's colour) are redrawn; during a wipe the label only if revealed.
 hn_draw_volume:
 mov A,0x2B
 xrl A,#1
@@ -491,20 +527,40 @@ mov R6,A           ; the volume so far
 mov A,R7
 movx @DPTR,A
 inc DPTR           ; HN_NUM
+jnb 0x22.1,hdv_dec
+mov A,#0x%02X""" % MUTE_KEY + """
+movx @DPTR,A
+inc DPTR
+clr A
+movx @DPTR,A       ; muted: "M"
+sjmp hdv_txt
+hdv_dec:
 lcall hn_dec2
+hdv_txt:
 mov R0,#5
 mov A,#2
 movx @R0,A         ; stock leaves the digit count 2 in XDATA 0x05
+mov A,R2
+xrl A,#0x%02X""" % MUTE_KEY + """
+add A,#0xFF        ; C = the old text was a number
+jb 0x22.1,hdv_f
+cpl C
+hdv_f:
+mov F0,C           ; the mute state shown changes
 mov DPTR,#0x%04X""" % HN_MODE + """
 movx A,@DPTR
 jnz hdv_wipe
 inc DPTR           ; HN_VF
 movx A,@DPTR
 cjne A,#%d,hn_dyn_now""" % VF_ALL + """
-; the page is on screen: the number rolls if it changed (HR_DIR 1 when it went down)
+; the page is on screen: the text rolls if it changed (HR_DIR 1 when the volume went down); MUTE
+; stays whatever the volume does
+jb F0,hdv_roll
+jb 0x22.1,hdv_cap
 mov A,R7
 xrl A,R6
 jz hdv_cap
+hdv_roll:
 mov A,R7
 clr C
 subb A,R6
@@ -515,12 +571,19 @@ movx @DPTR,A
 mov DPTR,#0x%04X""" % HR_F + """
 mov A,#1
 movx @DPTR,A
+jbc F0,hdv_lbl
 hdv_cap:
+ljmp hv_cap
+hdv_lbl:
+lcall hv_vol       ; the label and the whole line in the new state's colours
+lcall hv_line
 ljmp hv_cap
 hdv_wipe:
 inc DPTR           ; HN_VF
 movx A,@DPTR
 push ACC
+jbc F0,hdv_wlbl
+hdv_wnum:
 jnb ACC.%d,hdv_nonum""" % bit[VF_NUM] + """
 lcall hv_num
 hdv_nonum:
@@ -529,9 +592,16 @@ jnb ACC.%d,hdv_ret""" % bit[VF_CAP] + """
 ljmp hv_cap
 hdv_ret:
 ret
+hdv_wlbl:
+jnb ACC.%d,hdv_wnum""" % bit[VF_VOL] + """
+lcall hv_vol
+pop ACC
+push ACC
+sjmp hdv_wnum
 
 ; hn_dyn_now: the number, the line (the spring on its target) and the dB caption, at once
 hn_dyn_now:
+clr F0
 lcall hv_num
 lcall hn_sp_snap
 lcall hv_line
@@ -635,10 +705,40 @@ mov R6,#0xFF
 mov R7,#0xFF
 ; hn_num_at: the string at XDATA R2:R3 in the volume face, ink R6:R7 on black, right-aligned to end at
 ; x %d, cell top row R4, only inside the box %d..%d x %d..%d; then black in the rest of the box:
-; columns %d up to the number over all its rows, the rows above and below the cell over the number's
-hn_num_at:""" % (VNUM_RIGHT, ROLL_X0, ROLL_X1, ROLL_Y0, ROLL_Y1, ROLL_X0))
+; columns %d up to the number over all its rows, the rows above and below the cell over the number's.
+; A string starting with "M" is the muted page's: "%s" (str_mute) in the home name's face, %d rows
+; lower (the same baseline), the ink's red part only (white: red; a roll frame's grey: that much red)
+hn_num_at:""" % (VNUM_RIGHT, ROLL_X0, ROLL_X1, ROLL_Y0, ROLL_Y1, ROLL_X0, MUTE_TEXT, MUTE_Y - VNUM_Y))
     tp_setup(a, "pf_vnum", None, 0, VNUM_RIGHT, 0, 0, clip=(ROLL_X0, ROLL_X1), align=1)
     S(a, """
+mov DPH,R2
+mov DPL,R3
+movx A,@DPTR
+cjne A,#0x%02X,hna_txt""" % MUTE_KEY + """
+mov DPTR,#0x%04X""" % KIT.TP["FONT"] + """
+mov A,#hi(pf_name)
+movx @DPTR,A
+inc DPTR
+mov A,#lo(pf_name)
+movx @DPTR,A
+inc DPTR
+inc DPTR
+inc DPTR
+mov A,#1
+movx @DPTR,A       ; TP_SPC: a code string""" + ("""
+mov DPTR,#0x%04X""" % KIT.TP["SPACING"] + """
+mov A,#%d""" % MUTE_SP + """
+movx @DPTR,A""" if MUTE_SP else "") + """
+mov R2,#hi(str_mute)
+mov R3,#lo(str_mute)
+mov A,R4
+add A,#%d""" % (MUTE_Y - VNUM_Y) + """
+mov R4,A
+mov A,R6
+anl A,#0x%02X""" % (RED >> 8) + """
+mov R6,A
+mov R7,#0
+hna_txt:
 mov DPTR,#0x%04X""" % KIT.TP["STR"] + """
 mov A,R2
 movx @DPTR,A
@@ -686,7 +786,10 @@ hna_below:
 ; the rows below it: TP_Y + H .. %d""" % ROLL_Y1 + """
 mov DPTR,#0x%04X""" % KIT.TP["Y"] + """
 movx A,@DPTR
-add A,#%d""" % PF_VNUM.H + """
+mov R5,A
+mov DPTR,#0x%04X""" % KIT.TP["H"] + """
+movx A,@DPTR       ; the face's rows, as uk_textc read them
+add A,R5
 mov R5,A
 mov A,#%d""" % (ROLL_Y1 + 1) + """
 clr C
@@ -777,10 +880,39 @@ movx @DPTR,A
 hdi_ret:
 ret
 """)
-    S(a, "; hv_vol: \"VOL\" in the accent, mono, letter-spaced %d, at %d, baseline %d\nhv_vol:"
-         % (VLBL_SP, VLBL_X, VLBL_Y - PF_MONO.top))
+    S(a, "; hv_vol: \"VOL\" in the accent, mono, letter-spaced %d, at %d, baseline %d; muted (0x22.1): the\n"
+         "; home's muted speaker in red there, rows %d..%d. Each clears what the other leaves around it.\nhv_vol:"
+         % (VLBL_SP, VLBL_X, VLBL_Y - PF_MONO.top, MICON_Y, MICON_Y + PF_ICON.H - 1))
     tp_setup(a, "pf_mono", "str_vol", 1, VLBL_X, VLBL_Y, "acc", spacing=VLBL_SP)
-    S(a, "ljmp uk_text")
+    S(a, "jb 0x22.1,hvv_mute\nlcall uk_text")
+    rect(a, VLBL_X, MICON_W, MICON_Y, VLBL_Y - MICON_Y, 0)          # the icon's rows above the label's cell
+    S(a, """
+ljmp uk_fill
+hvv_mute:
+mov DPTR,#0x%04X""" % KIT.TP["FONT"] + """
+mov A,#hi(pf_icon)
+movx @DPTR,A
+inc DPTR
+mov A,#lo(pf_icon)
+movx @DPTR,A
+inc DPTR
+mov A,#hi(hm_s_mute)
+movx @DPTR,A
+inc DPTR
+mov A,#lo(hm_s_mute)
+movx @DPTR,A
+mov DPTR,#0x%04X""" % KIT.TP["Y"] + """
+mov A,#%d""" % MICON_Y + """
+movx @DPTR,A
+inc DPTR
+mov A,%s""" % hi(RED) + """
+movx @DPTR,A
+inc DPTR
+mov A,%s""" % lo(RED) + """
+movx @DPTR,A       ; TP_INK
+lcall uk_text""")
+    rect(a, VLBL_X + MICON_W, VLBL_END - VLBL_X - MICON_W + 1, VLBL_Y, PF_MONO.H, 0)   # the rest of "VOL"
+    S(a, "ljmp uk_fill")
     S(a, "; hv_capr: \"max 60\", mono, faint, ending at x %d, baseline %d\nhv_capr:" % (VCAPR_RIGHT, VCAP_Y - PF_MONO.top))
     tp_setup(a, "pf_mono", "str_max", 1, VCAPR_RIGHT, VCAP_Y, FAINT, align=1)
     S(a, "ljmp uk_text")
@@ -873,8 +1005,8 @@ ljmp uk_text
     st_imm16(a, HN_S0, VLINE_MID)
     st_imm16(a, HN_S1, VLINE_X + VLINE_W - 1)
     S(a, """
-; hn_line_seg: the columns HN_S0..HN_S1 of the %d x %d position line at %d,%d: accent up to the split
-; on screen (HN_SPL, the spring's), the track colour from it
+; hn_line_seg: the columns HN_S0..HN_S1 of the %d x %d position line at %d,%d: accent (muted: dark red)
+; up to the split on screen (HN_SPL, the spring's), the track colour from it
 hn_line_seg:""" % (VLINE_W, VLINE_H, VLINE_X, VLINE_Y) + """
 ; accent part: max(S0, %d) .. min(S1, split - 1)""" % VLINE_X + """
 mov DPTR,#0x%04X""" % HN_S0 + """
@@ -904,6 +1036,10 @@ subb A,#0
 mov R4,A           ; R4:R5 = split - 1
 lcall hl_minS1
 lcall uk_acc
+jnb 0x22.1,hl_acc
+mov R6,%s""" % hi(MLINE) + """
+mov R7,%s""" % lo(MLINE) + """   ; muted: dark red
+hl_acc:
 lcall hl_fill
 ; track part: max(S0, split) .. min(S1, %d)""" % (VLINE_X + VLINE_W - 1) + """
 mov DPTR,#0x%04X""" % HN_SPL + """
@@ -1326,8 +1462,13 @@ spm_ret:
 clr F1
 ret
 
-; hn_sp_t6: R4:R5 = 64 * the line's fill for HN_VOL (4v + (4v + 2) / 5 = round(4.8 v))
+; hn_sp_t6: R4:R5 = 64 * the line's fill for HN_VOL (4v + (4v + 2) / 5 = round(4.8 v)); muted: 0
 hn_sp_t6:
+jnb 0x22.1,spt_vol
+mov R4,#0
+mov R5,#0
+ret
+spt_vol:
 mov DPTR,#0x%04X""" % HN_VOL + """
 movx A,@DPTR
 rl A
@@ -1478,6 +1619,46 @@ movx @DPTR,A
 he_done:
 lcall 0x5CBC       ; ui_clear_small_buf, as ui_clear_screen
 ljmp 0x5CCB        ; ui_clear_big_buf
+
+; hn_mute_key: replaces the mute key's handler key_1c (0x1047; reached on pages 1 and 2 only: a menu
+; turns the key into "home" at 0x0C23, and read_key did so on page 2 until hn_key_p2). Stock went
+; home (page 1, render) and toggled; this toggles the same way (0x1052..0x1065: muted ->
+; mute_state_set(0), P2.5 low; unmuted -> the unmute countdown at 10 ticks) and then shows the
+; volume page as the volume keys do: page 2 through hn_enter_vol unless it is open, then their tail
+; 0x0F50: volpage_draw_volume (hn_draw_volume: MUTE or the number), 0x27:0x28 = 0x3F:0x40 = 200.
+hn_mute_key:
+cpl 0x22.1
+jnb 0x22.1,hmk_on
+clr A
+mov R7,A
+lcall 0x5A62       ; mute_state_set(0)
+clr P2.5
+sjmp hmk_page
+hmk_on:
+mov 0x43,#0
+mov 0x44,#0x0A
+hmk_page:
+mov A,0x45
+xrl A,#2
+jz hmk_tail
+mov 0x45,#2
+lcall hn_enter_vol
+hmk_tail:
+ljmp 0x0F50
+
+; hn_key_p2: read_key's page-2 filter for IR keys (0x3DC6..0x3DD6: every key but 0x1A, 0x1B, 0x1F
+; becomes 0x15, "home"), from its last test on. The mute key 0x1C is kept as well, so it toggles on
+; the open volume page instead of only closing it.
+hn_key_p2:
+mov A,R3
+xrl A,#0x1F
+jz hkp_keep
+mov A,R3
+xrl A,#0x1C
+jz hkp_keep
+ljmp 0x3DD6        ; mov R7,#0x15
+hkp_keep:
+ljmp 0x3DD8
 
 ; hn_reverse: step = STEPS - step (the ease table is symmetric, so x stays); A = new step, and at
 ; STEPS (the running wipe had not stepped) the wipe stops: mode 0. The status line counts as not drawn:
@@ -2687,6 +2868,15 @@ def main():
         # uk_tasks does main_tick_tasks' re-mute part itself and returns when no tick is due
         (0x3325, bytes.fromhex("300c07c20cc2141258d320070302345b"), "main_tick_tasks' re-mute request part moved"),
         (0x345B, b"\x22", "main_tick_tasks without a tick no longer only returns"),
+        # the mute key: the handler hn_mute_key replaces, its entry in the key switch, the volume
+        # keys' tail it ends in, and read_key's page-2 filter around hn_key_p2's hook
+        (0x1047, bytes.fromhex("e545640160057545 01d213b211301109 e4ff125a62c2a580 06754300 75440a 752700 75280a 22"),
+         "key_1c (the mute key) not as expected"),
+        (0x0CB3, bytes.fromhex("10471c"), "the key switch's entry for 0x1C moved"),
+        (0x0C23, bytes.fromhex("eb641c70027b15"), "the menus' mute key -> home filter moved"),
+        (0x0F50, bytes.fromhex("af31125936 752700 7528c8 753f00 7540c8 22"), "the volume keys' tail moved"),
+        (0x5A5E, bytes.fromhex("c2117f01ef7008c2141258d3d2a222"), "mute_state_set not as expected"),
+        (0x3DC6, bytes.fromhex("effb641a600ceb641b6007eb641f60027f15c3ed9403"), "read_key's page-2 filter moved"),
     ]
     # home_draw_input_name's table (0x4A9B) loads the strings INPUT_NAMES lists
     for inp, addr, text in INPUT_NAMES:

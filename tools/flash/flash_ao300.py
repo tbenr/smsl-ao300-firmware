@@ -5,7 +5,8 @@ A thin wrapper around stcgal that adds the checks the bare tool lacks. Every
 value it checks against was read from a real AO300 with `stcgal -D` and matched
 against the vendor updater's container.
 
-Subcommands (all need -p PORT, e.g. /dev/cu.usbserial-10):
+Subcommands (all need -p PORT, e.g. /dev/cu.usbserial-10 or a pyserial URL such as
+rfc2217://host:4000 for a port forwarded from another machine):
 
   identify            connect, print chip info, run all checks, reset. Writes nothing.
   dryrun              identify + clock calibration + baud switch + the pre-erase
@@ -38,6 +39,21 @@ try:
     import serial
 except ImportError:
     sys.exit("stcgal is not installed: pip install stcgal")
+
+# ---- pyserial URLs (rfc2217://, socket://) ---------------------------------
+# stcgal opens the port with serial.Serial(port=...), which only takes device paths.
+# Route anything that looks like a URL through serial.serial_for_url instead, so a
+# port forwarded from another machine works; plain device paths are untouched.
+_REAL_SERIAL = serial.Serial
+
+
+def open_port(port=None, **kw):
+    if isinstance(port, str) and "://" in port:
+        return serial.serial_for_url(port, **kw)
+    return _REAL_SERIAL(port=port, **kw)
+
+
+serial.Serial = open_port
 
 # ---- expected chip state (from the read-only handshake of the real amp) -----
 EXPECT_MAGIC = 0xF7DC                 # STC8C2K64S2
@@ -85,6 +101,15 @@ KNOWN_IMAGES = {
     "1fb644707c1ce4d59760f2e37a288903b7eb622fefe4969f09af6027856858ff": "stock + Auto OFF armed after power-on only (AO300 PRO V1.2 fix), 'v1.4 tbenr aof3' (features/fix-auto-off/build/flash_fixautooff.bin)",
     "6c5611ad8985f599877793e81c90b1e37b0eb352140878caf85d037a9004454d": "stock + corrected stock texts only ('Disconnected' on ARC), 'v1.4 tbenr str3' (features/strings/build/flash_strings.bin)",
     "5f406b5d828965a59a0773af4f62879a4749ae2e61a264e5ed2378765e3f3dc5": "fast-lcd fast3 + House Numerals v12 (hn11.1 with direct-select linked in as a fix instead of stacked under fast-lcd; same behaviour), 'v1.4 tbenr hn12' (features/house-numerals/build/flash_house_numerals.bin)",
+    "50ad41194c00b4265c8c9b297b821818d088ae42c0c123afa56c68347de36a27": "stock + start-volume only (volume at power-on capped: speakers 25, headphones 20), 'v1.4 tbenr sv1' (features/start-volume/build/flash_startvolume.bin)",
+    "e91e3a208841a11ecf54aee94a4c6e5b676529e0572117fdb9dec8553d2d99e1": "fast-lcd fast3 + House Numerals v13 (hn12 + start-volume: volume at power-on capped, speakers 25, headphones 20), 'v1.4 tbenr hn13' (features/house-numerals/build/flash_house_numerals.bin)",
+    "1e5691d899f6c7b091fa746b53ed2ee11f58f98b686d75e87232b5b3faf7ecc0": "fast-lcd fast3 + House Numerals, the MUTE state's branch build (hn12 with the volume page's MUTE state: the mute key shows the page, also when it is open; without start-volume). Its RESET page also says 'v1.4 tbenr hn13', like e91e3a20: tell them apart by this sha; hn14 is the two merged",
+    "3bef4bb7c66ab6ccd4a795569b6d8003500c070def939a4f5a956ac2b01f8161": "fast-lcd fast3 + House Numerals v14 (hn13 with the volume page's MUTE state: the mute key shows the page, also when it is open), 'v1.4 tbenr hn14' (features/house-numerals/build/flash_house_numerals.bin)",
+    "e2075861e79451ca18f7923aa76d4238eb11cb43d135945f767cec839d805e65": "stock + fix-volume-pop only (volume keys on Optical/Coaxial without a signal leave the mute pins and the NJW1194 alone), 'v1.4 tbenr vp1' (features/fix-volume-pop/build/flash_fixvolumepop.bin)",
+    "d39d321c88127a9af0f5ed313b957f7e3483c6edc9edac576fb86ae73f3dc0d3": "fast-lcd fast3 + House Numerals, the pop fixes' first branch build (hn13 + fix-volume-pop: no pop on the first volume key on Optical/Coaxial without a signal; without the MUTE state). Its RESET page also says 'v1.4 tbenr hn14', like 3bef4bb7: tell them apart by this sha; hn16 has both",
+    "693bdef6b17a2f8cec93c40a0d138d826fb7061463f51dadcc2c52d8bbada279": "stock + fix-menu-input only (an input chosen in the menu is switched as the Source key switches it: no P4.0 supply cycle, no second chip setup), 'v1.4 tbenr mi1' (features/fix-menu-input/build/flash_fixmenuinput.bin)",
+    "7a4af92f44d7c22a775706b33d28133299c0937b7424e3a73b444dda4f3054e6": "fast-lcd fast3 + House Numerals v15, the pop fixes' second branch build (hn13 + fix-volume-pop + fix-menu-input: no supply cycle and no pop on an input change through the menu; without the MUTE state), 'v1.4 tbenr hn15'; hn16 is this merged with the MUTE state",
+    "7ee88992ee9a5bb3cbf8f4cb5ccc3896c376a8c2be19931e549f22e2d5dbea5a": "fast-lcd fast3 + House Numerals v16 (hn14 + fix-volume-pop + fix-menu-input: the MUTE state, start-volume and both pop fixes in one image), 'v1.4 tbenr hn16' (features/house-numerals/build/flash_house_numerals.bin)",
 }
 
 
@@ -231,7 +256,7 @@ def cmd_flash(args, recover=False):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("-p", "--port", required=True, help="serial device, e.g. /dev/cu.usbserial-10")
+    ap.add_argument("-p", "--port", required=True, help="serial device, e.g. /dev/cu.usbserial-10, or a pyserial URL like rfc2217://host:4000")
     ap.add_argument("-D", "--debug", action="store_true", help="dump raw packets")
     ap.add_argument("--log", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "flash_ao300.log"),
                     help="append all output to this file (default: next to the script)")

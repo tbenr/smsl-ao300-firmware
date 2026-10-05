@@ -6,7 +6,12 @@
     amp.lcd.save_png("home.png")
 
 press() puts a NEC command where the INT0 decoder leaves it (RAM 0x6A, flag 0x20.4),
-so the main loop picks it up exactly as a real remote press.
+so the main loop picks it up exactly as a real remote press. The decoder itself does not
+run: the release timer 0x34 stays 0, so 0x6A keeps the command instead of going back to 0
+after 300 ms. A press on the main-loop pass that saves the settings (50 main ticks after a
+setting change) is lost, on the volume page as "go home": settings_save_eeprom clears
+0x6A and leaves the flag. That is a stock race, the same with real frames (README, "Open
+questions"), and wait() ends right inside its window.
 
 Two timer interrupts run, on one 0.5 ms grid. The Timer0 ISR (0x000B -> 0x3E67) runs
 every 10 ms. timer3_isr (0x009B -> 0x5040) runs every 0.5 ms (Timer3 reload 0xD120 in 1T

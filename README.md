@@ -22,6 +22,7 @@ tools/
   disasm/d51.py                   small recursive 8051 disassembler
   disasm/SmslAo300Labels.java     Ghidra script that names routines, globals and tables
   flash/flash_ao300.py            guarded stcgal-based flasher for macOS/Linux (see below)
+  flash/ser2net/                  ser2net in Docker: forward a remote adapter as rfc2217://
   emu/emu8051.py                  full 8051 emulator with STC8 clock counts and an ST7789
                                   model of the LCD bus (renders the screen to PNG); the
                                   Python reference implementation
@@ -70,7 +71,8 @@ features/
     build_patch.py, emu_test.py   build build/flash_fastlcd.bin, lockstep UI tour vs stock
   house-numerals/                 House Numerals home and volume page, on top of fast-lcd,
                                   built with tools/patch/uikit.py; hn10 to hn12 tried on the amp
-                                  on 2026-09-30; see its README
+                                  on 2026-09-30, hn13 and the pop fixes' builds (hn14, hn15)
+                                  on 2026-10-02, hn16 the same day; see its README
     build_patch.py, emu_test.py   build build/flash_house_numerals.bin (hn10: the mock's home
                                    and volume page in its own typefaces, non-blocking wipes
                                    with the mock's cubic ease, the number roll and the line's spring), home and
@@ -89,6 +91,33 @@ features/
     build_patch.py, emu_test.py   build build/flash_fixautooff.bin, hook test, 256-command
                                    sweep, cold power-up / standby scenarios vs stock
     fix_auto_off.asm              generated listing
+  start-volume/                   the volume at power-on capped at limits set at build time,
+                                  one for speakers and one for headphones. Standalone on
+                                  stock; house-numerals includes it (see its README)
+    start_volume.py               the config (SPEAKER_LIMIT, HEADPHONE_LIMIT) and the fix:
+                                   HOOK and emit(a)
+    build_patch.py, emu_test.py   build build/flash_startvolume.bin; hook and config tests,
+                                   256-command sweep, cold power-up / standby scenarios vs
+                                   stock on an EEPROM model
+    start_volume.asm              generated listing
+  fix-volume-pop/                 stock-bug fix: a volume key on Optical or Coaxial without
+                                  a signal no longer moves the mute pins or opens the
+                                  NJW1194 (the pop on the first key). Standalone on stock;
+                                  house-numerals includes it (see its README)
+    fix_volume_pop.py             the fix: HOOK, PATCHES and emit(a)
+    build_patch.py, emu_test.py   build build/flash_fixvolumepop.bin; the four handlers
+                                   against stock, 256-command sweep through dispatch_key,
+                                   no-signal / signal-drop / mute-key scenarios vs stock
+    fix_volume_pop.asm            generated listing
+  fix-menu-input/                 stock-bug fix: an input chosen in the menu is switched as
+                                  the Source key switches it, without stock's 3 s supply
+                                  cycle on P4.0 and second chip setup (a pop). Standalone
+                                  on stock; house-numerals includes it (see its README)
+    fix_menu_input.py             the fix: HOOK and emit(a)
+    build_patch.py, emu_test.py   build build/flash_fixmenuinput.bin; hook test, 256-command
+                                   and 256-key sweeps, all 30 input pairs through the menu
+                                   against stock and against the Source key
+    fix_menu_input.asm            generated listing
 
 ghidraPRG/                    * Ghidra project (import original/extracted/flash.bin as
                                 8051:BE:16:default, block CODE at 0)
@@ -176,7 +205,8 @@ Each image is a feature stacked on another image, and can link in fixes. Every
 
 ```python
 BASE = "fast-lcd"                  # the image it stacks on: another feature, or "stock"
-INCLUDES = ["direct-select", "fix-auto-off", "strings"]   # fixes linked into its own code
+INCLUDES = ["direct-select", "fix-auto-off", "strings", "start-volume", "fix-volume-pop",
+            "fix-menu-input"]      # fixes linked into its own code
 BASE_IMAGE = features.image(BASE)  # tools/patch/features.py resolves the path
 BASE_SHA = "30c1e6fe…"             # still pinned: a changed parent must be re-checked
 ```
@@ -185,23 +215,29 @@ BASE_SHA = "30c1e6fe…"             # still pinned: a changed parent must be re
 INCLUDES (a fix linked into that image):
 
 ```
-stock                      85e8ac50…
-├── direct-select          'v1.4 tbenr ds2'    0x9400..0x944B  9b7e8b93… known  [fix, hook 0x5D10; included by house-numerals]
-├── fast-lcd               'v1.4 tbenr fast3'  0x9700..0x977C  30c1e6fe… known
-│   └── house-numerals     'v1.4 tbenr hn12'   0x9800..0xEF99  5f406b5d… known
-│         + direct-select  fix linked into house-numerals
-│         + fix-auto-off   fix linked into house-numerals
-│         + strings        fix linked into house-numerals
-├── fix-auto-off           'v1.4 tbenr aof3'   0x9680..0x969D  1fb64470… known  [fix, hook 0x55B9; included by house-numerals]
-└── strings                'v1.4 tbenr str3'   0x96A0..0x96AF  6c5611ad… known  [fix, patch 0x91ED; included by house-numerals]
+stock                       85e8ac50…
+├── direct-select           'v1.4 tbenr ds2'    0x9400..0x944B  9b7e8b93… known  [fix, hook 0x5D10; included by house-numerals]
+├── fast-lcd                'v1.4 tbenr fast3'  0x9700..0x977C  30c1e6fe… known
+│   └── house-numerals      'v1.4 tbenr hn16'   0x9800..0xF0D7  7ee88992… known
+│         + direct-select   fix linked into house-numerals
+│         + fix-auto-off    fix linked into house-numerals
+│         + strings         fix linked into house-numerals
+│         + start-volume    fix linked into house-numerals
+│         + fix-volume-pop  fix linked into house-numerals
+│         + fix-menu-input  fix linked into house-numerals
+├── fix-auto-off            'v1.4 tbenr aof3'   0x9680..0x969D  1fb64470… known  [fix, hook 0x55B9; included by house-numerals]
+├── fix-menu-input          'v1.4 tbenr mi1'    0x9650..0x9675  693bdef6… known  [fix, hook 0x5892; included by house-numerals]
+├── fix-volume-pop          'v1.4 tbenr vp1'    0x96D6..0x96FC  e2075861… known  [fix, hook 0x0F4A, patch 0x0D0F, patch 0x0D8F, patch 0x0E36, patch 0x0EDE; included by house-numerals]
+├── start-volume            'v1.4 tbenr sv1'    0x96B0..0x96D5  50ad4119… known  [fix, hook 0x5596; included by house-numerals]
+└── strings                 'v1.4 tbenr str3'   0x96A0..0x96AF  6c5611ad… known  [fix, patch 0x91ED; included by house-numerals]
 ```
 
 Stacking (BASE) is for code that changes how the stock UI is drawn: fast-lcd on stock, a
 theme on fast-lcd. Everything else is a fix on stock, with its own small standalone image,
 and is linked into the image meant for the amp through INCLUDES. House-numerals then
-depends on fast-lcd (its base, and so on down to stock) and on direct-select, fix-auto-off
-and strings (included). An image has exactly one BASE, because images stack, but can
-include any number of fixes. Including a fix uses the fix's source, not its standalone
+depends on fast-lcd (its base, and so on down to stock) and on direct-select, fix-auto-off,
+strings, start-volume, fix-volume-pop and fix-menu-input (included). An image has exactly one BASE, because
+images stack, but can include any number of fixes. Including a fix uses the fix's source, not its standalone
 image; that image stays a separate branch of the tree, and a change to a fix only moves
 the shas of the images that include it. (Until 2026-09-30 every image stacked on
 direct-select instead, so a change to it rebuilt everything: hn11 and hn11.1 are from
@@ -210,7 +246,7 @@ that shape, hn12 is the same firmware in this one.)
 A fix is a feature whose folder also holds `<name>.py` (dashes as underscores) exporting
 `HOOK` and `emit(a)` (code at a hook), or `PATCHES` (in-place byte changes of the same
 length, `[(address, original, new, note)]`; `features/strings` corrects stock texts this
-way), or both. Its own image is only a standalone build on stock. A build that
+way), or both (`features/fix-volume-pop`). Its own image is only a standalone build on stock. A build that
 lists it in `INCLUDES` links it in three places: `HOOKS += features.hooks(INCLUDES)`,
 `patches += features.patches(INCLUDES)` and `features.emit(a, INCLUDES)` in `assemble()`.
 
@@ -240,6 +276,12 @@ checks, in that feature's image, what must stay true wherever it is built on or 
 - direct-select: the six direct commands and the stock translation of the other 250.
 - fix-auto-off: Auto OFF times out after power-on as after a key; Always ON is untouched.
 - strings: the corrected texts are in the image, and the status loader shows them.
+- start-volume: after a cold power-up and after standby the volume is at most the limit, on
+  speakers and on headphones, and the home screen shows it.
+- fix-volume-pop: on Optical and Coaxial without a signal the volume keys change no mute
+  pin and leave the NJW1194 and the DAC muted; the signal then unmutes at the new volume.
+- fix-menu-input: an input chosen in the menu leaves P4.0 and the chip setup alone, and the
+  amp sees the same events as after the Source key.
 
 ## Flashing from macOS or Linux
 
@@ -262,7 +304,13 @@ or unplug and replug the mains. `flash` asks you to type FLASH first, before it 
 for the bootloader, so there is no pause between the handshake and the erase; `-y`
 after the image path skips the question. On Linux the port is usually `/dev/ttyUSB0`;
 if it vanishes mid-run (`Errno 5`), check `dmesg` for brltty or ModemManager
-grabbing the CH340. If a
+grabbing the CH340. `-p` also takes a pyserial URL, so an adapter on another machine
+can be reached through a forwarder such as `rfc2217://host:4000` (stock stcgal opens
+device paths only; the flasher routes URLs through `serial_for_url`). A ready-made
+ser2net setup in Docker is in `tools/flash/ser2net/`. `identify` passed this way on
+2026-10-05 (ser2net 4.6 on a Linux box, flasher on a Mac on the same LAN). `dryrun` and
+`flash` are not yet tried over the tunnel; they add the switch to 115200 baud, which
+travels as an RFC 2217 control command, so run `dryrun` before the first remote `flash`. If a
 flash fails after the erase, the amp has no firmware until `recover` is run from a cold
 power-up; the bootloader is in ROM and survives. Every run is appended to
 `tools/flash/flash_ao300.log`, with raw packets when `-D` is given.
@@ -323,7 +371,76 @@ byte-identical to ds2), fast-lcd, fix-auto-off and strings moved onto stock (`fa
 `aof3`, `str3`), and house-numerals includes direct-select (`hn12`, hn11.1 with the same
 code at other addresses). All emulator-verified; hn12 was flashed on 2026-09-30 and works.
 
+Verified on the amp on 2026-10-02, as hn13: start-volume (`features/start-volume`), which caps
+the volume at power-on at limits set at build time, speakers 25 and headphones 20 by default.
+House-numerals includes it as hn13 (`v1.4 tbenr hn13`, hn12 otherwise); hn13 was flashed on
+2026-10-02 and works. The standalone image (`v1.4 tbenr sv1`) is emulator-verified and has not
+been flashed.
+
+The MUTE state of the volume page (2026-10-02): the mute key toggles as stock and then shows
+the volume page (red speaker, "MUTE", the line empty) instead of staying home, and it also
+toggles while the page is open, where stock only closed the page. Tried on the amp on
+2026-10-02 as a branch build on hn12 (sha256 `1e5691d8…`, without start-volume; its RESET page
+also says `v1.4 tbenr hn13`): works. hn14 (`v1.4 tbenr hn14`) is that merged with hn13, so it
+has start-volume and the MUTE state; emulator-verified, not yet flashed as this image.
+
+Heard on the amp on 2026-10-02 (hn13; stock code, so not new): on Optical with nothing
+connected the first volume key pops, later ones do not, and going round the sources arms it
+again. The emulator shows the cause, a volume key moving the mute pins when the receiver has
+no lock, and predicted that Coaxial right after Optical would be silent, which the amp
+confirmed. `features/fix-volume-pop` removes it (`v1.4 tbenr vp1`), and house-numerals
+included it in a branch build on hn13 (sha256 `d39d321c…`; its RESET page says
+`v1.4 tbenr hn14`, like the MUTE state's hn14 above). That build was flashed on 2026-10-02: the
+pop is gone. The standalone image is emulator-verified and has not been flashed.
+
+Also heard on 2026-10-02 (on that build; stock code): a pop when an input is chosen in the menu. The
+menu switches by another path than the Source key: it turns P4.0 off for 3 s and sets every
+audio chip up again with the speaker path open. `features/fix-menu-input` makes the menu
+switch as the Source key does (`v1.4 tbenr mi1`). The same branch's next build has both fixes
+(`v1.4 tbenr hn15`, sha256 `7a4af92f…`). It was flashed on 2026-10-02: no pop on an input
+change any more, through the menu, the Source key or direct-select. The standalone image is
+emulator-verified and has not been flashed.
+
+hn16 (`v1.4 tbenr hn16`) is hn14 with both fixes: start-volume, the MUTE state, fix-volume-pop
+and fix-menu-input in one image. Flashed on 2026-10-02: the fixes work.
+
 ## What the custom firmware adds
+
+### Volume cap at power-on
+
+Stock comes back at the volume it was left at, up to 60. With `features/start-volume` the
+amp starts at min(last volume, limit), after a cold power-up and after standby. The volume
+keys are not limited. The two limits are set at build time in
+`features/start-volume/start_volume.py`, each on its own:
+
+```python
+SPEAKER_LIMIT = 25     # a volume step 0..60, or DISABLED (start at the last volume, as stock)
+HEADPHONE_LIMIT = 20   # a volume step 0..60, or DISABLED
+```
+
+After changing them, rebuild and test, and give the images a new `VERSION_TEXT` and
+`KNOWN_IMAGES` entry (the limits are part of the image). The feature's README has the
+details. A menu setting was considered instead and set aside as too much for a choose-once
+value; `docs/menu-system.md` keeps what was learned about the stock menu.
+
+### No pop from the volume keys without a signal
+
+Stock mutes Optical and Coaxial by register when the signal goes, and leaves the mute pins
+where they were. The first volume key then moves them (P2.7 and P2.2 high on speakers, P2.5
+low on headphones) and opens the NJW1194 for a tick, which pops. With
+`features/fix-volume-pop` a volume key without a signal changes only the number and the
+display; the unmute that follows the signal applies the volume. With a signal, and on the
+other inputs, the keys are stock. The feature's README has the stock code and the patch.
+
+### Input changes in the menu without the supply cycle
+
+Stock handles an input chosen in the menu differently from the Source key: it mutes by
+register only, turns P4.0 (a supply enable) off for 3 s, and then runs the power-on chip
+setup again, with the speaker mute pin released nearly all the way through. The amp pops.
+With `features/fix-menu-input` the menu's choice runs the Source key's steps instead: mute,
+`input_set_hw`, unmute 2 s later. P4.0 is only switched at power-on and standby. The
+feature's README has the stock code, the timeline and what the emulator can and cannot say
+about P4.0.
 
 ### Direct input selection over IR
 
@@ -475,6 +592,20 @@ house-numerals tour went from 0xAF to 0xB3: stock's own delay leaves at SP 0xA0 
 `timer3_isr`'s deeper frame on top. Running Timer3 at the real rate costs about 7% more
 emulator time than not running it.
 
+`Amp.press` sets what a finished frame leaves for the main loop: the command in 0x6A and bit
+0x20.4. It does not run the decoder, so the release timer 0x34 is not armed and 0x6A keeps the
+command until the next press or settings save. A press on the tick of a settings save (50 main
+ticks after a setting change: 0.50 s after a Vol+ on hn16, 0.52 s on fast-lcd, 0.67 s on stock)
+is lost to a stock race, see "Open questions"; a wait of whole ticks ends just after a Timer0
+tick, inside the window, so in a scenario this is not rare but certain. Keep presses off that
+tick unless the race is what the test is about.
+
+`Amp` has no EEPROM: reads return 0, so the emulated amp boots into standby with every
+setting at its clamp. Tests seed single reads through a hook on 0x5970 (fix-auto-off), or
+model the whole EEPROM behind the stock IAP routines (start-volume: read 0x5970, write
+0x58AF, erase 0x59D0), which also makes a cold power-up turn the amp on by itself, as the
+real one does.
+
 `stc_release.py rebuild` output was verified by unpacking it again and by checking the
 PE structure with `pefile`. Only the firmware resource differs from the vendor updater.
 
@@ -507,7 +638,7 @@ Two buses share the pins P3.7 (data) and P4.1 (clock):
 | Backlight | LED on GPIO P0.6 | on/off only; "Auto OFF" (0x29 = 2) clears it when the countdown 0x2F:0x30 runs out (0x33DB, main ticks), armed to 500 by every key (0x0BBD): about 6 s in the emulator, as main-loop passes miss some 10 ms ticks | no PWM peripheral on this MCU. Stock never arms it at power-on, see "AO300 PRO firmware" |
 | Front panel | buttons / encoder (nets RE_A, RE_B) | P4.7, P5.4, P5.5, P2.6, P7.4 | Encoder scanned by Timer3 (0x5040, every 0.5 ms) through 0x396D into RAM 0x2D (0xFF idle); when no IR or panel key is pending, `read_key`'s tail (0x3E37) returns 0x2D on every powered page (menu pages other than 7 and 8 swap 0x1A and 0x1B first), so `dispatch_key` sees 0xFF (no key) on an idle pass. `tools/emu/ao300.py` runs Timer3 as well as Timer0 (see Testing) |
 | Programming header | 4-pin header next to the HDMI receiver | 5V, TXD, RXD, GND (bottom silkscreen also shows RXD TXD GND) | the serial update port |
-| Settings | MCU EEPROM area above 0xF400 | IAP routines 0x5956 / 0x58AF / 0x59D0 | addresses used go up to about 0x0400 |
+| Settings | MCU EEPROM area above 0xF400 | IAP routines 0x5956 (read) / 0x58AF (write) / 0x59D0 (erase) | Sector 0: magic 0x45 at 0x0001, power-on flag at 0x0002 (RAM 0x26; non-zero: a cold power-up turns the amp on). Sector 0x0200: the record 0x0201..0x020C = volume, input, output, 0x4A, EQ, 0x35, 0x2A, colour, headphone volume, 0x33, dimmer, filter. Loaded only at a cold boot (`settings_load_eeprom` 0x2F46), saved whole by `settings_save_eeprom` (0x492B) about 0.5 s after a change and after every power-on. Sector 0x0400 is erased by `key_power_off` (0x0CDA); no read or write of it was found |
 
 Things the MCU firmware cannot change, because they happen elsewhere: USB decoding,
 Bluetooth, SPDIF/ARC extraction, the DAC's conversion and filters themselves, and the
@@ -520,6 +651,10 @@ The number on screen is a step count; the dB value behind it is fixed by a table
 - **State.** Speaker volume is RAM 0x31 and headphone volume is RAM 0x52. RAM 0x2B picks
   which one is active: 1 is speakers, 2 is headphones. Both run from 0 to 60; the
   increment stops at 0x3C.
+- **Power-on.** Both volumes are loaded from EEPROM at a cold boot and only clamped to
+  0..60; standby keeps them in RAM. Stock therefore starts at the last volume on either
+  output. Its only cap is on an output switch (0x5296): the headphone volume is cut to 30.
+  `features/start-volume` caps both at power-on.
 - **Hardware write.** 0x4DDC looks up code = table[60 − step] in the 61-byte table at
   0x9289 and sends it to the NJW1194 volume registers through 0x54DA / 0x54EA.
 - **NJW1194 encoding** (from its datasheet): code n gives 32 − n/2 dB, in 0.5 dB steps;
@@ -575,7 +710,7 @@ Measured from the images; the code/EEPROM split is the chip's own setting (0xF40
 
 | Region | Size | Used | Free |
 |---|---|---|---|
-| Code flash, 0x0000..0xF3FF | 62464 bytes | 61338 bytes (features/house-numerals hn12) | ~1.1 KB |
+| Code flash, 0x0000..0xF3FF | 62464 bytes | 61656 bytes (features/house-numerals hn16) | 808 bytes after the image, plus 988 unused inside it (0x93A7..0x96FF and 0x977D..0x97FF: the fixes' standalone slots, which an image that includes them leaves as 0xFF) |
 | EEPROM area, 0xF400..0xFDFF | 2560 bytes, 5 sectors of 512 | sectors at offsets 0x0000, 0x0200, 0x0400 | 2 sectors, 1 KB |
 | Internal direct RAM, 0x00..0x7F | 128 bytes | all (registers, bit flags, variables up to 0x7F) | none |
 | Internal indirect RAM, 0x80..0xFF | 128 bytes | stack from 0x88 (`mov SP,#0x88` at 0x44A5) | stack headroom only |
@@ -584,7 +719,9 @@ Measured from the images; the code/EEPROM split is the chip's own setting (0xF40
 Rules of thumb: new code appends after the existing patch area (0x9400 upward); new
 state goes in XDATA, preferably 0x0100..0x0400 so it is safe even if the XRAM size
 assumption is wrong; new settings can use the two free EEPROM sectors. Rough cost of the
-features discussed so far: screen-off re-arm 14 bytes (built, fix-auto-off); status-line redraw skip ~40 bytes
+features discussed so far: screen-off re-arm 14 bytes (built, fix-auto-off); power-on volume cap 23 bytes
+(built, start-volume); volume keys without a signal 24 bytes (built, fix-volume-pop); menu input switch 23 bytes (built, fix-menu-input); a settings menu layer ~270 bytes once and ~45 per setting (sketched in
+`docs/menu-system.md`); status-line redraw skip ~40 bytes
 + 26-byte XDATA buffer; backlight PWM a few hundred bytes + menu + 1 EEPROM byte; HDMI
 auto-switch ~60 bytes. Space is not the limit; the hand-assembled hook method and the
 emulator coverage are.
@@ -662,12 +799,76 @@ first, single writes after it.
   then rate index 1..12 (`uart1_isr`, `xmos_format_take` 0x408B). The meaning of each class
   and index is in the jump tables after 0x408B and still to be tabulated.
 - **Key handlers, resolved in the emulator.** 0x1047 (key 0x1C, NEC 0x09) is the mute
-  toggle, 0x10BE (key 0x14, NEC 0x08) toggles Dimmer, 0x106D (key 0x0A, NEC 0x0E) is "BT
+  toggle (it goes home first; it runs on page 1 only: in a menu `dispatch_key` turns the key
+  into "home" at 0x0C23, and on the volume page `read_key` does at 0x3DD6, so there the key
+  closes the page without muting; house-numerals hn14 changes both, see its README), 0x10BE (key 0x14, NEC 0x08) toggles Dimmer, 0x106D (key 0x0A, NEC 0x0E) is "BT
   Reconnect", 0x10E1 (four-press combo 0x38) is "BT list clear", 0x0F62 (key 0x59) steps
   the EQ. None is a hidden service function.
-- **Power-on sequence timing.** The delays in 0x5AAB, 0x24D6 and 0x5D66 govern switching
-  speed and the click that SMSL fixed once; worth tabulating if faster switching is
-  wanted.
+- **Pop on an input change through the menu.** Heard on the amp on 2026-10-02 (the `d39d321c…`
+  build; stock code). `input_menu_select` (0x588B), unlike the Source key, mutes by register only, sets
+  P4.0 low for 3 s and then runs `expander_init` and `audio_chips_init` again (main loop,
+  0x3375, countdown 0x41:0x42). The speaker mute pin P2.2 stays low until the very end of
+  that, and on the digital inputs the format poll opens the NJW1194 and the DAC again about
+  0.5 s after Enter, so the supply returns and the chips are reset with the path open. What
+  P4.0 powers, which of these moments is the pop, and why SMSL cycles the supply here are not
+  known. The path also leaves expander P0_4 (inferred: the Bluetooth module's clear-pairings
+  line) low afterwards; whether that matters on the amp is untested (`docs/bus-map.md`).
+  `features/fix-menu-input` takes the whole cycle out; if an input ever needs it, that is where
+  it will show.
+- **Pop at power-off.** A small pop on the Power key, heard on the amp on 2026-10-02 (hn16), the
+  same at volume 0 and with the mute key on; the mute key itself is silent. With mute on, the
+  only pins power-off moves are the supply enables: P4.4 low, then P0.0 and P4.0 low 100 ms
+  later; P2.7 stays low, so the speakers stay connected. So the pop comes with the supplies
+  going. Whether stock pops too is not known. One difference from stock: fast-lcd's quick
+  clear shortens the time from the amp mute (P2.2) to P4.4 low from 150 ms to 11 ms, which
+  cannot be the whole cause, since the pop is there when the amp was muted long before.
+  Tried on the amp the same day: with Output on Headphones (P2.7, P2.5 and P2.2 high) the
+  speakers pop at power-off just the same, and the switch to Headphones itself is silent. So
+  P2.7 does not take the speakers off the amplifier, and no pin the MCU drives is known to.
+  What is left is the order and spacing of the supply enables, which should not be changed
+  before the supplies are identified on the board. A build that holds P0.0 and P4.0 for 2 s
+  after P4.4 would at least tell which step pops; the amp is in that state for 5 s at every
+  power-on (`docs/bus-map.md` has the order).
+- **Which part makes the volume-key pop.** On Optical or Coaxial without lock, stock's first
+  volume key sets P2.7 and P2.2 and opens the NJW1194 for a tick (`features/fix-volume-pop`
+  removes all three). Which of them is audible is not known; it would tell P2.7's and
+  P2.2's roles apart. A test build that does one at a time would answer it.
+- **Volume key during the unmute countdown.** On Optical and Coaxial with lock, every volume
+  key runs `unmute_now` (0x5A5E) first. Pressed while the unmute countdown 0x43:0x44 still
+  runs (the last 2 s of a power-on, the 1 s after a stream locks), it unmutes at once, up to
+  1.9 s early in the emulator, right after the DAC setup. On USB, Bluetooth and AUX the key
+  only writes the volume and the mute holds. Stock behaviour, not reported as audible, and
+  not changed by fix-volume-pop.
+- **A key lost to the settings save (stock race).** Found in the emulator on 2026-10-02, not
+  yet looked for on the amp. `settings_save_eeprom` (0x492B) starts with `lcall ir_cmd_clear`
+  (0x5DA1: `g_ir_cmd` 0x6A = 0) and leaves the new-command bit 0x20.4 alone. It runs from the
+  main loop (0x3446) when the save countdown 0x37:0x38 runs out, 50 main ticks after a setting
+  change such as a volume step. A command whose last bit `nec_decode` takes in that one
+  main-loop pass, after `read_key` tested 0x20.4 (0x3DA4) and before the clear, keeps its bit
+  and loses its code: the next pass looks up command 0, which is 0xFF in the table at 0x9398.
+  On the volume page `read_key` turns that into key 0x15 at 0x3DD6, so the page closes and the
+  volume does not step; on the other pages 0xFF is no key and the press does nothing (read from
+  the listing, not run). Shown with whole NEC frames sent through the INT0 handler, on the
+  stock image as on hn16. On hn16 a second Vol+ whose last edge comes 0 to 760 clocks into the
+  save's tick goes home; 20 clocks before the tick or 800 into it, the volume steps (stock: the
+  same at 100-clock steps). Nothing in the decoder's state guards it (`g_ir_state`,
+  `g_ir_repeat_cnt`, the release timer 0x34), so `Amp.press`, which sets only 0x6A and the bit,
+  shows the same thing. The window is the part of that pass before the save: 32 us when the
+  pass is otherwise idle, and 2.9 ms when the 100 ms format poll (inputs 1..5, I2C) falls on
+  the same tick, as it does on fast-lcd for a Vol+ 9.0 s after Power. The save comes 0.67 s
+  after the Vol+ on stock (the volume page's draw swallows ticks), 0.52 s on fast-lcd and 0.50
+  s on hn16. So on the amp it takes a second key about that long after the first, timed to
+  within 32 us, or 3 ms on a format-poll tick: rare, and it would look like a remote glitch.
+  Not known: why stock clears the command there, whether it has ever happened on the amp, and
+  what the erase itself costs. STC's IAP is believed to hold the CPU while it erases and writes
+  (milliseconds for a sector erase; not checked against the STC8G manual, and `Amp` does it in
+  no time), and `eeprom_write` masks interrupts per byte, so a frame under way then may lose
+  edges and be dropped by the decoder. A fix would replace the call at 0x492B with one that
+  keeps a pending command.
+- **Power-on sequence timing.** The delays in `post_power_on` (0x5585), `audio_chips_init`
+  (0x50D1), 0x24D6 and 0x5D66 govern switching speed and the click that SMSL fixed once;
+  worth tabulating if faster switching is wanted. (0x5AAB, named here before, has no delay:
+  it only rewrites EEPROM sector 0.)
 - **Input-name flicker root cause.** See the flicker section: the code never writes the
   big line during status refreshes, so the transient is at the panel/interface level.
   Candidates: chip-select toggled per byte on the 8-bit bus, or writes landing during
@@ -692,7 +893,12 @@ first, single writes after it.
   negated byte sum. Record 0xFF is the flash image.
 - IR path: NEC decoder in the INT0 handler (0x2681) stores the command byte at RAM 0x6A;
   `ir_cmd_to_key` (0x5D10) maps it through the 15-byte table at 0x9398; the dispatcher
-  (0x0BB4) switches on the result through a Keil switch helper at 0x2072.
+  (0x0BB4) switches on the result through a Keil switch helper at 0x2072. The decoder times
+  the falling edges with Timer1, checks the address bytes 12 34 and sets bit 0x20.4 for
+  `read_key`. A held Vol+, Vol-, Up or Down sets the bit again on every repeat code but the
+  first. NEC 0x08 acts on release (200 ms after its last repeat, `inject_key_08`) and becomes
+  0x0E at its tenth repeat. 300 ms after the last frame or repeat the Timer0 ISR clears 0x6A
+  (0x34, 0x3EAC), which ends the repeats.
 - Inputs live in RAM 0x47 (1..6); `input_apply` (0x5640) switches the hardware via
   `input_set_hw` (0x24D6) and saves the setting to EEPROM.
 - Power flag is RAM 0x4F (0 = standby). Source on the remote while in standby resets the

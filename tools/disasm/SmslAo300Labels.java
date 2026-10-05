@@ -29,7 +29,7 @@ public class SmslAo300Labels extends GhidraScript {
         {0x0ED2, "key_volume_down"},
         {0x0F62, "key_59"},            {0x0F93, "key_source_next"},
         {0x0FC8, "key_source_prev"},   {0x1006, "key_output_toggle"},
-        {0x1047, "key_1c"},            // NEC 0x09: mute toggle (0x22.1): NJW1194 mute code, DAC mute, P2.2 high, clr P2.5
+        {0x1047, "key_1c"},            // NEC 0x09: goes home (page 1, render), then the mute toggle (0x22.1): NJW1194 mute code, DAC mute, P2.2 high, clr P2.5; reached on pages 1 and 2 only (hooked, features/house-numerals: hn_mute_key shows the volume page instead)
         {0x106D, "key_bt_function"},   // key 0x0A (NEC 0x0E), Bluetooth only: "BT Reconnect" (0x934E), expander pin 0x10 low for 0.3 s
         {0x10BE, "key_toggle_29"},     // key 0x14 (NEC 0x08): Dimmer 1 <-> 2
         {0x10E1, "key_38_combo"},      // bt_list_clear, then home
@@ -38,7 +38,9 @@ public class SmslAo300Labels extends GhidraScript {
         {0x135A, "key_down"},          {0x144E, "key_menu"},          // NEC 0x03 (NEC_MENU in ao300.py); acts only inside a menu, does not open it
         {0x14E3, "key_default"},       {0x2072, "keil_switch_case"},
         {0x202C, "cmp_u32"},           {0x24D6, "input_set_hw"},
-        {0x2681, "nec_decode"},        {0x2F46, "settings_load_eeprom"},
+        {0x2681, "nec_decode"},        {0x2F46, "settings_load_eeprom"},   // cold boot only (main, 0x53F6): EEPROM 0x0002 -> 0x26 (power-on flag); the record 0x0201..0x020C ->
+                                       // 0x31 volume, 0x47 input, 0x2B output, 0x4A, 0x39 EQ, 0x35, 0x2A, 0x4D colour, 0x52 headphone volume, 0x33, 0x29 dimmer, 0x2C filter;
+                                       // both volumes only clamped to 0..60 (0x2F56, 0x303A), so stock starts at the last volume (features/start-volume caps it)
         {0x3A53, "small_text_render"}, {0x3DA2, "read_key"},
         {0x3E67, "timer0_isr"},        {0x449F, "main_init"},
         {0x4E2D, "step_with_wrap"},    {0x5040, "timer3_isr"},
@@ -47,12 +49,22 @@ public class SmslAo300Labels extends GhidraScript {
         {0x55F2, "uart1_isr"},         {0x5628, "input_step"},
         {0x59ED, "uart1_init"},        // SCON 0x50, Timer2 as 1T baud generator (reload 0xFFCC: 115200 at 24 MHz), UART1 on P3.0/P3.1, ES on
         {0x55BC, "standby_power_step"}, // standby loop, after the standby key handler: on power-on clr P0.2, P_SW1 S1_S=01 (UART1 to P3.6/P3.7, the XMOS line), power_on_display; on entering standby setb P0.2, S1_S=00 (UART1 back on the header pins P3.0/P3.1), 0x5B4F
-        {0x56E8, "int1_isr"},          {0x588B, "input_menu_select"},
+        {0x56E8, "int1_isr"},          {0x588B, "input_menu_select"},  // R7 = input, from the menu's INPUT page (0x11FE, 0x1489): settings save armed, mute by register (clr 0x22.4, audio_apply_mute; P2.2 not set),
+                                       // clr P4.0, 0x41:0x42 = 300 ticks, page 1. The Source key does none of this (input_apply 0x5640).
+                                       // features/fix-menu-input hooks the lcall at 0x5892 (mi_switch) and skips 0x5895..0x589C
+        {0x3375, "reinit_timer_expired"}, // main loop: 0x41:0x42 reaches 0 -> setb P4.0, delay_long, expander_init, audio_chips_init (the power-on chip setup, ends in the unmute)
         {0x58AF, "eeprom_write"},
         {0x58D3, "audio_apply_mute"},  // 0x22.4 set: volume_apply(0x31), setb 0x22.5; clear: NJW1194 to the mute code (0x92C5), clr 0x22.5; then DAC reg 9 by 0x22.5 (0x5A0A). 5.2 ms when muting
         {0x5956, "eeprom_read"},       {0x59B2, "standby_key"},
-        {0x59D0, "eeprom_erase"},      {0x5A5E, "fn_5a5e"},
-        {0x5AAB, "power_on_sequence"}, {0x5CE8, "iap_idle"},
+        {0x59D0, "eeprom_erase"},
+        {0x5A5E, "unmute_now"},        // clr 0x22.1 (mute key flag), mute_state_set(1): pins by output, NJW1194 volume, DAC unmute, whatever 0x43:0x44 still holds.
+                                       // Called by the head of all four volume keys (0x0D22, 0x0DA2, 0x0E49, 0x0EF1) when the mute key is on, and on optical/coax
+                                       // with lock (P4.2 low) on every press, so there a volume key ends a running unmute countdown early (emulator, 2026-10-02).
+                                       // Optical/coax without lock: the keys set P2.5 low, P2.7 and P2.2 high instead (the pop on the first key, confirmed on the amp
+                                       // 2026-10-02; features/fix-volume-pop patches the four heads at entry + 0x0C: no lock -> clr 0x22.1 only). Fifth caller 0x100F
+        {0x5AAB, "eeprom_mark_power_on"}, // only this: erase sector 0, 0x0001 = 0x45 (magic), 0x0002 = 1 (power-on flag); standby_key jumps here on Power.
+                                       // The power-on work itself is standby_power_step and post_power_on
+        {0x5CE8, "iap_idle"},
         {0x5D03, "delay_long"},        {0x5D10, "ir_cmd_to_key"},
         {0x5D42, "ui_clear_screen"},   {0x5D4B, "timer1_isr"},
         {0x5D7D, "reset_timer_37"},    {0x5D8A, "inject_key_08"},
@@ -104,12 +116,29 @@ public class SmslAo300Labels extends GhidraScript {
         {0x48B2, "eq_apply"},          // R7 = EQ 1..8 (Direct, Tone, SDB, Bass, Super Bass, Rock, Soft, Clear): tone_write for bass and treble
         {0x4837, "tone_write"},        // R5 = level 0..18 (9 flat), R7 = 0x30 treble / 0x40 bass -> njw1194_write
         {0x5D66, "p43_pulse"},         // P4.3 low for one delay_long; input_set_hw calls it on a switch to USB
-        {0x3C14, "bt_list_clear"},     // Bluetooth: "BT CLEAR......", bt_clear_pulse; else "It's not BT!"
+        {0x3C14, "bt_list_clear"},     // the RESET page's hold action. Bluetooth: "BT CLEAR......", bt_clear_pulse. Any other input (0x3C2F): "RESETTING......",
+                                       // sectors 0 and 0x0200 erased and rewritten with the factory record (volume 20, input 1, ...), then IAP_CONTR = 0x60 (reset).
+                                       // "It's not BT!" belongs to bt_clear_or_not_bt (0x568A)
+        {0x568A, "bt_clear_or_not_bt"}, // on Bluetooth: bt_clear_pulse, then mute (clr 0x22.4, audio_apply_mute); else the text "It's not BT!" (0x9270). Callers not traced
         {0x5BA4, "bt_clear_pulse"},    // expander pin 0x14 low for about 0.2 s
         {0x5B7A, "expander_outputs_on"},// pin 0x14 high, 0x10 and 0x17 low (power-on)
         {0x408B, "xmos_format_take"},  // buffer valid (0x78 == 0xFF): copy 0x76 -> 0x75 (format class), 0x77 -> 0x73 (rate index 1..12); the only reader of the UART buffer
+        {0x5B0B, "power_off_audio"},   // main_tasks_on's power-off step (0x5B35): mute_state_set(0), expander P0_0 low, ui_clear_screen, clr P4.4, setb P2.2, 0x7B = 0.
+                                       // The clear is the only delay between the amp mute and P4.4 low: 150 ms in stock, 11 ms with fast-lcd
         {0x5B4F, "standby_enter"},     // lcd_bus_low, P0.0 and P4.0 low, backlight off, mute, P4.4 low
-        {0x4DDC, "volume_apply"},      // R7 = volume (0x31): saves it in 0x5B, looks up 0x9289, njw1194_write(R7=0x10)
+        {0x4DDC, "volume_apply"},      // R7 = volume (0x31): saves it in 0x5B, looks up 0x9289, njw1194_write(R7=0x10); with output 2 (0x2B) it uses g_volume_hp (0x52) instead of R7
+        {0x492B, "settings_save_eeprom"}, // erase sector 0x0200, write the 12 bytes 0x0201..0x020C from RAM (see settings_load_eeprom). Called at 0x3446 when the
+                                       // countdown 0x37:0x38 (reset_timer_37: 50 main ticks) runs out, so about 0.5 s after a change, and after every power-on (filter_apply arms it).
+                                       // Its first instruction is lcall ir_cmd_clear, with the new-command bit 0x20.4 left alone: a command nec_decode stored after
+                                       // read_key's test of that bit in the same main-loop pass is read as command 0, key 0xFF (README, open questions)
+        {0x5DA1, "ir_cmd_clear"},      // g_ir_cmd = 0. Called by timer0_isr when g_ir_release_timer runs out (0x3EB7) and by settings_save_eeprom
+        {0x5BE0, "countdown8_dec"},    // R3:R2:R1 -> one byte: if non-zero, decrement; C set when that made it 0 (countdown16_dec for one byte). timer0_isr uses it
+        {0x5CF6, "clamp_hp_30"},       // R7 = min(R7, 30)
+        {0x5275, "output_apply"},      // R7 = output 1 speakers / 2 headphones. On a change (0x5287): save armed, mute, g_volume_hp = clamp_hp_30 (0x5296), volume_apply.
+                                       // The only volume cap in stock; nothing caps at power-on
+        // menus (pages 3..13). Details in docs/menu-system.md
+        {0x2B0D, "menu_list_render"},  // R3:R2:R1 -> list table of 4-byte entries {count, 3-byte string pointer}; R5 = highlighted row; count -> 0x14; rows from y 36, 28 px apart
+        {0x46BC, "menu_main_restore"}, // back on the main menu: 0x17 = 0x16, scroll offset 0x19 and row 0x10 recomputed; the item count 10 is an immediate at 0x4723 and 0x472A
         // main loop and timers
         {0x3325, "main_tick_tasks"},   // first, on every pass: 0x21.4 set (re-mute request) -> clear it and 0x22.4, audio_apply_mute
         {0x5585, "post_power_on"},     // run by main_tasks_on when 0x20.3 is set (power-on path 0x55E4); blocks ~1 s, then 0x43:0x44 = 200
@@ -137,73 +166,81 @@ public class SmslAo300Labels extends GhidraScript {
         // patch code, only in the images that carry it
         {0x9400, "ds_select"},         // features/direct-select standalone image; builds that include the fix place it in their own code
         {0x9680, "fx_auto_off"},       // features/fix-auto-off standalone image; builds that include the fix place it in their own code
+        {0x96B0, "sv_limit"},          // features/start-volume standalone image (hook 0x5596): g_volume and g_volume_hp capped at the build's limits, then audio_chips_init;
+                                       // builds that include the fix place it in their own code (house-numerals hn14: 0xF082)
+        {0x9650, "mi_switch"},         // features/fix-menu-input standalone image (hook 0x5892): audio_apply_mute, format poll 10 ticks, unmute countdown 200, input_set_hw(g_input),
+                                       // then input_menu_select's tail at 0x589D; builds that include the fix place it in their own code (house-numerals hn16: 0xF0B1)
+        {0x96D6, "vp_apply"},          // features/fix-volume-pop standalone image (hook 0x0F4A): volume_apply, except on Optical/Coaxial without lock (P4.2 high),
+                                       // where it only raises the re-mute request (0x21.4, 0x43:0x44 = 100); builds that include the fix place it in their own code (house-numerals hn16: 0xF099)
         {0x9700, "fast_pixel"},        // features/fast-lcd, replaces lcd_write_pixel
         {0x9716, "fast_clear"},        // features/fast-lcd, replaces lcd_clear_black's loop
         // features/house-numerals (hn10)
-        {0xD452, "uk_fill"},             // rectangle in one colour, streamed
-        {0xD4A8, "uk_acc"},              // R6:R7 = accent (theme colour, SMSL orange on White)
-        {0xD4B9, "hn_name_ptr"},         // volume page: input 1..6 -> name pointer
-        {0xD4D2, "uk_avg"},              // R6:R7 = per-channel average of the RGB565 colours R2:R3, R4:R5
-        {0xD4EA, "uk_tfetch"},           // uk_text: next character (code or XDATA string)
-        {0xD571, "uk_text"},             // proportional text painter (pfont fonts): align, spacing, x clip; 1-bit or 4-level run-length; every row
-        {0xD579, "uk_textc"},            // uk_text with a row clip (TP_YC0..TP_YC1): the number roll
+        {0xD457, "uk_fill"},             // rectangle in one colour, streamed
+        {0xD4AD, "uk_acc"},              // R6:R7 = accent (theme colour, SMSL orange on White)
+        {0xD4BE, "hn_name_ptr"},         // volume page: input 1..6 -> name pointer
+        {0xD4D7, "uk_avg"},              // R6:R7 = per-channel average of the RGB565 colours R2:R3, R4:R5
+        {0xD4EF, "uk_tfetch"},           // uk_text: next character (code or XDATA string)
+        {0xD576, "uk_text"},             // proportional text painter (pfont fonts): align, spacing, x clip; 1-bit or 4-level run-length; every row
+        {0xD57E, "uk_textc"},            // uk_text with a row clip (TP_YC0..TP_YC1): the number roll
         {0xDA99, "tx_yclip"},            // uk_text: the run-length decoder for cells cut by the row clip
-        {0xDB48, "hn_draw_volume"},      // replaces volpage_draw_volume 0x5936: records the value; idle page: caption, then a roll
-        {0xDBB0, "hn_dyn_now"},          // the number, the line (spring snapped) and the dB caption at once
-        {0xDBBC, "hn_dec2"},             // A (0..99) -> decimal text at DPTR, no leading zero, NUL
-        {0xDBD0, "hn_roll"},             // number roll: one frame per tick (after hn_spring), 14 frames, idle page only
-        {0xDC28, "hv_num"},              // volume page: the number, right-aligned (num84), the rest of the roll box black; ends a roll
-        {0xDC37, "hn_num_at"},           // a number in num84 at a row offset and ink, clipped to the roll box, the rest of the box black
-        {0xDCE4, "hv_name"},             // volume page: the input name (disp36)
-        {0xDD39, "hv_status"},           // volume page: the status line, loaded by hn_stat_load (mono16)
-        {0xDD97, "hn_stat_load"},        // XDATA 0x50 = the status line as home_refresh_periodic loads it (0x4016.., hn_hold returns)
-        {0xDDAB, "hn_dim_ink"},          // TP_INK = DIM, or DIM_LOST without a signal (0x22.5) on a digital input
-        {0xDDC6, "hv_vol"},              // volume page: VOL, letter-spaced, accent
-        {0xDE14, "hv_capr"},             // volume page: "max 60"
-        {0xDE61, "hv_div"},              // volume page: divider
-        {0xDE72, "hv_cap"},              // volume page: the dB caption from the NJW1194 code table 0x9289
-        {0xDF2E, "hv_line"},             // volume page: whole position line (two halves)
-        {0xDF59, "hn_line_seg"},         // columns HN_S0..HN_S1 of the position line, split HN_SPL (the spring's)
-        {0xDFCE, "hn_vol_static"},
-        {0xDFDD, "hn_volpage"},          // page 2 renderer (jump-table entry 0x2143)
-        {0xDFFE, "hn_spring"},           // the position line's spring: one tick (fixed-point matrix of the mock's integrator), redraws the moved columns
-        {0xE11D, "hn_sp_lin"},           // spring: V * k - e * k' (Q16)
-        {0xE151, "hn_sp_mulx"},          // spring: signed word at DPTR * R4:R5 / 65536, rounded
-        {0xE1A4, "hn_sp_t6"},            // spring: 64 * the line's fill for HN_VOL
-        {0xE1C1, "hn_sp_split"},         // spring: position -> split column 16..304
-        {0xE1F5, "hn_sp_snap"},          // spring: on its target, still (hn_volpage, hn_dyn_now)
-        {0xE20C, "hn_sp_reset"},         // spring: at 0, still, split 16 (home)
-        {0xE223, "hn_enter_vol"},        // volume-key sites and hn_clear page 2: start / turn round the entry wipe
-        {0xE25C, "hn_reverse"},
-        {0xE279, "hn_clear"},            // ui_render_page's clear (0x2106): entry, exit, or cancel + stock clear
-        {0xE2DD, "hn_stop"},             // no wipe, no page drawn, no roll, spring at home (hn_cancel, hn_home_now)
-        {0xE2ED, "hn_cancel"},           // ui_clear_screen's first instruction: stops a wipe and a roll, spring home
-        {0xE2F6, "hn_hold"},             // 0x4081: holds the periodic home refresh back during a wipe
-        {0xE319, "hn_name_guard"},       // home_draw_input_name's entry: cancels an exit wipe first
-        {0xE329, "hn_home_now"},         // stop a wipe, black, then hn_hold's stock path: home_refresh + status line (hn_name_guard)
-        {0xE332, "hn_flag_path"},        // 0x3FF8: during a wipe the flag path skips its 0x412F fill
-        {0xE347, "hn_name_load"},        // XDATA 0x35 = input name, as 0x4A85 loads it
-        {0xE368, "hh_icon"},  {0xE36B, "hh_vol"},  {0xE370, "hh_fmt"},  {0xE373, "hh_eq"},  {0xE376, "hh_bar"},  {0xE386, "hh_name"}, // exit wipe: home elements
-        {0xE389, "uk_tasks"},            // replaces main_tasks_on's lcall main_tick_tasks (0x5B2A): re-mute request, then per tick a wipe step, the spring, the roll
-        {0xE39F, "hn_step"},             // one wipe step
-        {0xE927, "hn_after"},            // each tick after hn_step: hn_spring, then hn_roll
-        {0xE983, "hn_home_tail"},        // home_refresh's tail: volume, accent bar
-        {0xE996, "hn_align_big"},        // big_text_render on page 1: the name at y 75 is hm_name, other texts start at x 16
-        {0xE9BD, "hn_align_small"},      // small_text_render on page 1: the status at y 135 is hm_status_r, other texts start at x 16
-        {0xE9E4, "hm_name"},             // home: the input name (XDATA 0x35), display face
-        {0xEA3C, "hm_name_meas"},        // hm_name's end column, nothing drawn
-        {0xEA89, "hm_status_r"},         // small_text_render's hand-over at y 135: grey unless the draw is the loader's (hn_hold marks it), then hm_status
-        {0xEA95, "hm_status"},           // home: the status line (XDATA 0x50), mono
-        {0xEAF0, "hm_stat_meas"},        // hm_status's end column, nothing drawn
-        {0xEB3D, "hm_rest"},             // black from TP_END + 1 to R6:R7, rows R5.., R4 rows (not during a wipe)
-        {0xEB9D, "hm_icon"},             // replaces home_draw_output_icon 0x5744: speaker / muted / headphones
-        {0xECA3, "hm_volume"},           // replaces home_draw_volume 0x5916
-        {0xED0F, "hm_eq"},               // replaces eq_tag_paint 0x4F18: the EQ tag box
-        {0xED18, "hm_fmt"},              // replaces home_draw_format_tag's lcall small_text_at (0x425D): the format tag box
-        {0xED1F, "hm_tag"},              // a tag: accent box with corners of radius 2 (pf_box edges) and text, black up to it
+        {0xDB4D, "hn_draw_volume"},      // replaces volpage_draw_volume 0x5936: records the value (muted: the text "M"); idle page: caption, then a roll; a mute change also redraws the label and the line
+        {0xDBEC, "hn_dyn_now"},          // the number, the line (spring snapped) and the dB caption at once
+        {0xDBFA, "hn_dec2"},             // A (0..99) -> decimal text at DPTR, no leading zero, NUL
+        {0xDC0E, "hn_roll"},             // number roll: one frame per tick (after hn_spring), 14 frames, idle page only
+        {0xDC66, "hv_num"},              // volume page: the number, right-aligned (num84), the rest of the roll box black; ends a roll
+        {0xDC75, "hn_num_at"},           // a number in num84 at a row offset and ink, clipped to the roll box, the rest of the box black; the text "M": MUTE (hn_strmute) in pf_name, the ink's red part
+        {0xDD52, "hv_name"},             // volume page: the input name (disp36)
+        {0xDDA7, "hv_status"},           // volume page: the status line, loaded by hn_stat_load (mono16)
+        {0xDE05, "hn_stat_load"},        // XDATA 0x50 = the status line as home_refresh_periodic loads it (0x4016.., hn_hold returns)
+        {0xDE19, "hn_dim_ink"},          // TP_INK = DIM, or DIM_LOST without a signal (0x22.5) on a digital input
+        {0xDE34, "hv_vol"},              // volume page: VOL, letter-spaced, accent; muted (0x22.1): the red muted speaker (pf_icon)
+        {0xDECA, "hv_capr"},             // volume page: "max 60"
+        {0xDF17, "hv_div"},              // volume page: divider
+        {0xDF28, "hv_cap"},              // volume page: the dB caption from the NJW1194 code table 0x9289
+        {0xDFE4, "hv_line"},             // volume page: whole position line (two halves)
+        {0xE00F, "hn_line_seg"},         // columns HN_S0..HN_S1 of the position line, split HN_SPL (the spring's); the fill dark red while muted
+        {0xE08B, "hn_vol_static"},
+        {0xE09A, "hn_volpage"},          // page 2 renderer (jump-table entry 0x2143)
+        {0xE0BB, "hn_spring"},           // the position line's spring: one tick (fixed-point matrix of the mock's integrator), redraws the moved columns
+        {0xE1DA, "hn_sp_lin"},           // spring: V * k - e * k' (Q16)
+        {0xE20E, "hn_sp_mulx"},          // spring: signed word at DPTR * R4:R5 / 65536, rounded
+        {0xE261, "hn_sp_t6"},            // spring: 64 * the line's fill for HN_VOL; 0 while muted
+        {0xE286, "hn_sp_split"},         // spring: position -> split column 16..304
+        {0xE2BA, "hn_sp_snap"},          // spring: on its target, still (hn_volpage, hn_dyn_now)
+        {0xE2D1, "hn_sp_reset"},         // spring: at 0, still, split 16 (home)
+        {0xE2E8, "hn_enter_vol"},        // volume-key sites and hn_clear page 2: start / turn round the entry wipe
+        {0xE321, "hn_mute_key"},         // replaces key_1c 0x1047: the stock toggle, then the volume page (hn_enter_vol unless open) and vol_key_tail_draw
+        {0xE344, "hn_key_p2"},           // read_key's page-2 filter from 0x3DD1: keeps the mute key 0x1C as well as 0x1A, 0x1B, 0x1F
+        {0xE354, "hn_reverse"},
+        {0xE371, "hn_clear"},            // ui_render_page's clear (0x2106): entry, exit, or cancel + stock clear
+        {0xE3D5, "hn_stop"},             // no wipe, no page drawn, no roll, spring at home (hn_cancel, hn_home_now)
+        {0xE3E5, "hn_cancel"},           // ui_clear_screen's first instruction: stops a wipe and a roll, spring home
+        {0xE3EE, "hn_hold"},             // 0x4081: holds the periodic home refresh back during a wipe
+        {0xE411, "hn_name_guard"},       // home_draw_input_name's entry: cancels an exit wipe first
+        {0xE421, "hn_home_now"},         // stop a wipe, black, then hn_hold's stock path: home_refresh + status line (hn_name_guard)
+        {0xE42A, "hn_flag_path"},        // 0x3FF8: during a wipe the flag path skips its 0x412F fill
+        {0xE43F, "hn_name_load"},        // XDATA 0x35 = input name, as 0x4A85 loads it
+        {0xE460, "hh_icon"},  {0xE463, "hh_vol"},  {0xE468, "hh_fmt"},  {0xE46B, "hh_eq"},  {0xE46E, "hh_bar"},  {0xE47E, "hh_name"}, // exit wipe: home elements
+        {0xE481, "uk_tasks"},            // replaces main_tasks_on's lcall main_tick_tasks (0x5B2A): re-mute request, then per tick a wipe step, the spring, the roll
+        {0xE497, "hn_step"},             // one wipe step
+        {0xEA1F, "hn_after"},            // each tick after hn_step: hn_spring, then hn_roll
+        {0xEA7B, "hn_home_tail"},        // home_refresh's tail: volume, accent bar
+        {0xEA8E, "hn_align_big"},        // big_text_render on page 1: the name at y 75 is hm_name, other texts start at x 16
+        {0xEAB5, "hn_align_small"},      // small_text_render on page 1: the status at y 135 is hm_status_r, other texts start at x 16
+        {0xEADC, "hm_name"},             // home: the input name (XDATA 0x35), display face
+        {0xEB34, "hm_name_meas"},        // hm_name's end column, nothing drawn
+        {0xEB81, "hm_status_r"},         // small_text_render's hand-over at y 135: grey unless the draw is the loader's (hn_hold marks it), then hm_status
+        {0xEB8D, "hm_status"},           // home: the status line (XDATA 0x50), mono
+        {0xEBE8, "hm_stat_meas"},        // hm_status's end column, nothing drawn
+        {0xEC35, "hm_rest"},             // black from TP_END + 1 to R6:R7, rows R5.., R4 rows (not during a wipe)
+        {0xEC95, "hm_icon"},             // replaces home_draw_output_icon 0x5744: speaker / muted / headphones
+        {0xED9B, "hm_volume"},           // replaces home_draw_volume 0x5916
+        {0xEE07, "hm_eq"},               // replaces eq_tag_paint 0x4F18: the EQ tag box
+        {0xEE10, "hm_fmt"},              // replaces home_draw_format_tag's lcall small_text_at (0x425D): the format tag box
+        {0xEE17, "hm_tag"},              // a tag: accent box with corners of radius 2 (pf_box edges) and text, black up to it
         {0xEE4C, "ht_edges"},            // hm_tag: the box edges (pf_box "[" and "]")
-        {0xEEEE, "hm_tag_copy"},         // R3:R2:R1 string -> HM_TAG, trailing spaces cut
-        {0xEF2E, "hm_fmt_clear"},        // replaces home_draw_format_tag's tag_box_clear calls (0x41E8, 0x41FC)
+        {0xEFE6, "hm_tag_copy"},         // R3:R2:R1 string -> HM_TAG, trailing spaces cut
+        {0xF026, "hm_fmt_clear"},        // replaces home_draw_format_tag's tag_box_clear calls (0x41E8, 0x41FC)
     };
 
     Object[][] codeLabels = {
@@ -214,7 +251,27 @@ public class SmslAo300Labels extends GhidraScript {
         {0x5D17, "ir_cmd_to_key_tail"},
         {0x22FA, "ui_render_done"},         {0x336A, "main_render_page"},
         {0x3DD6, "read_key_volpage_exit"},  // page 2: keys other than Vol+/Vol-/Power -> 0x15 (home)
+        {0x3DC6, "read_key_volpage_filter"}, // read_key, IR, page 2: key 0x1A, 0x1B or 0x1F -> 0x3DD8, else read_key_volpage_exit
+        {0x3DD1, "read_key_volpage_last"},  // its last test, mov A,R3 ; xrl A,#0x1F (hooked, features/house-numerals: hn_key_p2 keeps the mute key 0x1C too)
+        {0x0C23, "dispatch_key_menu_mute"}, // dispatch_key, pages >= 3: the mute key 0x1C -> 0x15 (home), so key_1c only runs on pages 1 and 2
+        {0x0CB3, "key_switch_1c"},          // dispatch_key's switch table entry: 0x1047, key 0x1C
+        {0x0F50, "vol_key_tail_draw"},      // vol_key_tail from its draw: volpage_draw_volume(0x31), 0x27:0x28 = 0x3F:0x40 = 200 (hn_mute_key ends here)
+        {0x1052, "key_1c_toggle"},          // cpl 0x22.1; muted: mute_state_set(0), clr P2.5; unmuted: 0x43:0x44 = 10
         {0x3ED9, "t0_return_home"},         // 0x3F:0x40 reaches 0 -> page 1, redraw
+        {0x3EAC, "t0_ir_release"},          // timer0_isr: countdown8_dec(g_ir_release_timer); at 0 ir_cmd_clear, so a repeat code after 300 ms of silence does nothing
+        // nec_decode (INT0, every falling edge): Timer1 (12T, 2 MHz) since the last edge -> g_ir_pulse, Timer1 restarted
+        {0x269B, "nec_bit"},                // g_ir_state 2: 1800..2600 counts = 0, 4000..4800 = 1, shifted into g_ir_shift from the top; else g_ir_error.
+                                            // After 16 bits the address must be 12 34 (0x2708)
+        {0x272F, "nec_frame_done"},         // bit 32: g_ir_cmd = third byte (the fourth, its complement, is not checked); setb 0x20.4 unless the command is 0x08;
+                                            // g_ir_repeat_cnt = 0
+        {0x2741, "nec_idle_edge"},          // g_ir_state 0: leader, repeat code or error
+        {0x2766, "nec_leader"},             // 26000..31000 counts (13.5 ms): g_ir_state = 2, g_ir_bit_cnt = 0, g_ir_cmd = 0, shift register cleared
+        {0x279A, "nec_repeat"},             // 20000..25800 counts (11.25 ms). Commands 0x0A, 0x0B, 0x02, 0x06: the first repeat is skipped, every later one sets
+                                            // 0x20.4 again. Command 0x08 (0x27C8): g_key08_timer = 20; at the 10th repeat g_ir_cmd = 0x0E with 0x20.4, timer 0
+        {0x27FA, "nec_exit"},               // g_ir_error or 0x20.4 set: g_ir_state = 0, g_ir_release_timer = 30. The first edge of a frame or repeat comes with
+                                            // Timer1 stopped at 0 (timer1_isr on overflow, 32.8 ms), so it ends here as an error and arms the timer
+        {0x338B, "main_key08_release"},     // main_tick_tasks: g_key08_timer reaches 0 (200 ms after the last repeat of a short hold) -> inject_key_08
+        {0x343B, "main_save_tick"},         // main_tick_tasks: g_save_timer reaches 0 -> settings_save_eeprom (0x3446). format_poll_tick and signal_monitor run before it in the pass
         {0x0BBD, "key_arm_screen_off"},     // dispatch_key, dimmer 2: setb P0.6 (not for key 0x1F), g_screen_off = (dimmer-1)*500
         {0x33DB, "screen_off_tick"},        // main_tick_10ms, dimmer 2: countdown16_dec(g_screen_off); reaching 0 -> clr P0.6 (backlight off)
         {0x3335, "main_tick_10ms"},         // runs once per 0x20.7 tick flag; missed ticks are lost
@@ -225,29 +282,33 @@ public class SmslAo300Labels extends GhidraScript {
         {0x4081, "home_refresh_periodic_draw"}, // lcall home_refresh; status line (hooked, features/house-numerals: hn_hold)
         {0x3FF8, "home_refresh_periodic_flags"}, // 0x21.3 / 0x21.1 / 0x20.6 set: clear them, page 1, 0x412F fill (hooked, features/house-numerals: hn_flag_path)
         {0x4A9B, "input_name_table"},       // home_draw_input_name's jump table, inputs 1..8 (7: no load)
-        {0x985F, "hn_ease"},                // features/house-numerals: wipe edge x per step (STEPS + 1 words, the cubic ease)
+        {0x9864, "hn_ease"},                // features/house-numerals: wipe edge x per step (STEPS + 1 words, the cubic ease)
         {0x9800, "hn_names"},               // features/house-numerals: volume-page name pointers, inputs 1..6
-        {0x984F, "hn_names8"},              // features/house-numerals: home_draw_input_name's strings, inputs 1..8
-        {0x9820, "hn_rolltab"},        // features/house-numerals: number roll frames 1..13 (rows for a step up, ink), 3 bytes each
-        {0x9847, "hn_spkt"},           // features/house-numerals: spring constants K2, K1, K4, K3 (Q16 words)
-        {0x98AB, "pf_name"},    // features/house-numerals: disp54, home name, format 2 (uk_text)
-        {0xA435, "pf_status"},  // features/house-numerals: mono28, home status line, format 2 (uk_text)
-        {0xB6B7, "pf_mono"},    // features/house-numerals: mono16, tags, volume-page small texts, format 2 (uk_text)
-        {0xC2E9, "pf_hvol"},    // features/house-numerals: num33, home volume, format 2 (uk_text)
-        {0xC673, "pf_icon"},    // features/house-numerals: icons22, icons, format 2 (uk_text)
-        {0xC806, "pf_box"},     // features/house-numerals: box22, tag box edges (pfont.box_edges), format 2 (uk_text)
-        {0xC832, "pf_vname"},   // features/house-numerals: disp36, volume-page name, format 2 (uk_text)
-        {0xCBE1, "pf_vnum"},    // features/house-numerals: num84, volume-page number, format 2 (uk_text)
+        {0x9854, "hn_names8"},              // features/house-numerals: home_draw_input_name's strings, inputs 1..8
+        {0x9825, "hn_rolltab"},        // features/house-numerals: number roll frames 1..13 (rows for a step up, ink), 3 bytes each
+        {0x984C, "hn_spkt"},           // features/house-numerals: spring constants K2, K1, K4, K3 (Q16 words)
+        {0x9817, "hn_strmute"},        // features/house-numerals: "MUTE", the muted volume page's text (hn_num_at)
+        {0x98B0, "pf_name"},    // features/house-numerals: disp54, home name, format 2 (uk_text)
+        {0xA43A, "pf_status"},  // features/house-numerals: mono28, home status line, format 2 (uk_text)
+        {0xB6BC, "pf_mono"},    // features/house-numerals: mono16, tags, volume-page small texts, format 2 (uk_text)
+        {0xC2EE, "pf_hvol"},    // features/house-numerals: num33, home volume, format 2 (uk_text)
+        {0xC678, "pf_icon"},    // features/house-numerals: icons22, icons, format 2 (uk_text)
+        {0xC80B, "pf_box"},     // features/house-numerals: box22, tag box edges (pfont.box_edges), format 2 (uk_text)
+        {0xC837, "pf_vname"},   // features/house-numerals: disp36, volume-page name, format 2 (uk_text)
+        {0xCBE6, "pf_vnum"},    // features/house-numerals: num84, volume-page number, format 2 (uk_text)
         {0x33ED, "mute_timer_expired"},     // 0x43:0x44 reaches 0 -> mute_state_set(1) (call at 0x33FB)
         {0x341B, "format_poll_tick"},       // inputs 1..5: 0x4B:0x4C reaches 0 -> reload 10, format_poll, on BT bt_hold_mute_poll
         {0x3E92, "t0_remute_no_lock"},      // Timer0: optical/coax and P4.2 high (no lock) -> setb 0x21.4, 0x43:0x44 = 100
         {0x3EE9, "t0_hold_mute_p26"},       // Timer0: P2.6 low, powered, output 2 (or P2.6 high in standby) -> clr P2.5, 0x43:0x44 = 300
         {0x45CE, "port_init"},              {0x5C79, "lcd_write_pixel_black"},
-        {0x2143, "ui_page_table"},          // jump-table entry for page 2 (data: 02 21 67, ljmp volpage_render)
+        {0x2143, "ui_page_table"},          // jump-table entry for page 2 (data: 02 21 67, ljmp volpage_render); 12 ljmps, pages 2..13. Any other page: ljmp ui_render_done at 0x2132
+        {0x1143, "menu_enter_table"},       // key_menu_nav on page 3: 10 ljmps indexed by the main-menu cursor (0x17, checked against 10 at 0x1134; else ljmp 0x11BB at 0x1139).
+                                            // Item i opens page i + 4; key_menu (back) and 0x1261 rely on that: 0x17 = page - 4
+        {0x5596, "post_power_on_chips"},    // post_power_on: lcall audio_chips_init, outputs still muted; cold power-up and standby wake both pass here (hooked, features/start-volume: sv_limit)
         {0x442F, "lcd_set_window_x1_from_a"},
         {0x2A25, "big_text_start_x_stored"},   // big_text_render: clr A ; mov R0,#2 ; movx @R0,A (hooked, features/house-numerals)
         {0x3A82, "small_text_start_x_stored"}, // small_text_render: same shape (hooked, features/house-numerals)
-        {0x0F48, "vol_key_tail"},            // common tail of the volume keys: volume_apply, 0x5D7D, draw (0x5936), arm page timers
+        {0x0F48, "vol_key_tail"},            // common tail of the volume keys: volume_apply (the lcall at 0x0F4A is hooked by features/fix-volume-pop: vp_apply), 0x5D7D, draw (0x5936), arm page timers
         {0x0D30, "volpage_enter_a"},         // mov 0x45,#2 before volume-entry site 0x0D33, in key_volume_up
         {0x0DB0, "volpage_enter_b"},         // mov 0x45,#2 before volume-entry site 0x0DB3, in key_volume_up2
         {0x0E57, "volpage_enter_c"},         // mov 0x45,#2 before volume-entry site 0x0E5A, in key_volume_down4
@@ -258,10 +319,31 @@ public class SmslAo300Labels extends GhidraScript {
         {0x92C6, "clkgen_table"},           // 43 x (register hi, lo, value) for the clock generator at I2C 0xC0
         {0x9251, "str_bt_clear"},           {0x9270, "str_not_bt"},             {0x934E, "str_bt_reconnect"},
         {0x9048, "input_name_strings"},     {0x9347, "str_volume"},
+        {0x9260, "str_resetting"},
+        // menu list tables for menu_list_render, 4-byte entries {count, FF, string hi, lo}, packed back to back
+        {0x8F1E, "menu_list_input"},        // 6
+        {0x8F36, "menu_list_eq"},           // 8
+        {0x8F56, "menu_list_color"},        // 8
+        {0x8F76, "menu_list_output"},       // 2
+        {0x8F7E, "menu_list_dimmer"},       // 2
+        {0x8F86, "menu_list_main"},         // 10: Input, Output, EQ, Treble, Bass, Filter, Color, BT Clear, Dimmer, RESET. Referenced by the immediates at
+                                            // 0x2197 / 0x2199 (page 3 renderer) and by the Keil init record at 0x583A (03 11 FF 8F 86: RAM 0x11..0x13)
+        {0x8FAE, "menu_list_filter"},       // 5
+        {0x8D6D, "menu_main_strings"},      // "- Input      " ...: 10 x 14 bytes
     };
 
     Object[][] ramLabels = {
         {0x10, "g_menu_a"},        {0x17, "g_menu_cursor"},   {0x19, "g_menu_b"},
+        // menus: 0x10 highlighted row on screen, 0x19 scroll offset, 0x17 selected item (a value 0..18 on the Treble, Bass and BT Clear pages)
+        {0x14, "g_menu_len"},      {0x15, "g_menu_rows"},     {0x16, "g_menu_main_item"},
+        // 0x14: items in the list on screen (menu_list_render); 0x15: visible rows, 5 (init record at 0x5836); 0x16: main-menu item kept while a sub-page is open
+        {0x26, "g_power_on_flag"}, // EEPROM 0x0002: non-zero, the amp turns on by itself after a cold power-up (standby_power_step)
+        {0x37, "g_save_timer_hi"}, {0x38, "g_save_timer_lo"}, // reset_timer_37 arms it to 50; at 0 (0x3446) settings_save_eeprom
+        {0x34, "g_ir_release_timer"}, // Timer0 ticks; nec_exit arms it to 30 after a command or an error, t0_ir_release clears g_ir_cmd at 0
+        {0x50, "g_key08_timer_hi"}, {0x51, "g_key08_timer_lo"}, // main ticks; 20 from every repeat of NEC 0x08 (nec_repeat), 0 at its 10th; at 0 main_key08_release
+        // bit 0x20.4: new IR command in g_ir_cmd. Set by nec_decode (frame done, repeats) and inject_key_08; read_key tests and clears it (0x3DA4), then ir_cmd_to_key.
+        // bits 0x20.7 and 0x20.1: set by timer0_isr every 10 ms. 0x20.7 is the main tick: main_tick_tasks runs its countdowns only when it is set (0x332F).
+        // 0x20.1 gates read_key's branch at 0x3DF4 (0x4E7D), taken when no IR command is pending
         {0x27, "g_osd_timer_hi"},  {0x28, "g_osd_timer_lo"},  {0x29, "g_dimmer_mode"},
         // 0x27:0x28, page 1: home_refresh_periodic countdown (10 after a render, 50 after a refresh)
         {0x2B, "g_output"},        {0x2C, "g_filter"},        {0x2F, "g_screen_off_hi"},
@@ -270,7 +352,8 @@ public class SmslAo300Labels extends GhidraScript {
         {0x39, "g_eq"},            {0x3D, "g_format"},        // g_format: 3 DSD, 4 MQA (by 0x75), 5 DoP, else PCM (home_draw_format_tag)
         {0x75, "g_format_mqa"},    // with g_format 4: 3 -> "MQA ", 4 or 5 -> "MQA.", else "PCM "
         // bit 0x22.1: muted (the mute key cpl's it, 0x1052); home_draw_output_icon draws the red icon then
-        {0x3F, "g_home_timer_hi"}, {0x40, "g_home_timer_lo"}, {0x43, "g_mute_timer_hi"},
+        {0x3F, "g_home_timer_hi"}, {0x40, "g_home_timer_lo"}, {0x41, "g_reinit_timer_hi"}, {0x42, "g_reinit_timer_lo"},   // P4.0 off time after input_menu_select, main-loop ticks; see 0x3375
+        {0x43, "g_mute_timer_hi"},
         {0x44, "g_mute_timer_lo"},      // unmute countdown, main-loop ticks; see 0x33ED
         {0x23, "g_settle_timer_hi"}, {0x24, "g_settle_timer_lo"}, // 1000 at power-on, 500 by input_set_hw, 100 after a format reconfig; reloads 100
         {0x4B, "g_format_poll_hi"},  {0x4C, "g_format_poll_lo"},  // format_poll_tick countdown, 10 ticks
