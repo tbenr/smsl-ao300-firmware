@@ -71,11 +71,15 @@ which expander inputs and MCU pins move when a cable or headphone is plugged in.
 First dump, 2026-10-05 (`docs/bus-map.md`, "Hardware read-back"): nothing else on the bus,
 every written register reads back, the expander is an AW9523B, and the clock generator
 reports PLL A unlocked on Optical without a stream and locked on HDMI (second dump, TV
-off): its reference comes with the input, probably from the receiver. Six dumps on
-2026-10-05 (HDMI and Optical, TV in standby, muted and playing) found the ARC activity bit
-the firmware never reads: receiver register 0x7D bit 6. Still to take: Optical with an
-optical stream; Coaxial, Bluetooth, USB and AUX with and without a stream; headphones in;
-a second read of the clock generator's status after its sticky flags are cleared.
+off): its reference comes with the input, probably from the receiver. Seven dumps on
+2026-10-05 (HDMI and Optical, TV in standby, muted and playing, then an optical stream too)
+and the PCM9211 datasheet gave the receiver's wiring: the HDMI receiver's I2S on AUXIN0 and
+its S/PDIF on RXIN3, the DIR parked on RXIN3 on USB and AUX. Deferred: USB and AUX dumps
+(the adapter drops off the Linux box on those two inputs while the amp's USB cable is in
+that box; unplug the cable or isolate the adapter first), which would confirm that
+register 0x39 shows the ARC stream there. Still to take: Bluetooth with and without a
+stream; Coaxial with a stream; headphones in; a second read of the clock generator's status
+after its sticky flags are cleared.
 
 ## Layer 3: single writes
 

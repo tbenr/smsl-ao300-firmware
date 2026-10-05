@@ -357,6 +357,60 @@ on the other inputs (the format poll already reads the receiver every 100 ms). R
 understood. Which MPIO pin bit 6 is, and what the HDMI receiver drives it with, is for the
 board.
 
+**Seventh dump, Optical selected, an optical stream (48 kHz) and ARC audio both playing.**
+Against the sixth: receiver 0x38 and 0x39 read 09 (the DIR's 48 kHz code), 0x5C to 0x5E
+read 20 02 DB (00 before), 0x7D reads 0x30 and 0x7E 0x04; P3.3 (INT1) reads low and P4.2
+(lock) low; the firmware's format code is 0x30; the clock generator's status reads 0x01:
+PLL A locked and, for the first time, a signal on its CLKIN input. **Bit 6 of 0x7D read 0
+with ARC audio still playing.**
+
+**What the receiver registers are (PCM9211 datasheet, SBAS495D).** With them the 0x7D
+story collapses:
+
+| Register | Name | Stock writes | Meaning |
+|---|---|---|---|
+| 0x34 | DIR input source | 02 Optical, 01 Coaxial, 00 Bluetooth, 03 USB, HDMI, AUX | RXIN2 optical, RXIN1 coaxial (amplifier on), RXIN0 the Bluetooth module's S/PDIF, RXIN3 the HDMI receiver's S/PDIF output, where the DIR is parked on the inputs that do not use it |
+| 0x37 | fs calculator target | 00, 05 on HDMI | DIR; on HDMI the main output port |
+| 0x38 | fs calculator result | read | bit 7 calculating, bits 6:4 port, bits 3:0 rate code (9 = 48 kHz) |
+| 0x39 | incoming biphase info | read | bit 7 "calculating or unlocked", bit 6 non-audio, bits 3:0 rate code |
+| 0x5C to 0x5E | DIR channel status bytes 2 to 4 | read | 20 02 DB with the optical stream |
+| 0x6B | main output port source | 44 USB, Optical, Coaxial, AUX; 33 HDMI; 00 Bluetooth | clocks and data from AUXIN1 (the XMOS I2S, on MPIO_C), AUXIN0 (the HDMI receiver's I2S) or DIR/ADC automatic |
+| 0x6C | AUX output port source | 44 USB, AUX; 11 Optical, Coaxial; 00 HDMI, Bluetooth | AUXIN1, DIR, or automatic |
+| 0x6F | MPIO group functions | 48 | MPIO_A: CLKST, VOUT, XMCKO, INT0 outputs; MPIO_B: the AUX output port; MPIO_C: AUXIN1 |
+| 0x7D | GPIO input data, MPIO_A and MPIO_B | read | bits 7:4 the AUX output port's clock and data lines, bits 3:0 the MPIO_A outputs, all as pin levels at the instant of the read |
+
+So the HDMI receiver feeds the PCM9211 twice, as the datasheet's jitter-cleaning
+arrangement describes: its I2S on AUXIN0 and its S/PDIF on RXIN3. The MCU's INT1 line is
+the receiver's INT0 output on MPIO_A, and its lock pin P4.2 is in all likelihood CLKST.
+Register 0x7D's upper nibble samples the AUX output port's clock and data lines, which
+toggle whenever that port has a source; its values across the seven dumps (00, 10, 50, 10,
+00, 60, 30) are snapshots of toggling lines, and the match with the TV's state in dumps two
+to six was chance. **No ARC activity indicator was found on Optical.** The deterministic one
+is the DIR itself: on USB and AUX the DIR is parked on RXIN3, the HDMI receiver's S/PDIF, so
+register 0x39 (bit 7 clear, a rate code) says that ARC audio is arriving, without any
+write. On Optical, Coaxial and Bluetooth the DIR carries the selected input; an auto-switch
+there would have to move it to RXIN3 while the selected input is unlocked, which is a
+register write (layer 3). Still to confirm: a dump on USB with the TV playing, then muted.
+
+**Eighth dump, Coaxial selected, no coaxial stream, TV and optical playing.** The receiver
+sits on RXIN1 (0x34 = 01) and reads unlocked (0x39 = 89: bit 7 set, the last rate code
+held), 0x38 = 00, channel status bytes 00: the HDMI stream is invisible on an input whose
+own S/PDIF is selected, as the model says. The clock generator's status read 0x61.
+
+**The adapter and the USB and AUX inputs.** Every attempt to dump on USB or AUX ended with
+the USB-serial adapter dropping off the Linux box (the host itself gets an I/O error on
+the device; it comes back on Coaxial). USB and AUX are the two inputs on which the XMOS
+path is selected (P0.2 and P4.6 low). The amp's USB cable was plugged into the same Linux
+box throughout, so the likeliest cause is the XMOS enumerating on that box whenever those
+inputs are selected; whether the adapter's 5V pin is wired to the header is not known. Not
+in the firmware. The USB and AUX dumps are deferred (user's call, 2026-10-05) until the
+cable is moved or the adapter isolated.
+
+The clock generator's CLKIN carries a signal only with an S/PDIF stream on the receiver:
+the receiver's recovered clock. Its XTAL input is always present (a crystal, or the
+receiver's buffered crystal output). PLL A: locked on HDMI and on Optical with a stream,
+unlocked on Optical without one.
+
 ## What this opens up
 
 Reachable from MCU code without new hardware, none of it tried:

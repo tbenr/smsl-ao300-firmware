@@ -802,12 +802,15 @@ first (`features/probe`; pr1 flashed on 2026-10-05, no dump captured yet), singl
   activity signal exists: with HDMI selected, the receiver's register 0x7D read 0x00 with
   the TV in standby, 0x10 with the TV on and muted, 0x50 with ARC audio arriving, and
   nothing else in the dump moved; and on Optical it read 0x00 with the TV muted and 0x60
-  with the TV playing, so bit 6 of that register is "ARC audio arriving" whatever input is
-  selected. By the PCM9211 datasheet 0x7D is the GPIO input register of its MPIO_A/B pins:
-  the HDMI receiver drives an activity line into the PCM9211, and the MCU reads it there
-  (`docs/bus-map.md`, "Hardware read-back"). Auto-switch is therefore feasible: a main-loop
-  poll of that bit on the other inputs, then the Source path to HDMI. Still to decide: the
-  hold-off, and what to do when the TV goes quiet.
+  with the TV playing; but by the PCM9211 datasheet 0x7D samples the pin levels of its AUX
+  output port, toggling clock and data lines, and the seventh dump read the bit 0 with ARC
+  playing: those matches were chance, and no ARC activity indicator exists on Optical
+  (`docs/bus-map.md`, "Hardware read-back"). What does exist: the HDMI receiver's S/PDIF
+  output is wired to the receiver's RXIN3, and on USB and AUX the firmware parks the DIR
+  there, so register 0x39 reports lock and rate when ARC audio arrives, with no write. An
+  auto-switch from USB or AUX is therefore a read-only poll; from Optical, Coaxial or
+  Bluetooth it would need the DIR moved to RXIN3 while the selected input is silent, a
+  write. To confirm with a dump on USB, TV playing then muted.
 - **Pin roles on the board.** `docs/bus-map.md` lists every expander and MCU pin the
   firmware drives or reads, with roles inferred from when they change. Matching them to
   the silkscreen nets (MUTE_AMP, MUTE_PRE, MUTE_HP, DIR_RST, DAC_MCK_SEL, relays) needs a
