@@ -117,7 +117,7 @@ KNOWN_IMAGES = {
     "d6f91fcf98e07ce55790ae5efd2445651d1c42a5d7da54a3b12ee42390bc233a": "stock + auto-switch stage 1 as2 (as1 with HDMI the only enabled source: the Bluetooth module is off on the other inputs, so a phone cannot connect there) + the six fixes, 'v1.4 tbenr as2' (features/auto-switch/build/flash_autoswitch.bin)",
     "b4836c461f554ae2ed707bdfc48e7c9fb00fa5692f2f7a44f4757504d3bf3776": "stock + probe pr3 (pr2 plus the FS line: the receiver's rate calculator pointed at each of its eight ports and restored, the probe's one register write) + the six fixes, 'v1.4 tbenr pr3' (features/probe/build/flash_probe.bin)",
     "38a1499efef590147b87393aba62314c4d5de43f1019d9c17729136862e2ae1d": "fast-lcd fast3 + Phosphor Panel pp1 (study 2 of the UI mock: the VFD-style home with a dot-matrix name and a row of lamps, the seven-segment volume page with afterglow and a bar, sequenced fades between them; the stock big font's area holds its data) + the six fixes, 'v1.4 tbenr pp1' (flashed 2026-10-10, works; superseded by pp2)",
-    "f5ca8bba9048d0daacb459299f2565f5fb043751be72177e80c6947d1e39098e": "fast-lcd fast3 + Phosphor Panel pp2 (pp1 with each name glyph placed on the dot grid where it keeps the most ink: the left edge of O and C no longer cut) + the six fixes, 'v1.4 tbenr pp2' (features/phosphor-panel/build/flash_phosphor_panel.bin; flashed 2026-10-10)",
+    "f5ca8bba9048d0daacb459299f2565f5fb043751be72177e80c6947d1e39098e": "fast-lcd fast3 + Phosphor Panel pp2 (pp1 with each name glyph placed on the dot grid where it keeps the most ink: the left edge of O and C no longer cut) + the six fixes, 'v1.4 tbenr pp2' (features/phosphor-panel/build/flash_phosphor_panel.bin; flashed 2026-10-10, confirmed)",
 }
 
 
