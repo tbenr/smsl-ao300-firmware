@@ -11,7 +11,8 @@ RESET page shows `v1.4 tbenr pp1`. The design and the reductions from the mock a
 
 pp2 (sha256 `f5ca8bba…`): pp1 with the name's glyphs placed on the dot grid where they keep the
 most ink. Emulator-verified on 2026-10-10 (all groups: unit, tour, int1, sweep, and the six
-fixes' integration jobs), not yet flashed.
+fixes' integration jobs) and flashed on the amp the same day over the ser2net tunnel; the
+user's look at the O and C edges is still to come.
 
 pp1 (sha256 `38a1499e…`): flashed on the amp on 2026-10-10 over the ser2net tunnel and
 confirmed by the user: works, the dot-matrix name reads well. One thing seen: the left edge of

@@ -361,8 +361,8 @@ Flashed on 2026-10-10 over the ser2net tunnel and confirmed by the user the same
 `features/phosphor-panel/build/flash_phosphor_panel.bin` (pp1, `v1.4 tbenr pp1`, sha256
 `38a1499e…`), the second UI theme (study 2 of the mock, a VFD look: a dot-matrix name, a row of
 lamps, a seven-segment volume page with afterglow), with the six fixes. It works; the left edge
-of O and C looked cut off in the dot matrix, which pp2 (`f5ca8bba…`, emulator-verified, not yet
-flashed) corrects. See its README.
+of O and C looked cut off in the dot matrix, which pp2 (`f5ca8bba…`) corrects: emulator-verified
+and flashed the same day, the fix not yet confirmed on the glass. See its README.
 
 Flashed on 2026-10-05 and confirmed by the user the same day: `features/auto-switch/build/flash_autoswitch.bin`
 (`v1.4 tbenr as1`), auto-switch stage 1. From Optical with nothing playing, the amp went to
