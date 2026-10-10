@@ -64,11 +64,21 @@ features/
     build/flash_patched.bin     * patched firmware image
     build/SMSL_AO300_UPDATE_VER0A5_EN_directselect.exe * rebuilt updater carrying it
   ui-theme/                       design stage: visual themes for the home and volume
-                                  screens, not built yet
+                                  screens; two of them are built (house-numerals, phosphor-panel)
     ui_themes.html                interactive theme designs and the stock screen map
   fast-lcd/                       the stock UI through the tuned pixel path, on top of
                                   stock; emulator-verified, see its README
     build_patch.py, emu_test.py   build build/flash_fastlcd.bin, lockstep UI tour vs stock
+  phosphor-panel/                 Phosphor Panel (study 2 of the mock: a VFD look) home and
+                                  volume page, on top of fast-lcd, built with tools/patch/uikit.py;
+                                  pp1 emulator-verified on 2026-10-10, not yet tried on the amp;
+                                  see its README
+    build_patch.py, emu_test.py   build build/flash_phosphor_panel.bin (the dot-matrix name,
+                                   the row of lamps, the seven-segment cells with afterglow,
+                                   the bar, the sequenced fades driven by a per-tick level
+                                   engine), home, page and engine models, lockstep tour,
+                                   keys during the transitions, INT1 sweep, 256-command sweep
+    phosphor_panel.asm            generated listing
   house-numerals/                 House Numerals home and volume page, on top of fast-lcd,
                                   built with tools/patch/uikit.py; hn10 to hn12 tried on the amp
                                   on 2026-09-30, hn13 and the pop fixes' builds (hn14, hn15)
@@ -237,24 +247,33 @@ INCLUDES (a fix linked into that image):
 
 ```
 stock                       85e8ac50…
-├── direct-select           'v1.4 tbenr ds2'    0x9400..0x944B  9b7e8b93… known  [fix, hook 0x5D10; included by house-numerals]
+├── direct-select           'v1.4 tbenr ds2'    0x9400..0x944B  9b7e8b93… known  [fix, hook 0x5D10; included by house-numerals, phosphor-panel]
 ├── fast-lcd                'v1.4 tbenr fast3'  0x9700..0x977C  30c1e6fe… known
-│   └── house-numerals      'v1.4 tbenr hn17'   0x9800..0xDD19  782eb508… known
-│         + direct-select   fix linked into house-numerals
-│         + fix-auto-off    fix linked into house-numerals
-│         + strings         fix linked into house-numerals
-│         + start-volume    fix linked into house-numerals
-│         + fix-volume-pop  fix linked into house-numerals
-│         + fix-menu-input  fix linked into house-numerals
-├── fix-auto-off            'v1.4 tbenr aof3'   0x9680..0x969D  1fb64470… known  [fix, hook 0x55B9; included by house-numerals]
-├── fix-menu-input          'v1.4 tbenr mi1'    0x9650..0x9675  693bdef6… known  [fix, hook 0x5892; included by house-numerals]
-├── fix-volume-pop          'v1.4 tbenr vp1'    0x96D6..0x96FC  e2075861… known  [fix, hook 0x0F4A, patch 0x0D0F, patch 0x0D8F, patch 0x0E36, patch 0x0EDE; included by house-numerals]
-├── start-volume            'v1.4 tbenr sv1'    0x96B0..0x96D5  50ad4119… known  [fix, hook 0x5596; included by house-numerals]
-└── strings                 'v1.4 tbenr str3'   0x96A0..0x96AF  6c5611ad… known  [fix, patch 0x91ED; included by house-numerals]
+│   ├── house-numerals      'v1.4 tbenr hn17'   0x9800..0xDD19  782eb508… known
+│   │     + direct-select   fix linked into house-numerals
+│   │     + fix-auto-off    fix linked into house-numerals
+│   │     + strings         fix linked into house-numerals
+│   │     + start-volume    fix linked into house-numerals
+│   │     + fix-volume-pop  fix linked into house-numerals
+│   │     + fix-menu-input  fix linked into house-numerals
+│   └── phosphor-panel      'v1.4 tbenr pp1'    0x9800..0xDB28  38a1499e… known
+│         + direct-select   fix linked into phosphor-panel
+│         + fix-auto-off    fix linked into phosphor-panel
+│         + strings         fix linked into phosphor-panel
+│         + start-volume    fix linked into phosphor-panel
+│         + fix-volume-pop  fix linked into phosphor-panel
+│         + fix-menu-input  fix linked into phosphor-panel
+├── fix-auto-off            'v1.4 tbenr aof3'   0x9680..0x969D  1fb64470… known  [fix, hook 0x55B9; included by house-numerals, phosphor-panel]
+├── fix-menu-input          'v1.4 tbenr mi1'    0x9650..0x9675  693bdef6… known  [fix, hook 0x5892; included by house-numerals, phosphor-panel]
+├── fix-volume-pop          'v1.4 tbenr vp1'    0x96D6..0x96FC  e2075861… known  [fix, hook 0x0F4A, patch 0x0D0F, patch 0x0D8F, patch 0x0E36, patch 0x0EDE; included by house-numerals, phosphor-panel]
+├── start-volume            'v1.4 tbenr sv1'    0x96B0..0x96D5  50ad4119… known  [fix, hook 0x5596; included by house-numerals, phosphor-panel]
+└── strings                 'v1.4 tbenr str3'   0x96A0..0x96AF  6c5611ad… known  [fix, patch 0x91ED; included by house-numerals, phosphor-panel]
 ```
 
 Stacking (BASE) is for code that changes how the stock UI is drawn: fast-lcd on stock, a
-theme on fast-lcd. Everything else is a fix on stock, with its own small standalone image,
+theme on fast-lcd. The two themes both stack on fast-lcd and both put their code at 0x9800:
+they are alternatives, never in one image, so the slot warning `tools/build.py` prints for
+them is expected. Everything else is a fix on stock, with its own small standalone image,
 and is linked into the image meant for the amp through INCLUDES. House-numerals then
 depends on fast-lcd (its base, and so on down to stock) and on direct-select, fix-auto-off,
 strings, start-volume, fix-volume-pop and fix-menu-input (included). An image has exactly one BASE, because
@@ -337,6 +356,11 @@ power-up; the bootloader is in ROM and survives. Every run is appended to
 `tools/flash/flash_ao300.log`, with raw packets when `-D` is given.
 
 ## Status
+
+Built and emulator-verified on 2026-10-10, not yet tried on the amp:
+`features/phosphor-panel/build/flash_phosphor_panel.bin` (`v1.4 tbenr pp1`, sha256 `38a1499e…`),
+the second UI theme (study 2 of the mock, a VFD look: a dot-matrix name, a row of lamps, a
+seven-segment volume page with afterglow), with the six fixes. See its README.
 
 Flashed on 2026-10-05 and confirmed by the user the same day: `features/auto-switch/build/flash_autoswitch.bin`
 (`v1.4 tbenr as1`), auto-switch stage 1. From Optical with nothing playing, the amp went to
@@ -561,8 +585,17 @@ combined with x clips). `tools/emu/uitest.py` holds the helpers theme tests shar
 refresh, for checking animations.
 
 Not in the kit yet: the wipe's step engine and page-element model (still in house-numerals),
-shapes (dots, arcs, 7-segment) and per-pixel transitions. House Numerals' spring (a fixed-point
-spring as a per-tick matrix) and its roll could move to the kit when a second theme needs them.
+Phosphor Panel's level engine and seven-segment cell painter (still in phosphor-panel), and
+per-pixel transitions. House Numerals' spring (a fixed-point spring as a per-tick matrix) and
+its roll could move to the kit when a second theme needs them; the hook plumbing the two
+themes share (the refresh hold, the stock-clear cancel, the flag path, the name guard, the
+signal check, the mute key) is the first candidate.
+
+Two themes are built: House Numerals (`features/house-numerals`, study 3) and Phosphor Panel
+(`features/phosphor-panel`, study 2: the name as a dot matrix baked into its font, the
+seven-segment cells as one run-length map streamed through a per-segment palette, and the
+mock's afterglow crossfade as a sequenced fade run by a per-tick level engine). Both include
+the six fixes; only one goes on the amp at a time.
 
 ### Sizing a theme's home screen
 
@@ -613,7 +646,7 @@ LCD bus is decoded into an ST7789 model and saved as PNG.
 
 `python3 tools/run_tests.py` builds every image (`tools/build.py`), then runs all the feature
 tests, the integration tests (see "Feature graph") and the UI kit's test at once, on
-the C core, in about 2 minutes, most of it the house-numerals 256-command sweep (before
+the C core, in about 3 minutes, most of it the two themes' 256-command sweeps (before
 house-numerals the run took about 5 s; the Python reference, `EMU8051=py`, took about 8
 minutes). `python3 tools/run_tests.py uikit` runs only the kit's test (about 3 s). After changing
 the emulator, `python3 tools/emu/test_core.py` checks the C core against the Python
@@ -761,10 +794,13 @@ Measured from the images; the code/EEPROM split is the chip's own setting (0xF40
 | External RAM (XDATA) | 2 KB by chip naming, not measured | page 0 (0x0000..0x00FF): display cell buffers, locals | ~1.7 KB from 0x0100 |
 
 The stock big font (`font_big_32x30`, 0x6A23..0x7DD3, 5040 bytes) is dead in house-numerals
-since hn17: `big_text_render`'s hook goes straight to the theme's name painter and the stock
-number painters are unreachable, so the theme keeps 5015 bytes of its own fonts there
-(`features/house-numerals/README.md`, "Memory"; the tests trap `big_glyph_paint` and
-`bignum_digit` on every run). The stock small font (0x5DAB..0x6A23, 3192 bytes) is still drawn
+since hn17 and in phosphor-panel: `big_text_render`'s hook goes straight to the theme's name
+painter and the stock number painters are unreachable, so the theme keeps its own data there
+(house-numerals 5015 bytes of fonts, phosphor-panel 4520 bytes: the status and icon fonts and
+the cell map; `features/house-numerals/README.md`, "Memory"; the tests trap `big_glyph_paint`
+and `bignum_digit` on every run). Phosphor Panel pp1 ends at 0xDB28 (56105 bytes); its
+dot-matrix name font alone is 9483 bytes, three times the plain face, because the grid breaks
+the run-length runs every third row. The stock small font (0x5DAB..0x6A23, 3192 bytes) is still drawn
 by the menus, the Treble and Bass pages and the RESET page; drawing those with a theme font
 (mono16 and mono28 cover every firmware string but `W` and `+`) would free it too.
 

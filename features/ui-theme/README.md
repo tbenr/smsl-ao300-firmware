@@ -42,8 +42,14 @@ Next steps toward a build:
    a build script, a listing, an emulator test that includes a full-firmware UI tour,
    and a README.
 
-House Numerals has a first build in `features/house-numerals/` (emulator-verified, not
-yet tried on hardware). Step 3's hooks are done there: 0x5916 (`home_draw_volume`) stays
+Phosphor Panel has a first build in `features/phosphor-panel/` (pp1, emulator-verified on
+2026-10-10, not yet tried on hardware): the row of lamps, the dot-matrix name (baked into its
+font), the seven-segment cells with per-segment afterglow, the bar and the marks, and the
+afterglow crossfade as a sequenced fade (the name out, then the digits up) run by a per-tick
+level engine, since the panel cannot blend two screens. Its README lists what was reduced.
+
+House Numerals is built in `features/house-numerals/` and has been on the amp since
+2026-09-29 (hn17 since 2026-10-05). Step 3's hooks are done there: 0x5916 (`home_draw_volume`) stays
 stock, called as before from the new home-refresh tail; 0x5936 (`volpage_draw_volume`)
 is replaced outright; and the page-2 renderer (0x2167) is replaced too, though the tour
 found the volume keys actually open page 2 through four inline sites in the key
