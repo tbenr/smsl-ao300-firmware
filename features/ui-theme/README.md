@@ -42,8 +42,7 @@ Next steps toward a build:
    a build script, a listing, an emulator test that includes a full-firmware UI tour,
    and a README.
 
-Phosphor Panel has a first build in `features/phosphor-panel/` (pp1, emulator-verified on
-2026-10-10, not yet tried on hardware): the row of lamps, the dot-matrix name (baked into its
+Phosphor Panel is built in `features/phosphor-panel/` (pp1 on the amp since 2026-10-10): the row of lamps, the dot-matrix name (baked into its
 font), the seven-segment cells with per-segment afterglow, the bar and the marks, and the
 afterglow crossfade as a sequenced fade (the name out, then the digits up) run by a per-tick
 level engine, since the panel cannot blend two screens. Its README lists what was reduced.

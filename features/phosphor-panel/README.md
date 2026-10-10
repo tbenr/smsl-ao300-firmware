@@ -9,8 +9,17 @@ RESET page shows `v1.4 tbenr pp1`. The design and the reductions from the mock a
 
 ## Status
 
-pp1 (sha256 `38a1499e…`): emulator-verified on 2026-10-10 (all groups: unit, tour, int1, sweep,
-and the six fixes' integration jobs). Not yet tried on the amp.
+pp2 (sha256 `f5ca8bba…`): pp1 with the name's glyphs placed on the dot grid where they keep the
+most ink. Emulator-verified on 2026-10-10 (all groups: unit, tour, int1, sweep, and the six
+fixes' integration jobs), not yet flashed.
+
+pp1 (sha256 `38a1499e…`): flashed on the amp on 2026-10-10 over the ser2net tunnel and
+confirmed by the user: works, the dot-matrix name reads well. One thing seen: the left edge of
+O and C looked cut off. The grid dropped the full column right behind those glyphs' faint
+anti-aliased first column (their ink starts 1 px from the pen, P's and L's 2 px, so the grid's
+black column fell on a different ink column per letter). pp2 moves each glyph right by 0, 1 or
+2 px inside its cell to the position where the grid keeps the most ink (`dot_matrix` in
+`build_patch.py`): O and C keep their full edge column.
 
 ## What the build shows
 
@@ -27,7 +36,7 @@ segment. The screen is black (the mock's `#020504` is black on this panel).
 | Row: format lamp | the stock format tag (PCM, DSD, DoP, MQA, MQA.) at x 132; blank on inputs without one |
 | Row: EQ lamp | the stock EQ tag (DIR, CUS, ...) at x 192 |
 | Row: MUTE lamp | "MUTE" right-aligned to x 308: red when muted, dark red `#2a0c09` otherwise |
-| Name | Big Shoulders Display 54 px, ph, centred on x 160, baseline 104, as a dot matrix: every third column and row of the screen grid is black (baked into `pf_name`; the start x is kept at 1 mod 3 so the grid lines up across letters, each letter's cell padded to a multiple of 3) |
+| Name | Big Shoulders Display 54 px, ph, centred on x 160, baseline 104, as a dot matrix: every third column and row of the screen grid is black (baked into `pf_name`; the start x is kept at 1 mod 3 so the grid lines up across letters, each letter's cell padded to a multiple of 3 and the letter placed in it where the grid keeps the most of its ink) |
 | Status line | IBM Plex Mono 20 px centred on x 160, baseline 136, 7/8 ph; red when the status loader's signal check found none on a digital input (only the loader's own text, as in House Numerals) |
 | Volume page: cells | four seven-segment cells at x 66, 110, 154, 198, rows 32..91, 30 px wide with the mock's 0.12 skew, thickness 6, hexagonal ends, anti-aliased; cells 0 and 1 always ghosts, cells 2 and 3 the tens (blank below 10) and ones; each segment at its own level |
 | Volume page: "VOL" | mono 16 at 18, baseline 90, ph (lit: the steps readout) |
@@ -93,10 +102,10 @@ it; stock's refresh is about 45 ms).
 
 ## Memory
 
-Code and fonts 0x9800..0xDB19, the version string after them (the image ends at 0xDB28:
-56105 bytes), the hole 0x6A23..0x7BCA (4520 of 5040 bytes). The fonts: `pf_name` 9483 bytes (the dot matrix breaks
-the run-length runs every third row: three times the plain face), `pf_row` 2107, `pf_status`
-3681, `pf_icon` 298, the cell map 541. XDATA 0x0100..0x01F8.
+Code and fonts 0x9800..0xDBFD, the version string after them (the image ends at 0xDC0C:
+56333 bytes), the hole 0x6A23..0x7BCA (4520 of 5040 bytes). The fonts: `pf_name` 9711 bytes (the
+dot matrix breaks the run-length runs every third row: three times the plain face), `pf_row`
+2107, `pf_status` 3681, `pf_icon` 298, the cell map 541. XDATA 0x0100..0x01F8.
 
 ## Files
 

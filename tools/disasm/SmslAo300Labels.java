@@ -295,60 +295,60 @@ public class SmslAo300Labels extends GhidraScript {
         {0x79DF, "pf_box"},     // features/house-numerals: box22, tag box edges (pfont.box_edges), format 2 (uk_text)
         {0x7A0B, "pf_vname"},   // features/house-numerals: disp36, volume-page name, format 2 (uk_text)
         {0xB84F, "pf_vnum"},    // features/house-numerals: num84, volume-page number, format 2 (uk_text)
-        // features/phosphor-panel (pp1): built on fast-lcd like house-numerals and sharing its code slot from
+        // features/phosphor-panel (pp2): built on fast-lcd like house-numerals and sharing its code slot from
         // 0x9800, so the two themes' kit routines (uk_*) and fonts (pf_*) sit at different addresses: those
         // are listed under house-numerals; this image's are in features/phosphor-panel/phosphor_panel.asm
-        {0xCCE5, "pp_ladder"},           // the eight level colours of the phosphor (uk_acc) into PP_LAD
-        {0xCD59, "pp_lad_ld"},           // R6:R7 = PP_LAD[A]
-        {0xCD69, "pp_dec2"},             // A (0..99) -> decimal text at DPTR, no leading zero, NUL
-        {0xCD7C, "pp_rest"},             // black from TP_END + 1 to R6:R7, rows R5.., R4 rows (the rest of a slot)
-        {0xCDA4, "pp_name_x"},           // PP_NW = the name's width, PP_NX = its start x (centred, 1 mod 3)
-        {0xCE3E, "pp_name_lv"},          // the name (XDATA 0x35) at PP_NX in the ladder's level A
-        {0xCEA0, "pp_name"},             // big_text_render's hook (0x2A25): the name at full brightness, its sides black, then the input and format lamps
-        {0xCEF4, "pp_inp"},              // the input lamp from RAM 0x47, then the format lamp (home_draw_format_tag)
-        {0xCF67, "pp_status"},           // small_text_render's hand-over (page 1, y 135): the status line, red without a signal
-        {0xCF76, "pp_status_draw"},      // the status line centred on x 160, baseline 136, its sides black
-        {0xD007, "pp_stat_ink"},         // R6:R7 = 7/8 of the phosphor
-        {0xD01F, "pp_icon"},             // replaces home_draw_output_icon 0x5744: the icon at 12, then the MUTE lamp
-        {0xD127, "pp_lamp"},             // the MUTE lamp: red when muted, dark red otherwise
-        {0xD181, "pp_hvol"},             // replaces home_draw_volume 0x5916: the volume in the row
-        {0xD204, "pp_eq"},               // replaces the EQ tag's paint 0x4F18: the EQ lamp
-        {0xD211, "pp_fmt"},              // replaces home_draw_format_tag's paint call (0x425D): the format lamp
-        {0xD21C, "pp_lamp_at"},          // PP_TAG in pf_row at R2:R3, the rest of the slot to R6:R7 black
-        {0xD27B, "pp_tag_copy"},         // PP_TAG = the string at R3:R2:R1, trailing spaces cut
-        {0xD2BB, "pp_fmt_clear"},        // replaces home_draw_format_tag's clears: the format lamp's slot black
-        {0xD2CC, "pp_slot_clear"},       // the icon and volume slot black
-        {0xD2DD, "pp_slot_draw"},        // the icon, the lamp and the volume as the stock home draws them
-        {0xD2E5, "pp_stat_clear"},       // the status line's rows black
-        {0xD307, "pp_vol_lv"},           // "VOL" in the ladder's level A
-        {0xD35F, "pp_db"},               // "dB", a ghost
-        {0xD3B9, "pp_db_clear"},         // "dB"'s cell black
-        {0xD3CA, "pp_marks"},            // the marks 0 15 30 45 60 under the bar
-        {0xD45A, "pp_marks_clear"},      // the marks' rows black
-        {0xD47C, "pp_bar"},              // bar cell A in the colour R6:R7
-        {0xD491, "pp_cell"},             // cell A: the seven segments at their levels through the palette, the map pp_cellmap streamed
-        {0xD579, "pp_step"},             // one tick of the engine: counter, blink, scan, statics, targets, moves, settling
-        {0xD5F0, "pp_statics"},          // the unfaded parts: the slot and status clear, the marks, the ghost bar, dB (one a tick)
-        {0xD670, "pp_retarget"},         // every element's target for this tick (the gates, the digits' segments, the bar's limit)
-        {0xD7DC, "pp_move"},             // every element one level towards its target, repainted
-        {0xD8BE, "pp_settle"},           // nothing moving: the volume page, or home (the slot and the status line drawn, the engine off)
-        {0xD8FA, "pp_enter_vol"},        // page 2 being opened (the four volume-key sites, pp_clear page 2, the renderer, the mute key): the entry
-        {0xD91E, "pp_exit"},             // page 1 rendered over the page: the exit (the name reloaded and measured)
-        {0xD939, "pp_clear"},            // ui_render_page's clear (0x2106): entry, exit, or the stock clear
-        {0xD953, "pp_volpage"},          // page 2 renderer (jump-table entry 0x2143): the entry, the volume recorded
-        {0xD95E, "pp_draw_volume"},      // replaces volpage_draw_volume 0x5936: the volume for the counter, the MUTE lamp
-        {0xD986, "pp_stop"},             // the engine off and empty
-        {0xD9BA, "pp_cancel"},           // ui_clear_screen's first instruction: every stock clear stops the engine first
-        {0xD9C3, "pp_hold"},             // the periodic refresh's lcall home_refresh (0x4081): held back while a transition runs
-        {0xD9E0, "pp_busy_home"},        // during an exit, end it now with the whole home screen
-        {0xD9E7, "pp_home_now"},         // stop, black screen, home_refresh and the status line
-        {0xD9F1, "pp_name_guard"},       // home_draw_input_name's entry: during an exit the whole home first
-        {0xD9FA, "pp_flag_path"},        // home_refresh_periodic's flag path (0x3FF8): no black-out while the engine owns the screen
-        {0xDA12, "pp_signal"},           // replaces the status loader's lcall signal_check: the result kept in PP_SIG
-        {0xDA1D, "pp_name_load"},        // XDATA 0x35 = the input name, as home_draw_input_name loads it
-        {0xDA3E, "pp_align_small"},      // small_text_render's hook (0x3A82): page 1 at y 135 -> pp_status, else stock
-        {0xDA56, "pp_mute_key"},         // replaces key_1c 0x1047: the stock toggle, then the volume page
-        {0xDA79, "pp_key_p2"},           // read_key's page-2 filter from 0x3DD1: keeps the mute key 0x1C as well
+        {0xCDC9, "pp_ladder"},           // the eight level colours of the phosphor (uk_acc) into PP_LAD
+        {0xCE3D, "pp_lad_ld"},           // R6:R7 = PP_LAD[A]
+        {0xCE4D, "pp_dec2"},             // A (0..99) -> decimal text at DPTR, no leading zero, NUL
+        {0xCE60, "pp_rest"},             // black from TP_END + 1 to R6:R7, rows R5.., R4 rows (the rest of a slot)
+        {0xCE88, "pp_name_x"},           // PP_NW = the name's width, PP_NX = its start x (centred, 1 mod 3)
+        {0xCF22, "pp_name_lv"},          // the name (XDATA 0x35) at PP_NX in the ladder's level A
+        {0xCF84, "pp_name"},             // big_text_render's hook (0x2A25): the name at full brightness, its sides black, then the input and format lamps
+        {0xCFD8, "pp_inp"},              // the input lamp from RAM 0x47, then the format lamp (home_draw_format_tag)
+        {0xD04B, "pp_status"},           // small_text_render's hand-over (page 1, y 135): the status line, red without a signal
+        {0xD05A, "pp_status_draw"},      // the status line centred on x 160, baseline 136, its sides black
+        {0xD0EB, "pp_stat_ink"},         // R6:R7 = 7/8 of the phosphor
+        {0xD103, "pp_icon"},             // replaces home_draw_output_icon 0x5744: the icon at 12, then the MUTE lamp
+        {0xD20B, "pp_lamp"},             // the MUTE lamp: red when muted, dark red otherwise
+        {0xD265, "pp_hvol"},             // replaces home_draw_volume 0x5916: the volume in the row
+        {0xD2E8, "pp_eq"},               // replaces the EQ tag's paint 0x4F18: the EQ lamp
+        {0xD2F5, "pp_fmt"},              // replaces home_draw_format_tag's paint call (0x425D): the format lamp
+        {0xD300, "pp_lamp_at"},          // PP_TAG in pf_row at R2:R3, the rest of the slot to R6:R7 black
+        {0xD35F, "pp_tag_copy"},         // PP_TAG = the string at R3:R2:R1, trailing spaces cut
+        {0xD39F, "pp_fmt_clear"},        // replaces home_draw_format_tag's clears: the format lamp's slot black
+        {0xD3B0, "pp_slot_clear"},       // the icon and volume slot black
+        {0xD3C1, "pp_slot_draw"},        // the icon, the lamp and the volume as the stock home draws them
+        {0xD3C9, "pp_stat_clear"},       // the status line's rows black
+        {0xD3EB, "pp_vol_lv"},           // "VOL" in the ladder's level A
+        {0xD443, "pp_db"},               // "dB", a ghost
+        {0xD49D, "pp_db_clear"},         // "dB"'s cell black
+        {0xD4AE, "pp_marks"},            // the marks 0 15 30 45 60 under the bar
+        {0xD53E, "pp_marks_clear"},      // the marks' rows black
+        {0xD560, "pp_bar"},              // bar cell A in the colour R6:R7
+        {0xD575, "pp_cell"},             // cell A: the seven segments at their levels through the palette, the map pp_cellmap streamed
+        {0xD65D, "pp_step"},             // one tick of the engine: counter, blink, scan, statics, targets, moves, settling
+        {0xD6D4, "pp_statics"},          // the unfaded parts: the slot and status clear, the marks, the ghost bar, dB (one a tick)
+        {0xD754, "pp_retarget"},         // every element's target for this tick (the gates, the digits' segments, the bar's limit)
+        {0xD8C0, "pp_move"},             // every element one level towards its target, repainted
+        {0xD9A2, "pp_settle"},           // nothing moving: the volume page, or home (the slot and the status line drawn, the engine off)
+        {0xD9DE, "pp_enter_vol"},        // page 2 being opened (the four volume-key sites, pp_clear page 2, the renderer, the mute key): the entry
+        {0xDA02, "pp_exit"},             // page 1 rendered over the page: the exit (the name reloaded and measured)
+        {0xDA1D, "pp_clear"},            // ui_render_page's clear (0x2106): entry, exit, or the stock clear
+        {0xDA37, "pp_volpage"},          // page 2 renderer (jump-table entry 0x2143): the entry, the volume recorded
+        {0xDA42, "pp_draw_volume"},      // replaces volpage_draw_volume 0x5936: the volume for the counter, the MUTE lamp
+        {0xDA6A, "pp_stop"},             // the engine off and empty
+        {0xDA9E, "pp_cancel"},           // ui_clear_screen's first instruction: every stock clear stops the engine first
+        {0xDAA7, "pp_hold"},             // the periodic refresh's lcall home_refresh (0x4081): held back while a transition runs
+        {0xDAC4, "pp_busy_home"},        // during an exit, end it now with the whole home screen
+        {0xDACB, "pp_home_now"},         // stop, black screen, home_refresh and the status line
+        {0xDAD5, "pp_name_guard"},       // home_draw_input_name's entry: during an exit the whole home first
+        {0xDADE, "pp_flag_path"},        // home_refresh_periodic's flag path (0x3FF8): no black-out while the engine owns the screen
+        {0xDAF6, "pp_signal"},           // replaces the status loader's lcall signal_check: the result kept in PP_SIG
+        {0xDB01, "pp_name_load"},        // XDATA 0x35 = the input name, as home_draw_input_name loads it
+        {0xDB22, "pp_align_small"},      // small_text_render's hook (0x3A82): page 1 at y 135 -> pp_status, else stock
+        {0xDB3A, "pp_mute_key"},         // replaces key_1c 0x1047: the stock toggle, then the volume page
+        {0xDB5D, "pp_key_p2"},           // read_key's page-2 filter from 0x3DD1: keeps the mute key 0x1C as well
         {0x79AE, "pp_cellmap"},          // the seven-segment cell map (run-length), in the stock big font's place
         {0x33ED, "mute_timer_expired"},     // 0x43:0x44 reaches 0 -> mute_state_set(1) (call at 0x33FB)
         {0x341B, "format_poll_tick"},       // inputs 1..5: 0x4B:0x4C reaches 0 -> reload 10, format_poll, on BT bt_hold_mute_poll

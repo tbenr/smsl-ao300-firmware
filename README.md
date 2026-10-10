@@ -71,8 +71,8 @@ features/
     build_patch.py, emu_test.py   build build/flash_fastlcd.bin, lockstep UI tour vs stock
   phosphor-panel/                 Phosphor Panel (study 2 of the mock: a VFD look) home and
                                   volume page, on top of fast-lcd, built with tools/patch/uikit.py;
-                                  pp1 emulator-verified on 2026-10-10, not yet tried on the amp;
-                                  see its README
+                                  pp1 on the amp since 2026-10-10 (works), pp2 fixes the dot
+                                  matrix's O and C edges; see its README
     build_patch.py, emu_test.py   build build/flash_phosphor_panel.bin (the dot-matrix name,
                                    the row of lamps, the seven-segment cells with afterglow,
                                    the bar, the sequenced fades driven by a per-tick level
@@ -256,7 +256,7 @@ stock                       85e8ac50…
 │   │     + start-volume    fix linked into house-numerals
 │   │     + fix-volume-pop  fix linked into house-numerals
 │   │     + fix-menu-input  fix linked into house-numerals
-│   └── phosphor-panel      'v1.4 tbenr pp1'    0x9800..0xDB28  38a1499e… known
+│   └── phosphor-panel      'v1.4 tbenr pp2'    0x9800..0xDC0C  f5ca8bba… known
 │         + direct-select   fix linked into phosphor-panel
 │         + fix-auto-off    fix linked into phosphor-panel
 │         + strings         fix linked into phosphor-panel
@@ -357,10 +357,12 @@ power-up; the bootloader is in ROM and survives. Every run is appended to
 
 ## Status
 
-Built and emulator-verified on 2026-10-10, not yet tried on the amp:
-`features/phosphor-panel/build/flash_phosphor_panel.bin` (`v1.4 tbenr pp1`, sha256 `38a1499e…`),
-the second UI theme (study 2 of the mock, a VFD look: a dot-matrix name, a row of lamps, a
-seven-segment volume page with afterglow), with the six fixes. See its README.
+Flashed on 2026-10-10 over the ser2net tunnel and confirmed by the user the same day:
+`features/phosphor-panel/build/flash_phosphor_panel.bin` (pp1, `v1.4 tbenr pp1`, sha256
+`38a1499e…`), the second UI theme (study 2 of the mock, a VFD look: a dot-matrix name, a row of
+lamps, a seven-segment volume page with afterglow), with the six fixes. It works; the left edge
+of O and C looked cut off in the dot matrix, which pp2 (`f5ca8bba…`, emulator-verified, not yet
+flashed) corrects. See its README.
 
 Flashed on 2026-10-05 and confirmed by the user the same day: `features/auto-switch/build/flash_autoswitch.bin`
 (`v1.4 tbenr as1`), auto-switch stage 1. From Optical with nothing playing, the amp went to
@@ -798,8 +800,8 @@ since hn17 and in phosphor-panel: `big_text_render`'s hook goes straight to the 
 painter and the stock number painters are unreachable, so the theme keeps its own data there
 (house-numerals 5015 bytes of fonts, phosphor-panel 4520 bytes: the status and icon fonts and
 the cell map; `features/house-numerals/README.md`, "Memory"; the tests trap `big_glyph_paint`
-and `bignum_digit` on every run). Phosphor Panel pp1 ends at 0xDB28 (56105 bytes); its
-dot-matrix name font alone is 9483 bytes, three times the plain face, because the grid breaks
+and `bignum_digit` on every run). Phosphor Panel pp2 ends at 0xDC0C (56333 bytes); its
+dot-matrix name font alone is 9711 bytes, three times the plain face, because the grid breaks
 the run-length runs every third row. The stock small font (0x5DAB..0x6A23, 3192 bytes) is still drawn
 by the menus, the Treble and Bass pages and the RESET page; drawing those with a theme font
 (mono16 and mono28 cover every firmware string but `W` and `+`) would free it too.

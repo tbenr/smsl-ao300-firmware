@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the "Phosphor Panel" image for the SMSL AO300 (on top of fast-lcd), pp1.
+"""Build the "Phosphor Panel" image for the SMSL AO300 (on top of fast-lcd), pp2.
 
 Study 2 of features/ui-theme/ui_themes.html (after Marantz, Pioneer and Accuphase VFDs), built
 the way House Numerals is built; the design is docs/superpowers/specs/2026-10-10-phosphor-panel-
@@ -60,7 +60,7 @@ BASE_IMAGE = features.image(BASE)
 BASE_SHA = "30c1e6fe785dc725037e5925d53f5b82305618037532b4a0cd7397a0774f560b"
 OUT_IMAGE = os.path.join(HERE, "build", "flash_phosphor_panel.bin")
 OUT_LISTING = os.path.join(HERE, "phosphor_panel.asm")
-VERSION_TEXT = "v1.4 tbenr pp1"
+VERSION_TEXT = "v1.4 tbenr pp2"
 
 CODE_ADDR = 0x9800                  # after fast-lcd (code 0x9700..0x977C, version string)
 
@@ -114,9 +114,15 @@ def dot_matrix(pf, y_top, x_phase=1, spacing=NAME_SP):
     """Bake the mock's dot matrix into pf: every glyph's cell (advance + spacing) is padded to a
     multiple of GRID, and the pixels on the grid's black columns (screen x = 0 mod GRID, with the
     text starting at x = x_phase mod GRID) and rows (screen y = GRID - 1 mod GRID, the cell's top
-    row at y_top) are cleared. Spacing is then 0 in uk_text."""
+    row at y_top) are cleared. Spacing is then 0 in uk_text. Each glyph is moved right by 0, 1 or
+    2 px inside its cell to the position where the grid keeps the most ink (pp1 dropped the full
+    column behind O's and C's faint anti-aliased edge: a cut-off look on the amp)."""
     for c, (adv, off, w, cols) in list(pf.glyphs.items()):
         adv2 = -(-(adv + spacing) // GRID) * GRID
+        shift = max(range(GRID), key=lambda s: (sum(v for i, col in enumerate(cols) for v in col
+                                                    if (x_phase + off + s + i) % GRID), -s))
+        off += shift
+        assert off + w <= adv2
         new = []
         for i, col in enumerate(cols):
             if (x_phase + off + i) % GRID == 0:
