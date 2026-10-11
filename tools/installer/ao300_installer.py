@@ -15,7 +15,6 @@ unattended (the tests and tools/release.py's self-test do that):
     --build-only                      stop after the build
     --action flash|identify|recover   skip the menu
     --port DEVICE_OR_URL              skip the port detection
-    --yes                             no typed FLASH confirmation (tests only)
 
 How the build is trusted: the theme is built with its defaults first (the reference, whose
 sha256 must be registered in the flasher's KNOWN_IMAGES; this happens before the questions,
@@ -257,15 +256,20 @@ def choose_port(preset):
         print("  that does not look like a device path or URL")
 
 
-def run_flasher(action, port, image=None, yes=False):
-    print("\n" + AMP_STEPS[action])
-    if action in ("flash", "recover"):
-        print("The flasher asks you to type FLASH first; it checks the chip before it writes anything.")
+def flasher_argv(action, port, image=None):
+    """The flasher's command line. Choosing flash or recover here is the confirmation, so the
+    flasher's typed FLASH question is skipped (-y); its chip checks still gate every write."""
     argv = [sys.executable, FLASHER, "-p", port, action]
     if image:
-        argv.append(image)
-        if yes:
-            argv.append("-y")
+        argv += [image, "-y"]
+    return argv
+
+
+def run_flasher(action, port, image=None):
+    print("\n" + AMP_STEPS[action])
+    if action in ("flash", "recover"):
+        print("The flasher checks that the chip is a factory AO300 before it writes anything.")
+    argv = flasher_argv(action, port, image)
     print("\n$ %s\n" % " ".join(os.path.relpath(a, ROOT) if a.startswith(ROOT) else a for a in argv[1:]))
     rc = subprocess.call(argv, cwd=ROOT)
     if rc and sys.platform.startswith("linux") and port.startswith("/dev/") and not os.access(port, os.R_OK | os.W_OK):
@@ -277,7 +281,7 @@ def run_flasher(action, port, image=None, yes=False):
     return rc
 
 
-def flash_menu(bin_path, port_preset, yes):
+def flash_menu(bin_path, port_preset):
     items = [("Flash the custom image onto the amp", "flash"),
              ("Check the connection only (reads the chip, writes nothing)", "identify"),
              ("Restore the stock firmware (recovery)", "recover"),
@@ -288,7 +292,7 @@ def flash_menu(bin_path, port_preset, yes):
             return 0
         port = choose_port(port_preset)
         image = {"flash": bin_path, "recover": os.path.join(EXTRACTED, "flash.bin")}.get(action)
-        rc = run_flasher(action, port, image, yes)
+        rc = run_flasher(action, port, image)
         print("\n%s %s." % (action, "done" if rc == 0 else "did not complete (exit %d)" % rc))
 
 
@@ -301,7 +305,6 @@ def main(argv=None):
     ap.add_argument("--build-only", action="store_true", help="stop after the build")
     ap.add_argument("--action", choices=["flash", "identify", "recover"], help="skip the menu")
     ap.add_argument("--port", help="serial device or pyserial URL; skips the detection")
-    ap.add_argument("--yes", action="store_true", help=argparse.SUPPRESS)
     args = ap.parse_args(argv)
 
     print("SMSL AO300 custom firmware installer (%s)" % bundle_version())
@@ -317,8 +320,8 @@ def main(argv=None):
         return 0
     if args.action:
         image = {"flash": bin_path, "recover": os.path.join(EXTRACTED, "flash.bin")}.get(args.action)
-        return run_flasher(args.action, choose_port(args.port), image, args.yes)
-    return flash_menu(bin_path, args.port, args.yes)
+        return run_flasher(args.action, choose_port(args.port), image)
+    return flash_menu(bin_path, args.port)
 
 
 if __name__ == "__main__":

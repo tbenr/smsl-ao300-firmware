@@ -47,12 +47,12 @@ you supply; it is not included.
 
    It builds your firmware image and checks it against the known reference build.
 5. Choose **Flash** in the menu. The installer finds the serial adapter (or asks which one),
-   then hands over to the flasher, which asks you to type `FLASH` and then waits for the amp.
-   **Put the amp in standby and press Source on the remote.** The flasher checks that the chip
-   is a factory AO300 before it erases anything, writes the image (about 15 seconds) and the
-   amp restarts with the new firmware.
+   then hands over to the flasher, which waits for the amp. **Put the amp in standby and
+   press Source on the remote.** The flasher checks that the chip is a factory AO300 before
+   it erases anything, writes the image (about 15 seconds) and the amp restarts with the new
+   firmware.
 
-Nothing is written to the amp before you type `FLASH`, and the installer never asks for your
+Nothing is written to the amp before you choose Flash, and the installer never asks for your
 password: do not run it with `sudo`. On Linux, if the serial port is not accessible, add
 yourself to the serial group once (`sudo usermod -aG dialout "$USER"`, `uucp` on Arch) and
 log in again.

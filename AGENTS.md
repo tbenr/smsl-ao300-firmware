@@ -113,8 +113,10 @@ rules apply to anyone working here, human or agent.
 - The wizard hard-codes no default, option name or variable: it reads every feature's
   `CONFIG`. When a feature gains a config, the wizard asks for it with no change of its own.
 - The wizard never opens the serial port itself: it runs `tools/flash/flash_ao300.py` as a
-  child process with the terminal attached, so the typed `FLASH` confirmation, the chip
-  checks and the recovery message stay the flasher's.
+  child process with the terminal attached, so the chip checks, the "Waiting for the
+  bootloader" line and the recovery message stay the flasher's. Choosing flash or recover in
+  the wizard's menu is the confirmation: it passes `-y`, so the typed `FLASH` question is
+  not asked twice.
 
 ## Documentation
 

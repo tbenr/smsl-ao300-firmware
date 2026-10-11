@@ -580,7 +580,7 @@ wants the firmware on their amp: `install.sh` creates a venv, installs `requirem
 and runs the wizard `tools/installer/ao300_installer.py`, which asks for the vendor updater
 (to be put in `original/`), checks its sha, asks for the theme and the build-time configs,
 builds the image, finds the USB serial adapter and runs `tools/flash/flash_ao300.py` with the
-terminal attached. The bundle holds the wizard, the build tools and the features the two
+terminal attached (with `-y`: the menu choice is the confirmation). The bundle holds the wizard, the build tools and the features the two
 themes need, and no firmware; the user guide inside it is `tools/installer/README-release.md`.
 The wizard trusts a build by rebuilding the theme with its defaults (the sha must be in
 `KNOWN_IMAGES`) and checking that the user's image differs from it only in the configs'

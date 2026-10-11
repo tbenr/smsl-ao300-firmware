@@ -224,6 +224,18 @@ class ParseSetTest(unittest.TestCase):
             inst.parse_set(["SPEAKER_LIMIT=30"], opts)
 
 
+class FlasherArgvTest(unittest.TestCase):
+    """The menu choice is the confirmation: flash and recover run the flasher with -y."""
+
+    def test_flash_and_recover_skip_the_typed_confirmation(self):
+        argv = inst.flasher_argv("flash", "/dev/ttyUSB0", "/x/image.bin")
+        self.assertEqual(argv[-4:], ["/dev/ttyUSB0", "flash", "/x/image.bin", "-y"])
+        self.assertEqual(inst.flasher_argv("recover", "rfc2217://h:4000", "/x/stock.bin")[-3:], ["recover", "/x/stock.bin", "-y"])
+
+    def test_identify_takes_no_image(self):
+        self.assertEqual(inst.flasher_argv("identify", "/dev/ttyUSB0")[-2:], ["/dev/ttyUSB0", "identify"])
+
+
 @unittest.skipUnless(os.path.isfile(features.STOCK_IMAGE), "needs the stock image")
 class EndToEndBuildTest(unittest.TestCase):
     """The installer, unattended, builds a user's image for both themes: the registered reference
