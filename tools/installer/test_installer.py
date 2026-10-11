@@ -144,6 +144,22 @@ class PortsTest(unittest.TestCase):
         self.assertIn("FTDI", ports.label(FakePort("/dev/ttyUSB0", 0x0403, 0x6001)))
         self.assertIn("1234:ABCD", ports.label(FakePort("/dev/ttyUSB1", 0x1234, 0xABCD, "Thing")))
 
+    def test_the_only_known_adapter_among_several_ports_is_suggested(self):
+        found = ports.candidates([FakePort("/dev/ttyACM0", 0x2341, 0x0043, "Arduino Uno"),
+                                  FakePort("/dev/ttyUSB0", 0x1A86, 0x7523, "USB Serial")])
+        self.assertEqual(ports.suggested(found).device, "/dev/ttyUSB0")
+
+    def test_no_suggestion_with_two_known_adapters_or_none(self):
+        two = ports.candidates([FakePort("/dev/ttyUSB0", 0x1A86, 0x7523), FakePort("/dev/ttyUSB1", 0x10C4, 0xEA60)])
+        self.assertIsNone(ports.suggested(two))
+        unknown = ports.candidates([FakePort("/dev/ttyACM0", 0x2341, 0x0043), FakePort("/dev/ttyACM1", 0x2341, 0x0043)])
+        self.assertIsNone(ports.suggested(unknown))
+        self.assertIsNone(ports.suggested([]))
+
+    def test_a_single_port_is_suggested_even_when_unknown(self):
+        one = ports.candidates([FakePort("/dev/ttyACM0", 0x2341, 0x0043)])
+        self.assertEqual(ports.suggested(one).device, "/dev/ttyACM0")
+
     def test_url_or_path_typed_by_the_user_is_accepted(self):
         self.assertTrue(ports.looks_like_port("rfc2217://host:4000"))
         self.assertTrue(ports.looks_like_port("/dev/ttyUSB0"))

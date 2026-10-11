@@ -239,8 +239,10 @@ def choose_port(preset):
             print("\nSerial adapter: %s" % ports.label(found[0]))
             answer = ask("Enter to use it, or type another device path or rfc2217:// URL: ", found[0].device)
         elif found:
-            answer = menu("Which serial adapter is on the amp?", [(ports.label(p), p.device) for p in found] +
-                          [("another device path or rfc2217:// URL", "?")])
+            pick = ports.suggested(found)
+            items = [(ports.label(p) + ("  <- suggested" if p is pick else ""), p.device) for p in found]
+            answer = menu("Which serial adapter is on the amp?", items + [("another device path or rfc2217:// URL", "?")],
+                          str(found.index(pick) + 1) if pick else None)
             if answer == "?":
                 answer = ask("Device path or URL: ")
         else:

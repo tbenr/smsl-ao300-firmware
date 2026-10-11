@@ -590,7 +590,10 @@ both themes from inside it. `python3 tools/run_tests.py installer` runs the wiza
 (`tools/installer/test_installer.py`: the config API, port filtering, stock detection, the
 release contents, and unattended builds of both themes checked against the default images).
 Every answer has a flag (`--theme`, `--set FEATURE.OPTION=VALUE`, `--port`, `--action`,
-`--build-only`), so the wizard also serves as a one-line build tool.
+`--build-only`), so the wizard also serves as a one-line build tool. The bundle
+`ao300-custom-1c4dbd4-dirty-20261011` was run on a Linux machine on 2026-10-11 and worked
+end to end (the user's report). When several ports are listed, the wizard proposes the only
+known adapter among them (a CH340 next to an Arduino, say).
 
 ## UI themes
 

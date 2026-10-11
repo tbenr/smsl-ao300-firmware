@@ -2,7 +2,8 @@
 
 candidates(ports) keeps the ports with a USB vendor id (the Bluetooth and debug ports a Mac
 lists have none) and, on macOS, the cu. side of each cu./tty. pair, which is the one the
-flasher's examples use. label(port) names the common adapter chips.
+flasher's examples use. suggested(found) is the port to propose: the only one, or the only
+known adapter among several. label(port) names the common adapter chips.
 """
 import os
 
@@ -32,6 +33,15 @@ def candidates(ports):
             continue                      # macOS lists each adapter twice; keep the cu. side
         out.append(p)
     return sorted(out, key=lambda p: p.device)
+
+
+def suggested(found):
+    """The port to propose: the only one there is, or the only known adapter among several
+    (a CH340 next to an Arduino or a modem). None when the choice is open."""
+    if len(found) == 1:
+        return found[0]
+    known = [p for p in found if (p.vid, p.pid) in ADAPTERS]
+    return known[0] if len(known) == 1 else None
 
 
 def label(port):
