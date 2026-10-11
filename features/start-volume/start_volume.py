@@ -13,33 +13,35 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
                                 "tools", "patch"))
 from uikit import S  # noqa: E402
+import features  # noqa: E402
 
-DISABLED = None                       # no cap for that output: it starts at the last volume, as stock
+VOLUME_MAX = 60                       # the volume keys stop here (0x0D58); a limit of 60 is no cap
 
-# ---- the config: two independent limits, each a volume step 0..60 or DISABLED ---------------------
-SPEAKER_LIMIT = 25
-HEADPHONE_LIMIT = 20
+# ---- the config: two independent limits, each a volume step 0..60 (60: no cap, as stock) ----------
+# Build-time configs (features.py): the environment variables AO300_START_VOLUME_SPEAKER_LIMIT and
+# AO300_START_VOLUME_HEADPHONE_LIMIT set them for one build; each is two immediate bytes of sv_limit.
+CONFIG = {
+    "SPEAKER_LIMIT": features.Option(default=25, lo=0, hi=VOLUME_MAX, bytes=2,
+                                     help="speakers start at most at this volume step after power-on (60: no cap)"),
+    "HEADPHONE_LIMIT": features.Option(default=20, lo=0, hi=VOLUME_MAX, bytes=2,
+                                       help="headphones start at most at this volume step after power-on (60: no cap)"),
+}
+SPEAKER_LIMIT = features.setting("start-volume", "SPEAKER_LIMIT", CONFIG)
+HEADPHONE_LIMIT = features.setting("start-volume", "HEADPHONE_LIMIT", CONFIG)
 
 # post_power_on's `lcall audio_chips_init` becomes `lcall sv_limit`
 HOOK = (0x5596, bytes([0x12, 0x50, 0xD1]), 0x12, "sv_limit")
 XDATA = []                            # XDATA the fix uses: none (stock RAM 0x31, 0x52 only)
 
 
-VOLUME_MAX = 60                       # the volume keys stop here (0x0D58)
-
-
 def _checked(name, limit):
-    if limit is DISABLED or (type(limit) is int and 0 <= limit <= VOLUME_MAX):
-        return limit
-    raise SystemExit("start-volume: %s must be a volume step 0..%d or DISABLED, not %r" % (name, VOLUME_MAX, limit))
+    return CONFIG[name].check(limit, "start-volume: %s" % name)
 
 
 def _cap(a, limit, ram, what, done):
-    """`ram` = min(`ram`, limit); nothing for a disabled limit. Volumes are 0..60, so the
-    compare is unsigned: limit - volume borrows only when the volume is above the limit."""
-    if limit is DISABLED:
-        a.comment("%s: no limit, starts at the last volume as stock" % what)
-        return
+    """`ram` = min(`ram`, limit), always the same 10 bytes (the config promise). Volumes are 0..60,
+    so the compare is unsigned: limit - volume borrows only when the volume is above the limit.
+    A limit of 60 never borrows: no cap, as stock."""
     S(a, """
 mov A,#0x%02X               ; %s limit %d
 clr C

@@ -22,3 +22,7 @@ tools/flash/flash_ao300.log
 .venv/
 __pycache__/
 .DS_Store
+
+# Release bundles (tools/release.py): built from the tree, never committed.
+dist/
+build/

@@ -9,6 +9,9 @@ Each features/<name>/build_patch.py declares BASE (the image it stacks on) and I
 (fix features linked into it); see tools/patch/features.py. After building, for every image:
 
   * its sha is looked up in KNOWN_IMAGES (tools/flash/flash_ao300.py); a new one is reported;
+  * the config promise: an image with build-time configs (CONFIG, tools/patch/features.py) is built
+    once more with every option at a non-default value; it must keep its size and move only the
+    declared bytes. Config variables set in the environment are ignored: build.py builds defaults;
   * the bytes it changes in its base must not overlap bytes an ancestor changed (two features
     hooking the same site), apart from the version pointer every image repoints;
   * every fix in INCLUDES must have its hook installed, jumping into this image's own code,
@@ -64,10 +67,59 @@ def ranges(addrs):
     return ", ".join("0x%04X" % a if a == b else "0x%04X..0x%04X" % (a, b) for a, b in out)
 
 
+def clean_env():
+    """The environment without any AO300_* variable: the config variables (features.env_name) and
+    AO300_BUILD_OUT, so a build here is the default build. (Not computed from the declarations:
+    loading every build_patch.py would read images that are not built yet.)"""
+    return {k: v for k, v in os.environ.items() if not k.startswith("AO300_")}
+
+
 def build(name):
+    """The default build of a feature: its own build_patch.py, with every config variable unset."""
+    env = clean_env()
     p = subprocess.run([sys.executable, os.path.join(fg.FEATURES, name, "build_patch.py")],
-                       cwd=ROOT, capture_output=True, text=True)
+                       cwd=ROOT, env=env, capture_output=True, text=True)
     return p.returncode == 0, (p.stdout + p.stderr).rstrip()
+
+
+def variant(name, values):
+    """Build a feature's image with configs set: values = {(feature, option): value}. The image
+    comes back as bytes; the feature's build/ output and listing are untouched (AO300_BUILD_OUT,
+    honoured by uikit.build_image). Raises SystemExit when the build fails."""
+    env = clean_env()
+    for (f, o), v in values.items():
+        env[fg.env_name(f, o)] = str(v)
+    out = fg.image(name) + ".variant"
+    env["AO300_BUILD_OUT"] = out
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    try:
+        p = subprocess.run([sys.executable, os.path.join(fg.FEATURES, name, "build_patch.py")],
+                           cwd=ROOT, env=env, capture_output=True, text=True)
+        if p.returncode or not os.path.isfile(out):
+            raise SystemExit("variant build of %s failed:\n%s" % (name, (p.stdout + p.stderr).rstrip()))
+        return open(out, "rb").read()
+    finally:
+        if os.path.exists(out):
+            os.remove(out)
+
+
+def config_check(name):
+    """The config promise (features.py) on an image: with every option at a non-default value the
+    image keeps its size and moves only the declared bytes. (errors, notes); ([], []) without configs."""
+    opts = fg.configs(name)
+    if not opts:
+        return [], []
+    values, changes = {}, {}
+    for f, o, opt in opts:
+        v = opt.hi if opt.default != opt.hi else opt.lo
+        values[(f, o)] = v
+        changes[(f, o)] = (opt.default, v, opt)
+    notes = ["configs " + " ".join("%s.%s=%d" % (f, o, opt.default) for f, o, opt in opts)]
+    try:
+        img = variant(name, values)
+    except SystemExit as ex:
+        return ["CONFIG variant build failed: %s" % ex], notes
+    return ["CONFIG promise broken: " + e for e in fg.config_diff(read(name), img, changes)], notes
 
 
 def changed(name):
@@ -164,6 +216,10 @@ def graph(known):
                             % (", ".join(sites), ", ".join(included_by.get(k, [])) or "none yet"))
             rows.append(("%s%s %s" % (prefix, "└──" if last else "├──", k), "  ".join(desc)))
             inner = prefix + ("    " if last else "│   ")
+            own = [(o, opt) for f, o, opt in fg.configs(k) if f == k]
+            if own:
+                rows.append(("%s  = config" % inner, ", ".join("%s %d..%d (default %d)" % (o, opt.lo, opt.hi, opt.default)
+                                                               for o, opt in own)))
             for fx in fg.includes(k):
                 rows.append(("%s  + %s" % (inner, fx), "fix linked into %s" % k))
             walk(k, inner)
@@ -171,7 +227,7 @@ def graph(known):
     width = max(len(t) for t, _ in rows) + 2
     lines = [t.ljust(width) + d for t, d in rows]
     lines.append("")
-    lines.append("── builds on (BASE)    + links in a fix (INCLUDES)")
+    lines.append("── builds on (BASE)    + links in a fix (INCLUDES)    = build-time configs (CONFIG)")
     return "\n".join(lines)
 
 
@@ -212,6 +268,9 @@ def main():
             continue
         built.append(name)
         errors, notes = check(name, known)
+        cerr, cnotes = config_check(name)
+        errors += cerr
+        notes += cnotes
         problems += len(errors)
         (print if errors else say)("%-16s %s  %s" % (name, "ok     " if not errors else "PROBLEM", "; ".join(notes)))
         for e in errors:

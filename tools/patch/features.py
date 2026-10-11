@@ -15,6 +15,19 @@ uikit.build_image hook tuple) and emit(a), or PATCHES (in-place byte changes:
 [(address, original bytes, new bytes, note)], same length), or both. Its own build_patch.py
 is only its standalone image. tools/build.py walks this graph: it builds in order and checks
 the result.
+
+Build-time configs. A fix or feature may declare values that are safe to change at build time:
+
+    CONFIG = {"SPEAKER_LIMIT": features.Option(default=25, lo=0, hi=60, bytes=2, help="...")}
+    SPEAKER_LIMIT = features.setting("start-volume", "SPEAKER_LIMIT", CONFIG)
+
+setting() returns the default, or the value of the environment variable env_name() names
+(AO300_START_VOLUME_SPEAKER_LIMIT), checked against the range. The declaration is a promise:
+the value is an 8-bit immediate; every value in lo..hi builds code of the same length that
+differs from the default build only in the `bytes` places holding the value; and the
+feature's own tests cover the behaviour over the range. tools/build.py checks the first two
+parts on every build with config_diff(); the release installer relies on them, and an image
+that differs from a registered one only by config values needs no KNOWN_IMAGES entry.
 """
 import os
 import sys
@@ -110,6 +123,85 @@ def emit(a, names):
     for f in fixes(names):
         if hasattr(f, "emit"):
             f.emit(a)
+
+
+# ---- build-time configs --------------------------------------------------------------------------
+
+class Option:
+    """A build-time config: an 8-bit immediate in lo..hi, default when nothing else is said."""
+
+    def __init__(self, *, default, lo, hi, bytes, help):
+        assert 0 <= lo <= default <= hi <= 255 and bytes >= 1, "Option: 0 <= lo <= default <= hi <= 255"
+        self.default, self.lo, self.hi, self.bytes, self.help = default, lo, hi, bytes, help
+
+    def check(self, value, where="value"):
+        """value as an int in lo..hi; anything else (a bool, a float, a string, out of range) stops the build."""
+        if type(value) is not int or not self.lo <= value <= self.hi:
+            raise SystemExit("%s must be a whole number %d..%d, not %r (%s)" % (where, self.lo, self.hi, value, self.help))
+        return value
+
+
+def env_name(feature, option):
+    """The environment variable that sets a config for a build: AO300_<FEATURE>_<OPTION>."""
+    return "AO300_%s_%s" % (feature.upper().replace("-", "_"), option.upper())
+
+
+def config(feature):
+    """A feature's CONFIG ({option: Option}), from its fix module or its build_patch; {} if none."""
+    if is_fix(feature):
+        mod = _load("fix_" + feature.replace("-", "_"),
+                    os.path.join(FEATURES, feature, feature.replace("-", "_") + ".py"))
+    else:
+        mod = load(feature)
+    return dict(getattr(mod, "CONFIG", {}))
+
+
+def setting(feature, option, config_=None):
+    """The value of a config for this build: the environment variable when set, else the default.
+    A module passes its own CONFIG as config_ (it is still being imported)."""
+    opt = (config_ if config_ is not None else config(feature))[option]
+    name = env_name(feature, option)
+    raw = os.environ.get(name)
+    if raw is None:
+        return opt.default
+    try:
+        value = int(raw.strip())
+    except ValueError:
+        value = raw
+    return opt.check(value, name)
+
+
+def configs(image_name):
+    """Every config in an image: [(feature, option, Option)], features in contains() order."""
+    return [(f, o, opt) for f in contains(image_name) for o, opt in sorted(config(f).items())]
+
+
+def config_diff(ref, new, changes):
+    """Problems with image `new` against `ref` when only configs changed:
+    changes = {(feature, option): (old value, new value, Option)}. Empty when the promise holds:
+    same length, every differing byte reads an old value in ref and its new value in new, and
+    each value change touches exactly the declared number of bytes."""
+    if len(ref) != len(new):
+        return ["the image is %d bytes, the reference %d: a config must not change the code size" % (len(new), len(ref))]
+    problems = []
+    groups = {}                                    # (old, new) -> [keys], bytes expected
+    for key, (old, nv, opt) in changes.items():
+        if old != nv:
+            groups.setdefault((old, nv), []).append(key)
+    seen = {pair: 0 for pair in groups}
+    for i, (x, y) in enumerate(zip(ref, new)):
+        if x == y:
+            continue
+        if (x, y) in seen:
+            seen[(x, y)] += 1
+        else:
+            problems.append("byte 0x%04X: %02X -> %02X is not a declared config value change" % (i, x, y))
+    for pair, keys in groups.items():
+        want = sum(changes[k][2].bytes for k in keys)
+        if seen[pair] != want:
+            problems.append("%s: %d -> %d changed %d bytes, %d declared"
+                            % (", ".join("%s.%s" % k for k in keys), pair[0], pair[1], seen[pair], want))
+    return problems
 
 
 def base(name):

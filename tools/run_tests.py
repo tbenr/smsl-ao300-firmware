@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Run the emulator tests in parallel and print each one's full output.
 
-    python3 tools/run_tests.py                 every features/*/emu_test.py and the UI kit's
-                                               tools/patch/uikit_test.py
-    python3 tools/run_tests.py fast-lcd        only the named features ("uikit": the kit)
+    python3 tools/run_tests.py                 every features/*/emu_test.py, the UI kit's
+                                               tools/patch/uikit_test.py and the installer's
+                                               tools/installer/test_installer.py
+    python3 tools/run_tests.py fast-lcd        only the named features ("uikit": the kit,
+                                               "installer": the installer)
     python3 tools/run_tests.py --core          also tools/emu/test_core.py (C core
                                                against the Python reference)
 
@@ -64,6 +66,8 @@ def main():
                 tests.append(("%s in %s" % (f, image), [sys.executable, path, "--in", image]))
     if not args.features or "uikit" in args.features:     # the shared UI kit's own tests
         tests.append(("uikit", [sys.executable, os.path.join(ROOT, "tools", "patch", "uikit_test.py")]))
+    if not args.features or "installer" in args.features:  # the release installer and the config API
+        tests.append(("installer", [sys.executable, os.path.join(ROOT, "tools", "installer", "test_installer.py")]))
     missing = set(args.features) - {n for n, _ in tests} - {w for n, _ in tests for w in n.split(" in ")}
     if missing:
         sys.exit("no emu_test.py in features/%s" % ", features/".join(sorted(missing)))

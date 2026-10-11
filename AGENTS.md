@@ -15,6 +15,8 @@ rules apply to anyone working here, human or agent.
 - Annotated listings of our own patch code (`features/*/*.asm`) are fine, as are short
   quotes of stock instructions in docs to explain a hook.
 - The flasher log `tools/flash/flash_ao300.log` stays local. It holds the chip UID.
+- Release bundles (`tools/release.py`, in `dist/`) and installer builds (`build/out/`) stay
+  local too. A bundle never contains firmware: the user supplies the vendor updater.
 
 ## The amp
 
@@ -58,6 +60,19 @@ rules apply to anyone working here, human or agent.
   sectors in use (offsets 0x0000, 0x0200, 0x0400) alone.
 - Each build sets its own `VERSION_TEXT` (20 characters at most), so the RESET page
   shows which image is running.
+- **Build-time configs.** A feature may declare values that are safe to change at build time:
+  `CONFIG = {"NAME": features.Option(default=, lo=, hi=, bytes=, help=)}`, read with
+  `features.setting()` (the default, or the environment variable `AO300_<FEATURE>_<NAME>`).
+  The declaration is a promise: the value is an 8-bit immediate; every value in range builds
+  code of the same length that differs from the default build only in the `bytes` places
+  holding the value; and the feature's own tests cover the behaviour over the range (its
+  `emu_test.py` sweeps values through `emit()`'s arguments). `tools/build.py` checks the first
+  two parts on every build and fails when they break. A config may not change code size,
+  control flow or any byte outside its own. Because of this promise, an image that differs
+  from a registered one only by config values is the **one exception** to the `KNOWN_IMAGES`
+  rule: it needs no entry, no new `VERSION_TEXT` and no new tests. `tools/build.py` itself
+  always builds the defaults (it ignores the variables); only `build.variant()` and the
+  release installer set them.
 - An image meant for the amp includes direct-select, fix-auto-off, strings, start-volume,
   fix-volume-pop and fix-menu-input (INCLUDES) unless the user asks otherwise. Only a UI
   theme stacks on fast-lcd; fixes stack on stock.
@@ -87,6 +102,19 @@ rules apply to anyone working here, human or agent.
   into "go home".
 - Run the tests (`python3 tools/run_tests.py` runs them all in parallel) and report
   their output before calling a build ready.
+
+## The release bundle
+
+- `tools/release.py` packs a user-facing zip from a whitelist: `install.sh`, the wizard
+  (`tools/installer/`), the build tools, and the features the two themes contain. Its
+  self-test builds both themes from the extracted zip. Run it (and `tools/run_tests.py`)
+  before publishing a bundle; a bundle whose reference images are not in `KNOWN_IMAGES`
+  refuses to flash.
+- The wizard hard-codes no default, option name or variable: it reads every feature's
+  `CONFIG`. When a feature gains a config, the wizard asks for it with no change of its own.
+- The wizard never opens the serial port itself: it runs `tools/flash/flash_ao300.py` as a
+  child process with the terminal attached, so the typed `FLASH` confirmation, the chip
+  checks and the recovery message stay the flasher's.
 
 ## Documentation
 

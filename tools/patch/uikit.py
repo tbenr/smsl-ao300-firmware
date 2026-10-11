@@ -2025,6 +2025,11 @@ def build_image(*, base_path, base_sha, code_addr, assemble, hooks, patches=(), 
     img[VERSION_PTR_ADDR + 3] = ver & 0xFF
     assert len(img) <= CODE_END
 
+    variant = os.environ.get("AO300_BUILD_OUT")      # a config variant (tools/build.py, the installer):
+    if variant:                                        # image there, no listing, build/ untouched
+        open(variant, "wb").write(img)
+        print("wrote %s (%d bytes, sha256 %s)" % (variant, len(img), hashlib.sha256(img).hexdigest()))
+        return img
     os.makedirs(os.path.dirname(out_image), exist_ok=True)
     open(out_image, "wb").write(img)
     with open(out_listing, "w") as f:

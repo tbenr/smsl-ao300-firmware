@@ -6,8 +6,9 @@
   * the hook: post_power_on's `lcall audio_chips_init` (0x5596) reaches audio_chips_init with
     g_volume (0x31) = min(volume, SPEAKER_LIMIT) and g_volume_hp (0x52) = min(volume,
     HEADPHONE_LIMIT), for every volume 0..60, and with nothing else changed;
-  * the config: each limit works alone, and a disabled one leaves its volume as stock does
-    (all four combinations, on images built in memory); an out-of-range value stops the build;
+  * the config: other limits work the same (images built in memory), 60 leaves the volume as
+    stock does, every value builds the same code size and moves only its own two immediate
+    bytes (the build-time config promise, tools/patch/features.py); a bad value stops the build;
   * all 256 NEC commands through the IR translate routine (0x5D10) behave as in stock;
   * whole firmware from reset with the real timer ISRs, stock and patched side by side, on an
     EEPROM model (reads, writes and erases of the stock IAP routines), so a cold power-up
@@ -63,7 +64,7 @@ def check(name, ok, detail=""):
 
 
 def capped(volume, limit):
-    return volume if limit is sv.DISABLED else min(volume, limit)
+    return min(volume, limit)
 
 
 def code_of(image, step):
@@ -140,17 +141,21 @@ def hook_test():
 
 
 def config_test():
-    print("\nThe config: two independent limits, each a level or DISABLED")
-    D = sv.DISABLED
-    for spk, hp in ((25, 20), (25, D), (D, 20), (D, D), (10, 40), (0, 60), (60, 0)):
+    print("\nThe config: two independent limits, each a volume step 0..60 (60: no cap)")
+    for spk, hp in ((25, 20), (25, 60), (60, 20), (60, 60), (10, 40), (0, 60), (60, 0)):
         hook_cases(build_with(spk, hp), spk, hp, "speakers %s, headphones %s" % (spk, hp))
     mine, built = build_with(sv.SPEAKER_LIMIT, sv.HEADPHONE_LIMIT), open(TEST_IMG, "rb").read()
     check("built image carries the config's code (%s / %s)" % (sv.SPEAKER_LIMIT, sv.HEADPHONE_LIMIT),
           mine[bp.CODE_ADDR:] == built[bp.CODE_ADDR:len(mine)] and mine[HOOK_SITE:HOOK_RETURN] == built[HOOK_SITE:HOOK_RETURN])
-    sizes = {k: len(build_with(*k)) for k in ((25, 20), (25, D), (D, 20), (D, D))}
-    check("a disabled side emits no code", sizes[(D, D)] < sizes[(25, D)] == sizes[(D, 20)] < sizes[(25, 20)],
-          str(sorted(v - bp.CODE_ADDR for v in sizes.values())))
-    for bad in ((61, 20), (25, -1), (25, 61), ("25", 20), (25.0, 20), (True, 20)):
+    # the promise behind CONFIG: same size for every value, only the value's own bytes move
+    ref = build_with(25, 20)
+    broken = []
+    for spk, hp in ((60, 60), (0, 0), (30, 20), (25, 1), (59, 58)):
+        changes = {("start-volume", "SPEAKER_LIMIT"): (25, spk, sv.CONFIG["SPEAKER_LIMIT"]),
+                   ("start-volume", "HEADPHONE_LIMIT"): (20, hp, sv.CONFIG["HEADPHONE_LIMIT"])}
+        broken += ["%s/%s: %s" % (spk, hp, p) for p in features.config_diff(ref, build_with(spk, hp), changes)]
+    check("every value builds the same size and moves only its two bytes (config promise)", not broken, str(broken[:2]))
+    for bad in ((61, 20), (25, -1), (25, 61), ("25", 20), (25.0, 20), (True, 20), (None, 20)):
         try:
             build_with(*bad)
             stopped = False
@@ -297,12 +302,12 @@ def power_on_cases(image, label, limits):
 def scenario_capped():
     print("\nFull firmware, stored volumes 55 / 45: stock restores them, the patch caps them")
     stock = open(BASE_IMG, "rb").read()
-    power_on_cases(stock, "stock", (sv.DISABLED, sv.DISABLED))
+    power_on_cases(stock, "stock", (VOL_MAX, VOL_MAX))
     power_on_cases(open(TEST_IMG, "rb").read(), "patch", (sv.SPEAKER_LIMIT, sv.HEADPHONE_LIMIT))
 
 
 def low(limit, below):
-    return VOL_MAX - below if limit is sv.DISABLED else max(limit - below, 0)
+    return max(limit - below, 0)
 
 
 def scenario_below():

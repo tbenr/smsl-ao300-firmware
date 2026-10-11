@@ -231,10 +231,15 @@ def big_texts():
     return sorted(set(out))
 
 
-# the strings big_texts() finds include the RESET page's title and such, which the small font draws;
-# the ones pf_name cannot spell lose those characters (uk_text skips them), the ones wider than the
-# screen are clipped (and their right side is not cleared): neither is an input or EQ name
-WIDE_TEXTS = [t for t in big_texts() if PF_NAME.width(t) > 318]
+def wide_texts():
+    """The strings big_texts() finds include the RESET page's title and such, which the small font
+    draws; the ones pf_name cannot spell lose those characters (uk_text skips them), the ones wider
+    than the screen are clipped (and their right side is not cleared): neither is an input or EQ
+    name. (A function, not a constant: the base image exists only once fast-lcd is built, and
+    this module is loaded by tools/build.py before that in a fresh tree.)"""
+    return [t for t in big_texts() if PF_NAME.width(t) > 318]
+
+
 assert all(set(t) <= set(NAME_CHARS) and PF_NAME.width(t) <= 318 for _, _, t in INPUT_NAMES)
 assert PF_STATUS.width("Digital input") < 320
 

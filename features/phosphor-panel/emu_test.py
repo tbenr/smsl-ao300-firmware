@@ -762,7 +762,7 @@ def test_home():
     bad = []
     for t in strings:
         for buf, y, entry, part in ((bp.SMALL_BUF, bp.STATUS_Y, 0x3A53, "status"), (bp.BIG_BUF, bp.NAME_Y, 0x298B, "name")):
-            if buf == bp.BIG_BUF and (t != t.upper() or not set(t) <= set(bp.NAME_CHARS) or t in bp.WIDE_TEXTS):
+            if buf == bp.BIG_BUF and (t != t.upper() or not set(t) <= set(bp.NAME_CHARS) or t in bp.wide_texts()):
                 continue
             e = emu(); home_state(e)
             fill_screen(e, 0x1234)

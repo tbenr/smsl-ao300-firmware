@@ -31,8 +31,13 @@ tools/
   emu/test_core.py                differential test: C core against the Python reference
   build.py                        builds every feature image in dependency order and checks
                                   them; --graph prints the feature tree (see "Feature graph")
-  run_tests.py                    builds, then runs every features/*/emu_test.py and the UI
-                                  kit's test in parallel
+  run_tests.py                    builds, then runs every features/*/emu_test.py, the UI
+                                  kit's test and the installer's test in parallel
+  release.py                      packs the user-facing bundle, dist/ao300-custom-*.zip, and
+                                  self-tests it (see "Release for users")
+  installer/                      the bundle's wizard (ao300_installer.py: stock check, theme
+                                  and config questions, build, port detection, flash through
+                                  flash_ao300.py), install.sh, the bundle's README and tests
   emu/ao300.py                    harness: boot the whole firmware, press remote keys, log
                                   audio-chip writes and pins per 10 ms tick
   emu/i2c.py                      I2C slave model for the harness: the chips answer, and
@@ -172,8 +177,11 @@ root:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install pefile stcgal
+pip install -r requirements.txt
 ```
+
+`requirements.txt` pins stcgal and pefile (pyserial comes with stcgal); the release bundle
+installs the same file.
 
 Activate it (`source .venv/bin/activate`) in every new shell before running the commands
 below; `python3` then resolves to the venv's interpreter. `deactivate` leaves it. The
@@ -304,6 +312,34 @@ lists it in `INCLUDES` links it in three places: `HOOKS += features.hooks(INCLUD
 - **XDATA.** Each feature, and each fix, declares the XDATA its code uses:
   `XDATA = [(0x0100, 0x01A7, "what")]`, or `[]`. Declarations of everything in one image
   must not overlap. That matters once a fix with its own state is included in a theme.
+- **Configs.** An image with build-time configs (below) is built once more with every option
+  at a non-default value; it must keep its size and move only the declared bytes.
+
+#### Build-time configs
+
+A feature may declare values that are safe to change at build time. start-volume's limits are
+the example (`features/start-volume/start_volume.py`):
+
+```python
+CONFIG = {
+    "SPEAKER_LIMIT":   features.Option(default=25, lo=0, hi=60, bytes=2, help="..."),
+    "HEADPHONE_LIMIT": features.Option(default=20, lo=0, hi=60, bytes=2, help="..."),
+}
+SPEAKER_LIMIT = features.setting("start-volume", "SPEAKER_LIMIT", CONFIG)
+```
+
+`features.setting()` returns the default, or the value of the environment variable
+`AO300_START_VOLUME_SPEAKER_LIMIT` when it is set (checked against the range). The
+declaration is a promise: the value is an 8-bit immediate; every value in range builds code
+of the same length that differs from the default build only in the `bytes` places holding
+the value; and the feature's own tests cover the behaviour over the range. `tools/build.py`
+checks the first two parts on every build (`build.config_check`, through
+`features.config_diff`), and always builds the defaults itself; `build.variant(name, values)`
+builds an image with other values without touching the feature's `build/`. The graph shows
+configs on a `= config` line under the feature. Because of the promise, an image that differs
+from a registered one only by config values is the one exception to the `KNOWN_IMAGES` rule:
+no entry, no new `VERSION_TEXT`, no new tests. The release installer (below) builds users'
+images this way.
 
 Byte checks can't tell whether an included fix still works in its new image, for example
 because it jumps into stock code another layer changed. Integration tests check that
@@ -480,18 +516,18 @@ status and caption), every menu page and a power cycle all look as before.
 
 Stock comes back at the volume it was left at, up to 60. With `features/start-volume` the
 amp starts at min(last volume, limit), after a cold power-up and after standby. The volume
-keys are not limited. The two limits are set at build time in
-`features/start-volume/start_volume.py`, each on its own:
+keys are not limited. The two limits are build-time configs ("Feature graph" above), each a
+volume step 0..60 where 60 is no cap; the defaults are 25 for speakers and 20 for headphones:
 
-```python
-SPEAKER_LIMIT = 25     # a volume step 0..60, or DISABLED (start at the last volume, as stock)
-HEADPHONE_LIMIT = 20   # a volume step 0..60, or DISABLED
+```bash
+AO300_START_VOLUME_SPEAKER_LIMIT=30 AO300_START_VOLUME_HEADPHONE_LIMIT=60 python3 features/phosphor-panel/build_patch.py
 ```
 
-After changing them, rebuild and test, and give the images a new `VERSION_TEXT` and
-`KNOWN_IMAGES` entry (the limits are part of the image). The feature's README has the
-details. A menu setting was considered instead and set aside as too much for a choose-once
-value; `docs/menu-system.md` keeps what was learned about the stock menu.
+An image built this way is the registered one with four bytes changed, which
+`tools/build.py` verifies for every value; it needs no new `VERSION_TEXT` or `KNOWN_IMAGES`
+entry. The feature's README has the details. A menu setting was considered instead and set
+aside as too much for a choose-once value; `docs/menu-system.md` keeps what was learned about
+the stock menu.
 
 ### No pop from the volume keys without a signal
 
@@ -536,6 +572,25 @@ stock, including the ones the remote never sends. The mechanism is described in
 
 The RESET menu page shows `v1.4 tbenr ds2` instead of `v1.4`. Change `VERSION_TEXT` in
 `build_patch.py` to alter it; the row fits 20 characters.
+
+## Release for users
+
+`tools/release.py` packs `dist/ao300-custom-<version>.zip`, a bundle for someone who only
+wants the firmware on their amp: `install.sh` creates a venv, installs `requirements.txt`
+and runs the wizard `tools/installer/ao300_installer.py`, which asks for the vendor updater
+(to be put in `original/`), checks its sha, asks for the theme and the build-time configs,
+builds the image, finds the USB serial adapter and runs `tools/flash/flash_ao300.py` with the
+terminal attached. The bundle holds the wizard, the build tools and the features the two
+themes need, and no firmware; the user guide inside it is `tools/installer/README-release.md`.
+The wizard trusts a build by rebuilding the theme with its defaults (the sha must be in
+`KNOWN_IMAGES`) and checking that the user's image differs from it only in the configs'
+bytes (`features.config_diff`); the flasher then reports it as "not a registered image",
+which the wizard explains. `release.py` ends with a self-test that extracts the zip and builds
+both themes from inside it. `python3 tools/run_tests.py installer` runs the wizard's tests
+(`tools/installer/test_installer.py`: the config API, port filtering, stock detection, the
+release contents, and unattended builds of both themes checked against the default images).
+Every answer has a flag (`--theme`, `--set FEATURE.OPTION=VALUE`, `--port`, `--action`,
+`--build-only`), so the wizard also serves as a one-line build tool.
 
 ## UI themes
 

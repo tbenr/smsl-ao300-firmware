@@ -13,29 +13,43 @@ image itself has not been flashed.
 
 ## Setting the limits
 
-The config is two constants at the top of `start_volume.py`. Each is set on its own:
+The two limits are **build-time configs** (`CONFIG` in `start_volume.py`, see
+`tools/patch/features.py`): each is a volume step 0..60, and 60 is no cap, since the volume
+never goes above 60.
 
 ```python
-DISABLED = None        # no cap for that output: it starts at the last volume, as stock
-
-SPEAKER_LIMIT = 25     # a volume step 0..60, or DISABLED
-HEADPHONE_LIMIT = 20   # a volume step 0..60, or DISABLED
+CONFIG = {
+    "SPEAKER_LIMIT":   features.Option(default=25, lo=0, hi=60, bytes=2, help="..."),
+    "HEADPHONE_LIMIT": features.Option(default=20, lo=0, hi=60, bytes=2, help="..."),
+}
 ```
 
-| SPEAKER_LIMIT | HEADPHONE_LIMIT | Speakers at power-on | Headphones at power-on | Code |
-|---|---|---|---|---|
-| 25 | 20 | min(last, 25) | min(last, 20) | 23 bytes (the default) |
-| 25 | DISABLED | min(last, 25) | last, as stock | 13 bytes |
-| DISABLED | 20 | last, as stock | min(last, 20) | 13 bytes |
-| DISABLED | DISABLED | last, as stock | last, as stock | 3 bytes (only the jump) |
+A build takes them from the environment when set, else the defaults:
+
+```bash
+AO300_START_VOLUME_SPEAKER_LIMIT=30 AO300_START_VOLUME_HEADPHONE_LIMIT=60 python3 features/phosphor-panel/build_patch.py
+```
+
+(`tools/build.py` ignores these variables and always builds the defaults; the release
+installer, `tools/installer/`, builds a user's values through `build.variant()`.)
+
+| SPEAKER_LIMIT | HEADPHONE_LIMIT | Speakers at power-on | Headphones at power-on |
+|---|---|---|---|
+| 25 | 20 | min(last, 25) | min(last, 20) (the default) |
+| 25 | 60 | min(last, 25) | last, as stock |
+| 60 | 60 | last, as stock | last, as stock |
 
 - The values are the steps the display shows. The main README's "Volume scale" section has
   their dB values: step 25 is 39.5 dB below maximum, step 20 is 47 dB below.
 - The two limits need not be related; the headphone limit may be the higher one.
-- Any other value (61, -1, "25", 25.0) stops the build with a message.
-- The limits are part of the image. After changing them, rebuild (`python3 tools/build.py`),
-  run the tests, give the images that contain the cap a new `VERSION_TEXT`, and add their
-  sha256 to `KNOWN_IMAGES` in `tools/flash/flash_ao300.py`.
+- Any other value (61, -1, "25", 25.0, True) stops the build with a message.
+- **The promise behind the config:** every value builds the same 23 bytes of code and differs
+  from the default build only in its own two immediate bytes (`mov A,#limit` and
+  `mov ram,#limit`). `tools/build.py` checks that on every build. So a build with other limits
+  is the registered image with four bytes changed: it needs no new `VERSION_TEXT`, no new
+  tests and no `KNOWN_IMAGES` entry (the flasher calls it "not a registered image", which is
+  expected). The emulator tests here run the hook at every volume for 25/20, 25/60, 60/20,
+  60/60, 10/40, 0/60 and 60/0.
 
 ## What stock does
 
@@ -89,9 +103,10 @@ The test uses that to build the other configurations in memory.
 - **Hook.** The hook site run up to its return, with `audio_chips_init` recorded instead of
   run: for every volume 0..60 on both outputs it sees min(volume, limit), and all other RAM,
   XDATA and SP match stock.
-- **Config.** The same on images built in memory for 25/20, 25/DISABLED, DISABLED/20,
-  DISABLED/DISABLED, 10/40, 0/60 and 60/0. A disabled side leaves its volume alone and emits
-  no code (3, 13, 13 and 23 bytes). Six bad values stop the build.
+- **Config.** The same on images built in memory for 25/20, 25/60, 60/20, 60/60, 10/40, 0/60
+  and 60/0 (60 leaves its volume alone). The promise: images built for 60/60, 0/0, 30/20, 25/1
+  and 59/58 have the default build's size and differ from it only in the limits' two bytes
+  each (`features.config_diff`). Seven bad values stop the build.
 - **IR sweep.** All 256 NEC commands through 0x5D10, in standby and on pages 0..3, match
   stock.
 - **Full firmware, stock and patch side by side.** Both boot from reset on `Amp` with the real
@@ -112,5 +127,4 @@ The test uses that to build the other configurations in memory.
   Then the home screen after a capped wake must equal the home screen of an amp that was
   left at the limit. That covers a theme with its own volume display.
 
-The test reads the limits from the config, so it also passes with other values or with a
-side disabled.
+The test reads the limits from the config, so it also passes with other values.
