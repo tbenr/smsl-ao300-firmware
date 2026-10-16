@@ -422,7 +422,7 @@ KEY_P2_SITE = (0x3DD1, bytes([0xEB, 0x64, 0x1F]))       # read_key, IR, page 2: 
 HOOKS += [MUTE_KEY_SITE + (0x02, "hn_mute_key"), KEY_P2_SITE + (0x02, "hn_key_p2")]
 HOOKS += features.hooks(INCLUDES)      # the fixes linked in: their hooks ...
 FIX_PATCHES = features.patches(INCLUDES)   # ... and their in-place patches (strings: "Disconnected")
-VERSION_TEXT = "v1.4 tbenr hn17"
+VERSION_TEXT = "v1.4 tbenr hn18"
 
 
 rect = KIT.rect

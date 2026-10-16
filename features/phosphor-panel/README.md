@@ -4,10 +4,14 @@ Study 2 ("Phosphor Panel", after Marantz, Pioneer and Accuphase VFDs) from
 `features/ui-theme/ui_themes.html`, built the way House Numerals is built: on top of fast-lcd,
 through `tools/patch/uikit.py`, with direct-select, fix-auto-off, strings, start-volume,
 fix-volume-pop and fix-menu-input included (auto-switch is not: still under development). The
-RESET page shows `v1.4 tbenr pp1`. The design and the reductions from the mock are in
+RESET page shows `v1.4 tbenr pp3`. The design and the reductions from the mock are in
 `docs/superpowers/specs/2026-10-10-phosphor-panel-design.md`.
 
 ## Status
+
+pp3 (sha256 `273edf8f…`, 2026-10-16): pp2 rebuilt on direct-select v3, which adds the idempotent
+power commands NEC 0x16 (on) and 0x17 (off); nothing of the theme changed. Emulator-verified
+(all groups and the six fixes' integration jobs), not flashed. The amp runs pp2.
 
 pp2 (sha256 `f5ca8bba…`): pp1 with the name's glyphs placed on the dot grid where they keep the
 most ink. Emulator-verified on 2026-10-10 (all groups: unit, tour, int1, sweep, and the six

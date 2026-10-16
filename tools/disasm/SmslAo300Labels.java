@@ -252,6 +252,7 @@ public class SmslAo300Labels extends GhidraScript {
         {0x3DD6, "read_key_volpage_exit"},  // page 2: keys other than Vol+/Vol-/Power -> 0x15 (home)
         {0x3DC6, "read_key_volpage_filter"}, // read_key, IR, page 2: key 0x1A, 0x1B or 0x1F -> 0x3DD8, else read_key_volpage_exit
         {0x3DD1, "read_key_volpage_last"},  // its last test, mov A,R3 ; xrl A,#0x1F (hooked, features/house-numerals: hn_key_p2 keeps the mute key 0x1C too)
+        {0x0C15, "dispatch_key_menu_power"}, // dispatch_key, pages >= 3: the Power key 0x1F -> 0x15 (home), so key_power_off only runs on pages 1 and 2 (direct-select's 0x17 calls key_exit_to_home first)
         {0x0C23, "dispatch_key_menu_mute"}, // dispatch_key, pages >= 3: the mute key 0x1C -> 0x15 (home), so key_1c only runs on pages 1 and 2
         {0x0CB3, "key_switch_1c"},          // dispatch_key's switch table entry: 0x1047, key 0x1C
         {0x0F50, "vol_key_tail_draw"},      // vol_key_tail from its draw: volpage_draw_volume(0x31), 0x27:0x28 = 0x3F:0x40 = 200 (hn_mute_key ends here)

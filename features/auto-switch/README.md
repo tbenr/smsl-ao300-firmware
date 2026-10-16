@@ -7,7 +7,9 @@ came out of standby (user confirmed, 2026-10-05, as1). as2 enables HDMI only: th
 discoverable while another input is selected (the firmware holds the module's enable,
 expander P0_0, low off the Bluetooth input; `docs/bus-map.md`), and keeping the module on so
 that phones could connect from any input is not wanted, since devices would reconnect on
-their own. That stays an option for the stage 3 menu, off by default.
+their own. That stays an option for the stage 3 menu, off by default. as3 (2026-10-16) is as2
+rebuilt on direct-select v3 (the idempotent power commands 0x16/0x17), nothing else; not
+flashed.
 
 ## What it does
 

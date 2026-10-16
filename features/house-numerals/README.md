@@ -3,9 +3,14 @@
 A reduced build of study 3 ("House Numerals", after SMSL's SU and DO series screens) from
 `features/ui-theme/ui_themes.html`. Built on top of fast-lcd, with direct-select, fix-auto-off,
 strings, start-volume, fix-volume-pop and fix-menu-input included. The RESET page shows
-`v1.4 tbenr hn17`.
+`v1.4 tbenr hn18`.
 
-This is image hn17 (sha256 `782eb508…`): hn16 with the stock big font's area reclaimed. The
+hn18 (sha256 `b3455f2b…`, 2026-10-16) is hn17 rebuilt on direct-select v3, which adds the
+idempotent power commands NEC 0x16 (on) and 0x17 (off); nothing of the theme changed. It is
+emulator-verified and not flashed; the notes below describe hn17, the image on the amp
+until 2026-10-10.
+
+hn17 (sha256 `782eb508…`): hn16 with the stock big font's area reclaimed. The
 big-text hook (0x2A25) goes straight to `hm_name`, so no code path paints with the stock big
 glyphs any more (the tests trap both stock painters on every run, and a walk through every
 stock page ran clean on hn16 before anything moved), and the fonts that fill the area best
@@ -851,7 +856,8 @@ the volume page. Every stock byte is asserted by
 
 ## Memory
 
-hn17: the image is 56602 bytes (0x9800..0xDD19 with the version string), 5054 less than hn16.
+hn17: the image is 56602 bytes (0x9800..0xDD19 with the version string), 5054 less than hn16;
+hn18 is 30 bytes longer (0xDD37), direct-select v3's power commands.
 The stock big font (`font_big_32x30`, 0x6A23..0x7DD3, 5040 bytes) is dead in this image, so
 `build_patch.py` puts the fonts that fill it best there (`hole_fonts`: pf_mono 3122, pf_vname
 943, pf_hvol 906, pf_box 44 = 5015 bytes at 0x6A23..0x7DB9; the last 25 bytes stay stock) as a

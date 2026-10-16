@@ -60,7 +60,7 @@ BASE_IMAGE = features.image(BASE)
 BASE_SHA = "30c1e6fe785dc725037e5925d53f5b82305618037532b4a0cd7397a0774f560b"
 OUT_IMAGE = os.path.join(HERE, "build", "flash_phosphor_panel.bin")
 OUT_LISTING = os.path.join(HERE, "phosphor_panel.asm")
-VERSION_TEXT = "v1.4 tbenr pp2"
+VERSION_TEXT = "v1.4 tbenr pp3"
 
 CODE_ADDR = 0x9800                  # after fast-lcd (code 0x9700..0x977C, version string)
 

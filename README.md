@@ -59,8 +59,9 @@ tools/
 features/
   status-line-flicker/            analysis of the "flickering C" display bug (no build yet)
     NOTES.md, evidence/           findings, ruled-out causes, fix candidate, video crops
-  direct-select/                  direct input selection over IR: a fix, included by the
-                                  images meant for the amp; standalone on stock (see its README)
+  direct-select/                  direct input selection and idempotent power over IR: a fix,
+                                  included by the images meant for the amp; standalone on
+                                  stock (see its README)
     direct_select.py              the fix: HOOK and emit(a), for any build pipeline
     build_patch.py                the standalone image, build/flash_patched.bin
     direct_select.asm             generated listing of the routine placed at 0x9400
@@ -255,16 +256,16 @@ INCLUDES (a fix linked into that image):
 
 ```
 stock                       85e8ac50…
-├── direct-select           'v1.4 tbenr ds2'    0x9400..0x944B  9b7e8b93… known  [fix, hook 0x5D10; included by house-numerals, phosphor-panel]
+├── direct-select           'v1.4 tbenr ds3'    0x9400..0x9469  425460c3… known  [fix, hook 0x5D10; included by house-numerals, phosphor-panel]
 ├── fast-lcd                'v1.4 tbenr fast3'  0x9700..0x977C  30c1e6fe… known
-│   ├── house-numerals      'v1.4 tbenr hn17'   0x9800..0xDD19  782eb508… known
+│   ├── house-numerals      'v1.4 tbenr hn18'   0x9800..0xDD37  b3455f2b… known
 │   │     + direct-select   fix linked into house-numerals
 │   │     + fix-auto-off    fix linked into house-numerals
 │   │     + strings         fix linked into house-numerals
 │   │     + start-volume    fix linked into house-numerals
 │   │     + fix-volume-pop  fix linked into house-numerals
 │   │     + fix-menu-input  fix linked into house-numerals
-│   └── phosphor-panel      'v1.4 tbenr pp2'    0x9800..0xDC0C  f5ca8bba… known
+│   └── phosphor-panel      'v1.4 tbenr pp3'    0x9800..0xDC2A  273edf8f… known
 │         + direct-select   fix linked into phosphor-panel
 │         + fix-auto-off    fix linked into phosphor-panel
 │         + strings         fix linked into phosphor-panel
@@ -349,7 +350,8 @@ checks, in that feature's image, what must stay true wherever it is built on or 
 `run_tests.py` runs it for every image that contains the feature, as jobs such as
 "direct-select in house-numerals" and "fix-auto-off in house-numerals":
 
-- direct-select: the six direct commands and the stock translation of the other 250.
+- direct-select: the six direct commands, the two power commands (on the whole firmware:
+  from standby, when on, twice, from a menu page) and the stock translation of the other 248.
 - fix-auto-off: Auto OFF times out after power-on as after a key; Always ON is untouched.
 - strings: the corrected texts are in the image, and the status loader shows them.
 - start-volume: after a cold power-up and after standby the volume is at most the limit, on
@@ -392,6 +394,13 @@ power-up; the bootloader is in ROM and survives. Every run is appended to
 `tools/flash/flash_ao300.log`, with raw packets when `-D` is given.
 
 ## Status
+
+Built on 2026-10-16, emulator-verified, not flashed: direct-select ds3 (`v1.4 tbenr ds3`,
+sha256 `425460c3…`) adds idempotent power over IR, NEC 0x16 (on) and 0x17 (off), each a no-op
+in the state it names ("Direct input selection and idempotent power over IR" below). Every
+image that includes the fix was rebuilt on it with nothing else changed: house-numerals hn18
+(`b3455f2b…`), phosphor-panel pp3 (`273edf8f…`), auto-switch as3 (`aa43a3e5…`) and probe pr4
+(`e4a5bd1e…`), all in `KNOWN_IMAGES`. The amp still runs pp2.
 
 Flashed on 2026-10-10 over the ser2net tunnel and confirmed by the user the same day:
 `features/phosphor-panel/build/flash_phosphor_panel.bin` (pp1, `v1.4 tbenr pp1`, sha256
@@ -548,9 +557,9 @@ With `features/fix-menu-input` the menu's choice runs the Source key's steps ins
 feature's README has the stock code, the timeline and what the emulator can and cannot say
 about P4.0.
 
-### Direct input selection over IR
+### Direct input selection and idempotent power over IR
 
-Six new NEC commands, sent with the stock remote's address bytes 0x12 0x34:
+Eight new NEC commands, sent with the stock remote's address bytes 0x12 0x34:
 
 | Command | Input |
 |---|---|
@@ -560,17 +569,29 @@ Six new NEC commands, sent with the stock remote's address bytes 0x12 0x34:
 | 0x13 | 4 Bluetooth |
 | 0x14 | 5 HDMI (ARC) |
 | 0x15 | 6 AUX IN |
+| 0x16 | power on |
+| 0x17 | power off (standby) |
 
-They act only when the amp is on and showing the home screen; otherwise they are
-ignored. A command for the input that is already selected is ignored as well (since
+The input commands act only when the amp is on and showing the home screen; otherwise they
+are ignored. A command for the input that is already selected is ignored as well (since
 `v1.4 tbenr ds2`): re-applying an input runs the stock source switch again, which
-re-initialises it and interrupts the audio. Every other command behaves exactly as in
-stock, including the ones the remote never sends. The mechanism is described in
-`features/direct-select/direct_select.py`; `direct_select.asm` is the generated listing.
+re-initialises it and interrupts the audio.
+
+The power commands (since `v1.4 tbenr ds3`) are for a controller that gets nothing back from
+the amp, so the stock Power toggle (0x01) would leave it guessing: 0x16 powers on and is
+ignored when the amp is already on, 0x17 powers off and is ignored in standby. Each becomes the
+stock Power key only when that key does what the command says, so the power-on and power-off
+sequences themselves are stock. On a menu page the stock Power key only goes home; 0x17 runs
+that go-home step itself first, so it powers off from any page with one command. In standby
+neither command can turn into the Source key, which would reset the MCU into the bootloader.
+
+Every other command behaves exactly as in stock, including the ones the remote never sends.
+The mechanism is described in `features/direct-select/direct_select.py`; `direct_select.asm`
+is the generated listing.
 
 ### Version string
 
-The RESET menu page shows `v1.4 tbenr ds2` instead of `v1.4`. Change `VERSION_TEXT` in
+The RESET menu page shows `v1.4 tbenr ds3` instead of `v1.4`. Change `VERSION_TEXT` in
 `build_patch.py` to alter it; the row fits 20 characters.
 
 ## Release for users
@@ -847,7 +868,7 @@ Measured from the images; the code/EEPROM split is the chip's own setting (0xF40
 
 | Region | Size | Used | Free |
 |---|---|---|---|
-| Code flash, 0x0000..0xF3FF | 62464 bytes | 56602 bytes (features/house-numerals hn17) | 5862 bytes after the image, plus 988 unused inside it (0x93A7..0x96FF and 0x977D..0x97FF: the fixes' standalone slots, which an image that includes them leaves as 0xFF) and 25 at 0x7DBA..0x7DD2 (the end of the stock big font's area, below) |
+| Code flash, 0x0000..0xF3FF | 62464 bytes | 56632 bytes (features/house-numerals hn18) | 5832 bytes after the image, plus 988 unused inside it (0x93A7..0x96FF and 0x977D..0x97FF: the fixes' standalone slots, which an image that includes them leaves as 0xFF) and 25 at 0x7DBA..0x7DD2 (the end of the stock big font's area, below) |
 | EEPROM area, 0xF400..0xFDFF | 2560 bytes, 5 sectors of 512 | sectors at offsets 0x0000, 0x0200, 0x0400 | 2 sectors, 1 KB |
 | Internal direct RAM, 0x00..0x7F | 128 bytes | all (registers, bit flags, variables up to 0x7F) | none |
 | Internal indirect RAM, 0x80..0xFF | 128 bytes | stack from 0x88 (`mov SP,#0x88` at 0x44A5) | stack headroom only |
@@ -858,7 +879,7 @@ since hn17 and in phosphor-panel: `big_text_render`'s hook goes straight to the 
 painter and the stock number painters are unreachable, so the theme keeps its own data there
 (house-numerals 5015 bytes of fonts, phosphor-panel 4520 bytes: the status and icon fonts and
 the cell map; `features/house-numerals/README.md`, "Memory"; the tests trap `big_glyph_paint`
-and `bignum_digit` on every run). Phosphor Panel pp2 ends at 0xDC0C (56333 bytes); its
+and `bignum_digit` on every run). Phosphor Panel pp3 ends at 0xDC2A (56363 bytes); its
 dot-matrix name font alone is 9711 bytes, three times the plain face, because the grid breaks
 the run-length runs every third row. The stock small font (0x5DAB..0x6A23, 3192 bytes) is still drawn
 by the menus, the Treble and Bass pages and the RESET page; drawing those with a theme font
