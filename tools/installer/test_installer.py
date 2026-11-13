@@ -208,6 +208,59 @@ class StockTest(unittest.TestCase):
         self.assertEqual(stock.sha256_file(out), features.STOCK_SHA)
 
 
+VENDOR_EXE = os.path.join(ROOT, "original", "SMSL_AO300_UPDATE_VER0A5_EN.exe")
+
+
+class UpdaterTest(unittest.TestCase):
+    """The Windows updater: the vendor's .exe with the custom image in place of the stock one."""
+
+    def setUp(self):
+        import tempfile
+        self.dir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.dir)
+
+    def test_no_updater_without_a_vendor_exe(self):
+        self.assertIsNone(stock.updater(self.dir))
+        open(os.path.join(self.dir, "flash.bin"), "wb").write(b"\x02\x44\x9f" + bytes(100))
+        self.assertIsNone(stock.updater(self.dir))
+
+    @unittest.skipUnless(os.path.isfile(VENDOR_EXE), "needs the vendor updater")
+    def test_vendor_exe_is_found_under_any_name(self):
+        import shutil
+        exe = os.path.join(self.dir, "Updater.EXE")
+        shutil.copy(VENDOR_EXE, exe)
+        self.assertEqual(stock.updater(self.dir), exe)
+
+    @unittest.skipUnless(os.path.isfile(VENDOR_EXE), "needs the vendor updater")
+    def test_rebuilt_updater_carries_the_image_and_leaves_the_vendor_file_alone(self):
+        before = stock.sha256_file(VENDOR_EXE)
+        image = bytes([0x02, 0x44, 0x9F]) + bytes(range(256)) * 200
+        src = os.path.join(self.dir, "image.bin")
+        open(src, "wb").write(image)
+        out = stock.rebuild_updater(VENDOR_EXE, src, os.path.join(self.dir, "sub", "custom.exe"))
+        self.assertEqual(out, os.path.join(self.dir, "sub", "custom.exe"))
+        self.assertEqual(stock.image_of(out), image)
+        self.assertEqual(stock.sha256_file(VENDOR_EXE), before)
+
+    @unittest.skipUnless(os.path.isfile(VENDOR_EXE) and os.path.isfile(features.STOCK_IMAGE), "needs the vendor updater")
+    def test_installer_action_exe_writes_the_updater_next_to_the_image(self):
+        import subprocess
+        p = subprocess.run([sys.executable, os.path.join(HERE, "ao300_installer.py"), "--out", self.dir,
+                            "--theme", "phosphor-panel", "--set", "start-volume.SPEAKER_LIMIT=30", "--action", "exe"],
+                           cwd=ROOT, capture_output=True, text=True, stdin=subprocess.DEVNULL)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        bins = [n for n in os.listdir(self.dir) if n.endswith(".bin")]
+        exes = [n for n in os.listdir(self.dir) if n.endswith(".exe")]
+        self.assertEqual(len(bins), 1, os.listdir(self.dir))
+        self.assertEqual(exes, [bins[0][:-4] + ".exe"])
+        self.assertEqual(stock.image_of(os.path.join(self.dir, exes[0])), open(os.path.join(self.dir, bins[0]), "rb").read())
+        self.assertIn("Windows", p.stdout)
+        self.assertNotIn("Waiting for the bootloader", p.stdout)     # no serial port involved
+
+
 class ParseSetTest(unittest.TestCase):
     def test_values_are_matched_to_the_declared_options(self):
         got = inst.parse_set(["start-volume.SPEAKER_LIMIT=30", "start-volume.HEADPHONE_LIMIT=60"],

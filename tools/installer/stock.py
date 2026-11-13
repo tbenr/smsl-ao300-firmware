@@ -1,5 +1,6 @@
 """The stock firmware for the installer: find the vendor updater or an extracted image in a
-folder, unpack it, and install it as <extracted>/flash.bin after checking its sha256.
+folder, unpack it, and install it as <extracted>/flash.bin after checking its sha256. Also the
+way back: a copy of the vendor updater carrying a custom image, for flashing from Windows.
 
 The build (tools/patch/features.py) reads the stock image from original/extracted/flash.bin.
 Only firmware v1.4 (sha256 features.STOCK_SHA) is supported: every patch address refers to it.
@@ -57,3 +58,32 @@ def install(path, extracted):
     out = os.path.join(extracted, "flash.bin")
     open(out, "wb").write(data)
     return out
+
+
+def updater(folder):
+    """The vendor updater in the folder: the first .exe that carries the stock v1.4 image, or None
+    (a user may have supplied only a flash.bin)."""
+    for path in find(folder):
+        if path.lower().endswith(".exe"):
+            try:
+                if hashlib.sha256(image_of(path)).hexdigest() == features.STOCK_SHA:
+                    return path
+            except (NotStock, Exception):                    # pefile raises its own on a non-PE file
+                pass
+    return None
+
+
+def rebuild_updater(vendor_exe, image_path, out_exe):
+    """A Windows updater carrying the image: a copy of the vendor's .exe with its firmware record
+    replaced (stc_release.rebuild_exe). The vendor file is only read. The result is unpacked
+    again and must give back the image byte for byte."""
+    image = open(image_path, "rb").read()
+    table, blob = stc_release.load(vendor_exe)
+    recs, trailer = stc_release.records(stc_release.decrypt(table, blob))
+    recs = [(typ, image if typ == 0xFF else data) for typ, data in recs]
+    os.makedirs(os.path.dirname(os.path.abspath(out_exe)), exist_ok=True)
+    stc_release.rebuild_exe(vendor_exe, stc_release.encrypt(table, stc_release.build(recs, trailer)), out_exe)
+    if image_of(out_exe) != image:
+        os.remove(out_exe)
+        raise NotStock("the rebuilt updater does not unpack to the image again; nothing was kept")
+    return out_exe

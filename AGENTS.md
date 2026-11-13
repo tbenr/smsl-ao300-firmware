@@ -117,6 +117,8 @@ rules apply to anyone working here, human or agent.
   bootloader" line and the recovery message stay the flasher's. Choosing flash or recover in
   the wizard's menu is the confirmation: it passes `-y`, so the typed `FLASH` question is
   not asked twice.
+- The wizard's Windows updater (`--action exe`) is a copy of the vendor `.exe` with the built
+  image inside. It is firmware: it stays in `build/out/` and never goes into git or a bundle.
 
 ## Documentation
 

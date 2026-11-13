@@ -14,6 +14,7 @@ unattended (the tests and tools/release.py's self-test do that):
     --out DIR                         where the image goes (default build/out)
     --build-only                      stop after the build
     --action flash|identify|recover   skip the menu
+    --action exe                      write a Windows updater (.exe) next to the image instead
     --port DEVICE_OR_URL              skip the port detection
 
 How the build is trusted: the theme is built with its defaults first (the reference, whose
@@ -281,15 +282,37 @@ def run_flasher(action, port, image=None):
     return rc
 
 
+def make_updater(bin_path):
+    """A Windows updater (.exe) next to the image: the vendor's updater carrying the custom image.
+    No serial port is involved. Returns 0, or 1 when there is no vendor updater to copy."""
+    vendor = stock.updater(STOCK_DIR)
+    if vendor is None:
+        print("\nA Windows updater is a copy of SMSL's own updater with the firmware swapped, so the\n"
+              "vendor file is needed: put %s in\n    %s\nand choose this item again."
+              % (stock.UPDATER_NAME, STOCK_DIR))
+        return 1
+    out = stock.rebuild_updater(vendor, bin_path, bin_path[:-4] + ".exe")
+    print("\nWindows updater: %s (%d bytes)" % (os.path.relpath(out, ROOT), os.path.getsize(out)))
+    print("Copy it to a Windows PC with the serial adapter and use it like SMSL's updater: start it,\n"
+          "click its start button, then put the amp in STANDBY and press SOURCE on the remote.\n"
+          "It carries the image built above. It runs none of this installer's chip checks: use it\n"
+          "only on an AO300.")
+    return 0
+
+
 def flash_menu(bin_path, port_preset):
     items = [("Flash the custom image onto the amp", "flash"),
              ("Check the connection only (reads the chip, writes nothing)", "identify"),
              ("Restore the stock firmware (recovery)", "recover"),
+             ("Make a Windows updater (.exe) with the custom image, to flash from a Windows PC", "exe"),
              ("Quit", "quit")]
     while True:
         action = menu("What next?", items, "1")
         if action == "quit":
             return 0
+        if action == "exe":
+            make_updater(bin_path)
+            continue
         port = choose_port(port_preset)
         image = {"flash": bin_path, "recover": os.path.join(EXTRACTED, "flash.bin")}.get(action)
         rc = run_flasher(action, port, image)
@@ -303,7 +326,8 @@ def main(argv=None):
     ap.add_argument("--set", action="append", default=[], metavar="FEATURE.OPTION=VALUE", help="a build-time config")
     ap.add_argument("--out", default=DEFAULT_OUT, help="output folder for the image (default build/out)")
     ap.add_argument("--build-only", action="store_true", help="stop after the build")
-    ap.add_argument("--action", choices=["flash", "identify", "recover"], help="skip the menu")
+    ap.add_argument("--action", choices=["flash", "identify", "recover", "exe"],
+                    help="skip the menu (exe: write a Windows updater next to the image, no serial port)")
     ap.add_argument("--port", help="serial device or pyserial URL; skips the detection")
     args = ap.parse_args(argv)
 
@@ -318,6 +342,8 @@ def main(argv=None):
     bin_path = build_image(theme, ref, ref_desc, values, args.out)
     if args.build_only:
         return 0
+    if args.action == "exe":
+        return make_updater(bin_path)
     if args.action:
         image = {"flash": bin_path, "recover": os.path.join(EXTRACTED, "flash.bin")}.get(args.action)
         return run_flasher(args.action, choose_port(args.port), image)

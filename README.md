@@ -610,6 +610,13 @@ which the wizard explains. `release.py` ends with a self-test that extracts the 
 both themes from inside it. `python3 tools/run_tests.py installer` runs the wizard's tests
 (`tools/installer/test_installer.py`: the config API, port filtering, stock detection, the
 release contents, and unattended builds of both themes checked against the default images).
+The menu's fourth item, "Make a Windows updater (.exe)" (`--action exe`), opens no port: it
+writes a copy of the vendor updater carrying the built image next to it in `build/out`
+(`stock.rebuild_updater`, through `stc_release.rebuild_exe`), unpacks it again and requires
+the image back byte for byte. It needs the vendor `.exe` in `original/`. An updater made by
+the wizard has not been run on Windows yet. The hand-made direct-select one was confirmed
+to start and validate its image there on 2026-09-28 (see "Status"); no flash through a
+rebuilt updater is on record.
 Every answer has a flag (`--theme`, `--set FEATURE.OPTION=VALUE`, `--port`, `--action`,
 `--build-only`), so the wizard also serves as a one-line build tool. The bundle
 `ao300-custom-1c4dbd4-dirty-20261011` was run on a Linux machine on 2026-10-11 and worked

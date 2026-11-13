@@ -23,8 +23,8 @@ you supply; it is not included.
 - A **3.3 V USB-to-serial adapter** (CH340, CP2102, FTDI or similar) wired to the amp's
   4-pin header: GND, TX, RX (the adapter's TX to the amp's RX and vice versa). Do not connect
   the adapter's 5 V or 3.3 V to the amp.
-- A Mac or a Linux computer with Python 3.8 or newer. (Windows is not supported by this
-  installer.)
+- A Mac or a Linux computer with Python 3.8 or newer. (The installer does not run on
+  Windows, but it can make a Windows updater for you: see "Flashing from Windows" below.)
 - The remote, to wake the amp's bootloader (standby, then Source).
 
 ## Steps
@@ -56,6 +56,18 @@ Nothing is written to the amp before you choose Flash, and the installer never a
 password: do not run it with `sudo`. On Linux, if the serial port is not accessible, add
 yourself to the serial group once (`sudo usermod -aG dialout "$USER"`, `uucp` on Arch) and
 log in again.
+
+## Flashing from Windows
+
+If the serial adapter is on a Windows PC, choose **Make a Windows updater (.exe)** in the
+menu instead of Flash. The installer writes an `.exe` next to your image in `build/out`: a
+copy of SMSL's updater that carries your firmware instead of the stock one. Copy it to the
+Windows PC and use it exactly like SMSL's updater: start it, click its start button, then
+put the amp in standby and press Source on the remote.
+
+This needs the vendor `.EXE` in the `original` folder (a bare `flash.bin` is not enough).
+The updater does not run the checks the installer's own flasher runs, so use it only on an
+AO300. To go back to stock from Windows, run SMSL's original updater.
 
 ## If something goes wrong
 
