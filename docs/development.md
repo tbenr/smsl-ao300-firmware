@@ -91,9 +91,9 @@ in standby and press Source on the remote, or power it up from cold. It needs Wi
 in a VM with the amp's USB serial port passed through.
 
 A rebuilt updater contains SMSL's program and firmware code. It is for your own amp: do not
-share it, and it never goes into git or into a bundle. A hand-made one was confirmed to start
-and validate its image on Windows; no amp has been flashed through one
-([status.md](status.md)).
+share it, and it never goes into git or into a bundle. Two amps have been flashed through a
+rebuilt updater; none of those flashes is on record with its image and date, and none is
+known to have used an updater made by the installer's menu item ([status.md](status.md)).
 
 ## Layout
 
