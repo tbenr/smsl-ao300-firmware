@@ -112,7 +112,7 @@ def pack(dist, extra=()):
             total += os.path.getsize(src)
         z.writestr("%s/VERSION" % top, ver + "\n")
         z.writestr("%s/original/README.txt" % top,
-                   "Put the vendor updater here:\n\n    SMSL_AO300_UPDATE_VER0A5_EN (an .exe; AO300 firmware v1.4, from SMSL's support pages)\n\n"
+                   "Put the vendor updater here:\n\n    SMSL_AO300_UPDATE_VER0A5_EN.exe  (docs/install.md says where it was published)\n\n"
                    "The installer extracts the stock firmware from it into original/extracted/.\n"
                    "Nothing in this folder is part of the package: the firmware is SMSL's.\n")
     print("wrote %s: %d files, %d bytes before compression" % (rel(out), len(paths) + 2, total))

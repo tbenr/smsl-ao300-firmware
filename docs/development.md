@@ -43,9 +43,9 @@ activation: `sudo .venv/bin/python tools/flash/flash_ao300.py ...`.
 ## Workflow
 
 Firmware is not in this repository and never goes into it (see [AGENTS.md](../AGENTS.md)).
-Download SMSL's updater for AO300 firmware v1.4, `SMSL_AO300_UPDATE_VER0A5_EN` (an `.exe`),
-from SMSL's support pages and put it in `original/`, which git ignores. Then extract the stock
-firmware, using the file's name as you saved it:
+Get SMSL's updater `SMSL_AO300_UPDATE_VER0A5_EN.exe` ([install.md](install.md), "Getting
+SMSL's updater", says where it was published and gives its sha256) and put it in `original/`,
+which git ignores. Then extract the stock firmware, using the file's name as you saved it:
 
 ```bash
 python3 tools/pe/stc_release.py unpack original/SMSL_AO300_UPDATE_VER0A5_EN.exe original/extracted
@@ -53,7 +53,9 @@ python3 tools/pe/stc_release.py unpack original/SMSL_AO300_UPDATE_VER0A5_EN.exe 
 
 The extracted `flash.bin` must have sha256 `85e8ac50ffcf47ea…` (full value in
 `KNOWN_IMAGES` in `tools/flash/flash_ao300.py`); every address in these docs and in the
-patches refers to that image. `tools/build.py` stops with a message when it is missing.
+patches refers to that image. "Stock v1.4" in these docs always means this image: other AO300
+firmwares also show `v1.4` on the RESET page (a "factory 1.4" updater posted in the same
+forum thread carries a 35972-byte image, this one is 37799 bytes). `tools/build.py` stops with a message when it is missing.
 
 Disassemble it, if you want the listing:
 

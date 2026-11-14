@@ -54,8 +54,9 @@ command may wake the amp from standby. The RESET menu page shows which firmware 
 
 ## Supported hardware
 
-The SMSL AO300 running firmware v1.4 (SMSL's updater `SMSL_AO300_UPDATE_VER0A5_EN`). The
-AO300 PRO has different firmware and is not supported. The flasher reads the chip first and
+The SMSL AO300. The custom firmware is built on the firmware in SMSL's updater
+`SMSL_AO300_UPDATE_VER0A5_EN` (the amp shows `v1.4` with it) and replaces whatever the amp
+runs. The AO300 PRO has different firmware and is not supported. The flasher reads the chip first and
 refuses to write unless it reports what a factory AO300 reports.
 
 ## Install
@@ -64,8 +65,9 @@ You need a Mac or a Linux computer with Python 3.8 or newer, a USB-C data cable 
 amp's remote.
 
 1. Clone this repository, or download it as a ZIP and unzip it.
-2. Download SMSL's updater for firmware v1.4 from SMSL's support pages and put it in the
-   `original` folder.
+2. Get SMSL's updater `SMSL_AO300_UPDATE_VER0A5_EN.exe` and put it in the `original` folder.
+   SMSL's website no longer offers it; the [install guide](docs/install.md) says where it was
+   published and how to check the file.
 3. Connect the amp's USB-C socket to the computer and run `./install.sh`. It asks its
    questions and builds your image.
 4. Choose **Flash**, then put the amp in standby and press Source on the remote.

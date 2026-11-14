@@ -105,8 +105,8 @@ def ensure_stock():
         found = stock.find(STOCK_DIR)
         if not found:
             print("\nThe stock firmware is needed first: every change is a patch on it, and it is not\n"
-                  "included here. Download the vendor updater\n\n    %s\n\nfrom SMSL's support pages "
-                  "(the AO300 firmware v1.4 update) and put it in\n\n    %s\n" % (stock.UPDATER_NAME, STOCK_DIR))
+                  "included here. Get the vendor updater\n\n    %s\n\n(docs/install.md, \"Getting SMSL's "
+                  "updater\", says where it was published) and put it in\n\n    %s\n" % (stock.UPDATER_NAME, STOCK_DIR))
             if not interactive():
                 sys.exit("No updater in %s." % STOCK_DIR)
             ask("Press Enter when the file is there (q quits): ")
