@@ -42,7 +42,8 @@ not work.
 
 ## Steps
 
-1. Get the files: clone the repository, or use GitHub's "Download ZIP" and unzip it.
+1. Get the files: download the package (`ao300-custom-….zip`) from the
+   [latest release](https://github.com/tbenr/smsl-ao300-firmware/releases/latest) and unzip it. A clone of the repository works the same way.
 2. Put SMSL's updater in the `original` folder (create the folder if it is not there). The
    file's name does not matter.
 3. Connect the amp to the computer with the USB-C cable. Power the amp.
