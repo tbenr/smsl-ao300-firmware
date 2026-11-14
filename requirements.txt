@@ -1,4 +1,4 @@
-# The Python packages the tools need (README, "Requirements"); the release bundle installs
+# The Python packages the tools need (docs/development.md, "Requirements"); install.sh installs
 # exactly these. stcgal brings pyserial.
 stcgal==1.10
 pefile==2024.8.26

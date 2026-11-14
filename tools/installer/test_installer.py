@@ -129,14 +129,14 @@ class FakePort:
 class PortsTest(unittest.TestCase):
     def test_only_usb_ports_are_candidates(self):
         found = ports.candidates([FakePort("/dev/cu.Bluetooth-Incoming-Port"),
-                                  FakePort("/dev/cu.usbserial-10", 0x1A86, 0x7523, "USB Serial"),
+                                  FakePort("/dev/cu.usbserial-0001", 0x1A86, 0x7523, "USB Serial"),
                                   FakePort("/dev/cu.debug-console")])
-        self.assertEqual([p.device for p in found], ["/dev/cu.usbserial-10"])
+        self.assertEqual([p.device for p in found], ["/dev/cu.usbserial-0001"])
 
     def test_tty_twin_of_a_cu_port_is_dropped_on_macos(self):
-        found = ports.candidates([FakePort("/dev/tty.usbserial-10", 0x1A86, 0x7523),
-                                  FakePort("/dev/cu.usbserial-10", 0x1A86, 0x7523)])
-        self.assertEqual([p.device for p in found], ["/dev/cu.usbserial-10"])
+        found = ports.candidates([FakePort("/dev/tty.usbserial-0001", 0x1A86, 0x7523),
+                                  FakePort("/dev/cu.usbserial-0001", 0x1A86, 0x7523)])
+        self.assertEqual([p.device for p in found], ["/dev/cu.usbserial-0001"])
 
     def test_known_adapters_get_a_name(self):
         self.assertIn("CH340", ports.label(FakePort("/dev/ttyUSB0", 0x1A86, 0x7523)))

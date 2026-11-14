@@ -244,7 +244,7 @@ def main():
 
     say = (lambda *a: None) if args.quiet else print
     if sha(read(fg.STOCK) or b"") != fg.STOCK_SHA:
-        sys.exit("original/extracted/flash.bin is missing or not the stock v1.4 image (see README, Workflow)")
+        sys.exit("original/extracted/flash.bin is missing or not the stock v1.4 image (see docs/development.md, Workflow)")
     failed, built, problems = set(), [], 0
     for name in fg.order(args.features or None):
         blocked = [c for c in fg.chain(name)[1:] if c in failed]

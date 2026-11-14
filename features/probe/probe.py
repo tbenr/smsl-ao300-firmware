@@ -52,7 +52,7 @@ fixes stack. Blocks the main loop for about a second (about 300 bus reads and 1.
 as a stock input switch does.
 
 Other builds list "probe" in INCLUDES and link HOOK and emit(a) through features.fixes
-(tools/patch/features.py; README, "Feature graph").
+(tools/patch/features.py; docs/development.md, "Feature graph").
 """
 import os
 import sys

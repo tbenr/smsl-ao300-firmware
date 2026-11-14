@@ -5,7 +5,7 @@ only clamps g_volume (0x31) and g_volume_hp (0x52) to 0..60, and nothing on the 
 lowers them. After a loud session the amp comes back loud.
 
 Other builds list "start-volume" in INCLUDES and link HOOK and emit(a) through
-features.fixes(INCLUDES) (tools/patch/features.py; README, "Feature graph").
+features.fixes(INCLUDES) (tools/patch/features.py; docs/development.md, "Feature graph").
 """
 import os
 import sys

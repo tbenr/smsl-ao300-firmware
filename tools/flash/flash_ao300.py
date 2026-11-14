@@ -5,7 +5,7 @@ A thin wrapper around stcgal that adds the checks the bare tool lacks. Every
 value it checks against was read from a real AO300 with `stcgal -D` and matched
 against the vendor updater's container.
 
-Subcommands (all need -p PORT, e.g. /dev/cu.usbserial-10 or a pyserial URL such as
+Subcommands (all need -p PORT, e.g. /dev/cu.usbserial-XXXX, /dev/ttyUSB0 or a pyserial URL such as
 rfc2217://host:4000 for a port forwarded from another machine):
 
   identify            connect, print chip info, run all checks, reset. Writes nothing.
@@ -115,7 +115,7 @@ KNOWN_IMAGES = {
     "280c3f996fe20b95050f9a9d2e0adecbf1520ce9a5f9f670d2108fc2dff98284": "stock + probe pr2 (the same dump on the remote's FN button, NEC 0x08, instead of 0x16) + the six fixes, 'v1.4 tbenr pr2' (flashed 2026-10-05, thirteen dumps; superseded by pr3)",
     "d0146e353fa8ae5efc1ab6a456de3f72b7e13b9efde9d1ddddee83bf55719e08": "stock + auto-switch stage 1 as1 (to HDMI when the TV comes on, to Bluetooth when a phone connects, from any input while the selected input is silent; one receiver register written, the calculator target) + the six fixes, 'v1.4 tbenr as1' (flashed 2026-10-05, the TV wake confirmed; superseded by as2)",
     "d6f91fcf98e07ce55790ae5efd2445651d1c42a5d7da54a3b12ee42390bc233a": "stock + auto-switch stage 1 as2 (as1 with HDMI the only enabled source: the Bluetooth module is off on the other inputs, so a phone cannot connect there) + the six fixes, 'v1.4 tbenr as2' (features/auto-switch/build/flash_autoswitch.bin)",
-    "b4836c461f554ae2ed707bdfc48e7c9fb00fa5692f2f7a44f4757504d3bf3776": "stock + probe pr3 (pr2 plus the FS line: the receiver's rate calculator pointed at each of its eight ports and restored, the probe's one register write) + the six fixes, 'v1.4 tbenr pr3' (features/probe/build/flash_probe.bin)",
+    "b4836c461f554ae2ed707bdfc48e7c9fb00fa5692f2f7a44f4757504d3bf3776": "stock + probe pr3 (pr2 plus the FS line: the receiver's rate calculator pointed at each of its eight ports and restored, the probe's one register write) + the six fixes, 'v1.4 tbenr pr3' (flashed 2026-10-05, the FS dump; superseded by pr4)",
     "38a1499efef590147b87393aba62314c4d5de43f1019d9c17729136862e2ae1d": "fast-lcd fast3 + Phosphor Panel pp1 (study 2 of the UI mock: the VFD-style home with a dot-matrix name and a row of lamps, the seven-segment volume page with afterglow and a bar, sequenced fades between them; the stock big font's area holds its data) + the six fixes, 'v1.4 tbenr pp1' (flashed 2026-10-10, works; superseded by pp2)",
     "f5ca8bba9048d0daacb459299f2565f5fb043751be72177e80c6947d1e39098e": "fast-lcd fast3 + Phosphor Panel pp2 (pp1 with each name glyph placed on the dot grid where it keeps the most ink: the left edge of O and C no longer cut) + the six fixes, 'v1.4 tbenr pp2' (features/phosphor-panel/build/flash_phosphor_panel.bin; flashed 2026-10-10, confirmed)",
     "425460c3516a0bb14a7c31bb8983034de576b7633b59a8a9084cd92d5d87c418": "direct-select v3 (ds2 plus idempotent power over IR: NEC 0x16 powers on only from standby, 0x17 powers off only when on, from a menu page too), 'v1.4 tbenr ds3' (features/direct-select/build/flash_patched.bin)",
@@ -274,7 +274,7 @@ def cmd_flash(args, recover=False):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("-p", "--port", required=True, help="serial device, e.g. /dev/cu.usbserial-10, or a pyserial URL like rfc2217://host:4000")
+    ap.add_argument("-p", "--port", required=True, help="serial device, e.g. /dev/cu.usbserial-XXXX or /dev/ttyUSB0, or a pyserial URL like rfc2217://host:4000")
     ap.add_argument("-D", "--debug", action="store_true", help="dump raw packets")
     ap.add_argument("--log", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "flash_ao300.log"),
                     help="append all output to this file (default: next to the script)")

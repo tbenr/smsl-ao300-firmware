@@ -41,7 +41,7 @@ past the table into erased flash -> "no key"). The hook replaces its first 3 byt
     commands explicitly instead of reading code bytes as key codes.
 
 Other builds list "direct-select" in INCLUDES and link HOOK and emit(a) through
-features.hooks / features.emit (tools/patch/features.py; README, "Feature graph").
+features.hooks / features.emit (tools/patch/features.py; docs/development.md, "Feature graph").
 """
 import os
 import sys

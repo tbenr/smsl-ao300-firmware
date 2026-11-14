@@ -7,7 +7,7 @@ many characters as the original, NUL-padded to the original length. Nothing else
 firmware reads that string, so the whole fix is the 13 bytes at 0x91ED, no code, no XDATA.
 
 Other builds list "strings" in INCLUDES and take the patches through features.patches(INCLUDES)
-(tools/patch/features.py; README, "Feature graph"). Later renames go into STRINGS as well; the
+(tools/patch/features.py; docs/development.md, "Feature graph"). Later renames go into STRINGS as well; the
 input names (0x904F.., uikit.INPUT_NAMES) would also need house-numerals' fonts to carry the new
 letters (it builds them from those texts).
 """

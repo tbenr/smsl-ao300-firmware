@@ -130,7 +130,7 @@ public class SmslAo300Labels extends GhidraScript {
         {0x492B, "settings_save_eeprom"}, // erase sector 0x0200, write the 12 bytes 0x0201..0x020C from RAM (see settings_load_eeprom). Called at 0x3446 when the
                                        // countdown 0x37:0x38 (reset_timer_37: 50 main ticks) runs out, so about 0.5 s after a change, and after every power-on (filter_apply arms it).
                                        // Its first instruction is lcall ir_cmd_clear, with the new-command bit 0x20.4 left alone: a command nec_decode stored after
-                                       // read_key's test of that bit in the same main-loop pass is read as command 0, key 0xFF (README, open questions)
+                                       // read_key's test of that bit in the same main-loop pass is read as command 0, key 0xFF (docs/open-questions.md)
         {0x5DA1, "ir_cmd_clear"},      // g_ir_cmd = 0. Called by timer0_isr when g_ir_release_timer runs out (0x3EB7) and by settings_save_eeprom
         {0x5BE0, "countdown8_dec"},    // R3:R2:R1 -> one byte: if non-zero, decrement; C set when that made it 0 (countdown16_dec for one byte). timer0_isr uses it
         {0x5CF6, "clamp_hp_30"},       // R7 = min(R7, 30)

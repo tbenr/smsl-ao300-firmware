@@ -1,9 +1,10 @@
-"""Serial adapter detection for the installer: the USB serial ports pyserial can see.
+"""Serial port detection for the installer: the USB serial ports pyserial can see.
 
 candidates(ports) keeps the ports with a USB vendor id (the Bluetooth and debug ports a Mac
 lists have none) and, on macOS, the cu. side of each cu./tty. pair, which is the one the
 flasher's examples use. suggested(found) is the port to propose: the only one, or the only
-known adapter among several. label(port) names the common adapter chips.
+known USB serial chip among several (the amp shows up as a CH340). label(port) names the
+common chips.
 """
 import os
 

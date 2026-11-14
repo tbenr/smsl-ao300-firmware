@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Build the "Phosphor Panel" image for the SMSL AO300 (on top of fast-lcd), pp2.
+"""Build the "Phosphor Panel" image for the SMSL AO300 (on top of fast-lcd).
 
 Study 2 of features/ui-theme/ui_themes.html (after Marantz, Pioneer and Accuphase VFDs), built
-the way House Numerals is built; the design is docs/superpowers/specs/2026-10-10-phosphor-panel-
-design.md. Everything lit is drawn in the phosphor `ph`: the COLOR tint, mint on the White tint
+the way House Numerals is built; README.md here lists what was reduced from the mock.
+Everything lit is drawn in the phosphor `ph`: the COLOR tint, mint on the White tint
 (uk_acc). Brightness is a ladder of eight levels made from ph with uk_avg (7 = ph, 6 = 3/4, 5 =
 1/2, 4 = 3/8, 3 = 1/4, 2 = 3/16, 1 = 1/8 = the ghost of an unlit VFD segment, 0 = black).
 

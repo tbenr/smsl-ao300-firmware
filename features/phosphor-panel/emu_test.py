@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Emulator tests for Phosphor Panel pp1 (see README.md).
+"""Emulator tests for Phosphor Panel (see README.md).
 
   python3 emu_test.py unit    image diff, then every routine at its hook: the fonts and the cell map,
                               the ladder, the cell and bar painters, the home screen against

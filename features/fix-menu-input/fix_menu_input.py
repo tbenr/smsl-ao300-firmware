@@ -20,7 +20,7 @@ It needs no other feature and none needs it: direct-select calls the stock input
 calls the stock input_set_hw.
 
 Other builds list "fix-menu-input" in INCLUDES and link HOOK and emit(a) through
-features.fixes(INCLUDES) (tools/patch/features.py; README, "Feature graph").
+features.fixes(INCLUDES) (tools/patch/features.py; docs/development.md, "Feature graph").
 """
 import os
 import sys

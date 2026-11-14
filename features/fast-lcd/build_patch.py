@@ -2,7 +2,7 @@
 """Build the "fast LCD" image for the SMSL AO300 (on top of the stock image).
 
 The stock UI keeps working as it is, but its two lowest-level pixel paths are
-replaced with the tuned loop that the blit-test build verified on the panel (README, Bus timing):
+replaced with the tuned loop that the blit-test build verified on the panel (README.md here, Bus timing):
 
   lcd_write_pixel 0x5C7C   stock: two calls of lcd_write_data 0x567A, each with its own
                            CS pulse and a delay call (about 55 clocks a pixel).

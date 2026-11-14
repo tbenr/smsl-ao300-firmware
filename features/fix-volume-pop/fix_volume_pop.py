@@ -14,7 +14,7 @@ draws it. The unmute that follows the signal applies the volume from RAM as it a
 (audio_apply_mute, 0x58EB). With lock, and on the other inputs, the keys are stock.
 
 Other builds list "fix-volume-pop" in INCLUDES and link HOOK, PATCHES and emit(a) through
-features.fixes(INCLUDES) (tools/patch/features.py; README, "Feature graph").
+features.fixes(INCLUDES) (tools/patch/features.py; docs/development.md, "Feature graph").
 """
 import os
 import sys

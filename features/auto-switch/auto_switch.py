@@ -35,7 +35,7 @@ format poll. State in XDATA 0x01D0..0x01D6. Stage 2 (Optical and Coaxial through
 scan) and stage 3 (a menu with a per-source mask) are not here; ENABLED and HOLD are build-time.
 
 Other builds list "auto-switch" in INCLUDES and link HOOK and emit(a) through features.fixes
-(tools/patch/features.py; README, "Feature graph").
+(tools/patch/features.py; docs/development.md, "Feature graph").
 """
 import os
 import sys

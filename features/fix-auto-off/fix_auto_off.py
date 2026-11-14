@@ -7,7 +7,7 @@ key press. The PRO arms it at the end of its post-power-on routine with the key 
 own code (0x0BBD): countdown = (dimmer - 1) * 0x01F4, i.e. 500 main ticks (about 6 s).
 
 Other builds list "fix-auto-off" in INCLUDES and link HOOK and emit(a) through
-features.fixes(INCLUDES) (tools/patch/features.py; README, "Feature graph").
+features.fixes(INCLUDES) (tools/patch/features.py; docs/development.md, "Feature graph").
 """
 import os
 import sys
