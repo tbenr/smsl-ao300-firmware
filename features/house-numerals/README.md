@@ -417,7 +417,7 @@ in `build_patch.py`, `V*`). Everything is drawn with `uk_text`; the kit's stock-
   number's columns. A step from 10 to 9 therefore clears the tens digit's columns without
   blanking the number; the digits themselves redraw in place (each cell carries its background),
   so nothing flickers.
-- **dB caption.** The NJW1194 code table at 0x9289 (`code = table[60 - step]`, see the main
+- **dB caption.** The NJW1194 code table at 0x9289 (`code = table[60 - step]`, see
   `docs/hardware.md`, "Volume scale") gives the level below step 60 in half-dB: `code - 35`. `hv_cap`
   formats it as `_75.5 dB` .. ` _0.5 dB`, `  0.0 dB` (no sign at step 60), always 8 cells so
   a shorter value draws its own background; `_` and `~` are the minus sign and the infinity of

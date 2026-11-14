@@ -1,89 +1,145 @@
-# SMSL AO300 firmware work
+# SMSL AO300 custom firmware
 
-Reverse engineering of the SMSL AO300 amplifier's control-MCU firmware (STC8C2K64S2,
-8051 core) and custom features built on top of it.
+Unofficial replacement firmware for the control chip (STC8C2K64S2) of the SMSL AO300
+amplifier. It is SMSL's own firmware v1.4 with patches applied: everything the amp does
+stays, and the changes below are added. You build it on your own computer from SMSL's
+updater, which you download yourself. No SMSL firmware is in this repository.
+
+| | Home | Volume |
+|---|---|---|
+| House Numerals | ![House Numerals home screen](docs/images/house-numerals-home.png) | ![House Numerals volume page](docs/images/house-numerals-volume.png) |
+| Phosphor Panel | ![Phosphor Panel home screen](docs/images/phosphor-panel-home.png) | ![Phosphor Panel volume page](docs/images/phosphor-panel-volume.png) |
+
+The screens are rendered by the emulator from the built images, at twice the panel's size.
+
+## What it adds
+
+- **A new look for the display**, in two styles. House Numerals has large, clean numerals and
+  a volume page that slides in. Phosphor Panel imitates a vacuum fluorescent display: a
+  dot-matrix input name, a row of lamps and seven-segment digits. Both follow the amp's COLOR
+  setting. The menus stay as they are.
+- **A volume cap at power-on.** The amp starts no louder than a level you choose, one for
+  speakers and one for headphones (stock comes back at the volume it was left at). The volume
+  keys are not limited.
+- **No pop** from the volume keys on Optical and Coaxial without a signal, and none when an
+  input is chosen in the menu.
+- **The display's Auto OFF works after power-on.** Stock leaves the display lit until the
+  first key press; SMSL fixed this only on the AO300 PRO.
+- **Infrared commands for programmable remotes and home automation**: one per input, power
+  on and power off. An input command also wakes the amp from standby, on that input.
+- **A corrected status text**: "Disconnected" instead of "No Connected" on HDMI ARC.
+
+The installer asks for three things: the look, the two volume caps, and whether an input
+command may wake the amp from standby. The RESET menu page shows which firmware is running:
+`v1.4 tbenr` followed by a build tag.
+
+## Read this first
+
+- **No warranty.** This is a hobby project, provided as it is, with no warranty of any kind.
+  You use it at your own risk. See [LICENSE](LICENSE).
+- **It can do harm.** The firmware controls the volume, the mutes and the power sequence of a
+  mains-powered amplifier. A fault could damage the amplifier or your speakers, or play at
+  full volume. Turn the volume down, or disconnect the speakers and take off your headphones,
+  the first time you power the amp after flashing.
+- **Warranty.** Flashing goes over the amp's own USB-C socket with a regular USB cable, the
+  way SMSL's updater does it; nothing is opened or soldered. Replacing the firmware may still
+  void SMSL's warranty.
+- **Not affiliated.** This project is not affiliated with, authorised or endorsed by SMSL or
+  by STC. Their names and product names are trademarks of their owners and are used only to
+  say what the firmware runs on.
+- **No vendor firmware here.** The firmware is SMSL's and is not distributed with this
+  project in any form. The installer builds your image from the updater you download from
+  SMSL. Everything built from that file, including the Windows updater the installer can
+  make, is for your own amplifier only: do not share or publish it.
+
+## Supported hardware
+
+The SMSL AO300 running firmware v1.4 (SMSL's updater `SMSL_AO300_UPDATE_VER0A5_EN`). The
+AO300 PRO has different firmware and is not supported. The flasher reads the chip first and
+refuses to write unless it reports what a factory AO300 reports.
+
+## Install
+
+You need a Mac or a Linux computer with Python 3.8 or newer, a USB-C data cable and the
+amp's remote.
+
+1. Clone this repository, or download it as a ZIP and unzip it.
+2. Download SMSL's updater for firmware v1.4 from SMSL's support pages and put it in the
+   `original` folder.
+3. Connect the amp's USB-C socket to the computer and run `./install.sh`. It asks its
+   questions and builds your image.
+4. Choose **Flash**, then put the amp in standby and press Source on the remote.
+
+[docs/install.md](docs/install.md) is the full guide, including Windows and what to do when
+something goes wrong.
+
+## Safety and recovery
+
+Nothing is written before you choose Flash, and the flasher checks the chip before it erases
+anything. The chip's bootloader is in ROM and cannot be overwritten: if a flash fails, or a
+build misbehaves, unplug the amp, start the installer's "Restore the stock firmware" and plug
+the amp back in. A cold power-up always reaches the bootloader. Keep SMSL's updater file: the
+firmware cannot be read back from the chip, so that file is your only copy of stock.
+
+## Infrared commands
+
+Eight NEC commands, sent with the stock remote's address bytes 0x12 0x34:
+
+| Command | Does |
+|---|---|
+| 0x10 | input 1, USB audio |
+| 0x11 | input 2, Optical |
+| 0x12 | input 3, Coaxial |
+| 0x13 | input 4, Bluetooth |
+| 0x14 | input 5, HDMI (ARC) |
+| 0x15 | input 6, AUX IN |
+| 0x16 | power on (ignored when the amp is on) |
+| 0x17 | power off (ignored in standby) |
+
+- With the amp on, an input command acts on the home screen and is ignored on a menu page. A
+  command for the input already selected is ignored, so repeating it does not interrupt the
+  audio.
+- In standby an input command powers the amp on, on that input, so one command reaches "on,
+  playing HDMI" from any state. The installer can turn this off; the amp then wakes only on
+  0x16 or the Power key.
+- 0x16 and 0x17 set the power state instead of toggling it, for a controller that gets
+  nothing back from the amp. 0x17 also works from a menu page.
+- Every other command behaves as in stock. `features/direct-select/README.md` in the
+  repository has the details.
 
 ## Status
 
-What was verified on hardware, and when: [docs/status.md](docs/status.md).
+This firmware runs on the author's amplifier: House Numerals `hn19` since 2026-11-14, and
+Phosphor Panel `pp2` for the month before it. The current Phosphor Panel build (`pp4`) adds
+only the power and wake commands to `pp2`; it is tested in the emulator and has not been on
+an amp. Flashing has been done from macOS and from Linux. The Windows route has not been
+used to flash. [docs/status.md](docs/status.md) lists what was verified on hardware and when.
 
-## What the custom firmware adds
+## For developers
 
-### Volume cap at power-on
+Each change is a small binary patch on the stock image, written in 8051 assembly through
+Python build scripts and tested in an emulator that runs the whole firmware. These files are
+in the repository, https://github.com/tbenr/smsl-ao300-firmware; a release package carries
+only what the installer needs.
 
-Stock comes back at the volume it was left at, up to 60. With `features/start-volume` the
-amp starts at min(last volume, limit), after a cold power-up and after standby. The volume
-keys are not limited. The two limits are build-time configs ("Feature graph" above), each a
-volume step 0..60 where 60 is no cap; the defaults are 25 for speakers and 20 for headphones:
-
-```bash
-AO300_START_VOLUME_SPEAKER_LIMIT=30 AO300_START_VOLUME_HEADPHONE_LIMIT=60 python3 features/phosphor-panel/build_patch.py
-```
-
-An image built this way is the registered one with four bytes changed, which
-`tools/build.py` verifies for every value; it needs no new `VERSION_TEXT` or `KNOWN_IMAGES`
-entry. The feature's README has the details. A menu setting was considered instead and set
-aside as too much for a choose-once value; `docs/menu-system.md` keeps what was learned about
-the stock menu.
-
-### No pop from the volume keys without a signal
-
-Stock mutes Optical and Coaxial by register when the signal goes, and leaves the mute pins
-where they were. The first volume key then moves them (P2.7 and P2.2 high on speakers, P2.5
-low on headphones) and opens the NJW1194 for a tick, which pops. With
-`features/fix-volume-pop` a volume key without a signal changes only the number and the
-display; the unmute that follows the signal applies the volume. With a signal, and on the
-other inputs, the keys are stock. The feature's README has the stock code and the patch.
-
-### Input changes in the menu without the supply cycle
-
-Stock handles an input chosen in the menu differently from the Source key: it mutes by
-register only, turns P4.0 (a supply enable) off for 3 s, and then runs the power-on chip
-setup again, with the speaker mute pin released nearly all the way through. The amp pops.
-With `features/fix-menu-input` the menu's choice runs the Source key's steps instead: mute,
-`input_set_hw`, unmute 2 s later. P4.0 is only switched at power-on and standby. The
-feature's README has the stock code, the timeline and what the emulator can and cannot say
-about P4.0.
-
-### Direct input selection and idempotent power over IR
-
-Eight new NEC commands, sent with the stock remote's address bytes 0x12 0x34:
-
-| Command | Input |
+| Topic | Where |
 |---|---|
-| 0x10 | 1 USB audio |
-| 0x11 | 2 Optical |
-| 0x12 | 3 Coaxial |
-| 0x13 | 4 Bluetooth |
-| 0x14 | 5 HDMI (ARC) |
-| 0x15 | 6 AUX IN |
-| 0x16 | power on |
-| 0x17 | power off (standby) |
+| Setting up, building, testing, flashing by hand | [docs/development.md](docs/development.md) |
+| Rules for changing anything, for people and for coding agents | [AGENTS.md](AGENTS.md) |
+| What the MCU talks to, the volume scale, the memory budget | [docs/hardware.md](docs/hardware.md) |
+| Registers and pins, traced in the emulator and read back from the amp | [docs/bus-map.md](docs/bus-map.md) |
+| What is not known yet, and the plan for finding out | [docs/open-questions.md](docs/open-questions.md), [docs/probing-plan.md](docs/probing-plan.md) |
+| The stock menu's internals | [docs/menu-system.md](docs/menu-system.md) |
+| The theme kit and the design mock | [docs/ui-kit.md](docs/ui-kit.md), [features/ui-theme](features/ui-theme/README.md) |
+| How each feature works | `features/<name>/README.md` |
 
-With the amp on, the input commands act only on the home screen; on a menu page they are
-ignored. A command for the input that is already selected is ignored as well (since
-`v1.4 tbenr ds2`): re-applying an input runs the stock source switch again, which
-re-initialises it and interrupts the audio.
+Features that no installer image contains: [auto-switch](features/auto-switch/README.md)
+(experimental: to HDMI when the TV comes on), [probe](features/probe/README.md) (a read-only
+register dump for research) and the notes on a stock display bug,
+[status-line-flicker](features/status-line-flicker/NOTES.md).
 
-In standby an input command powers the amp on, on that input (since `v1.4 tbenr ds4`), so
-one command is enough to get "on, playing HDMI" from any state. The hook only writes the input
-number and returns the stock Power key: the power-on sequence is stock, and its chip setup
-reads the input for its one source setup while the outputs are still muted. Selecting first
-and powering on second costs one source setup; the other order would run two and interrupt
-the audio a few seconds after the wake. The home screen shows the new input, and the settings
-save that follows every power-on stores it. This is the build-time config
-`direct-select.WAKE_ON_INPUT` (default 1): with 0 the input commands are ignored in standby
-and only 0x16 or the Power key wake the amp. The installer asks for it; by hand,
-`AO300_DIRECT_SELECT_WAKE_ON_INPUT=0` in the environment of a `build.variant()` build.
+## Licence
 
-The power commands (since `v1.4 tbenr ds3`) are for a controller that gets nothing back from
-the amp, so the stock Power toggle (0x01) would leave it guessing: 0x16 powers on and is
-ignored when the amp is already on, 0x17 powers off and is ignored in standby. Each becomes the
-stock Power key only when that key does what the command says, so the power-on and power-off
-sequences themselves are stock. On a menu page the stock Power key only goes home; 0x17 runs
-that go-home step itself first, so it powers off from any page with one command. In standby
-neither command can turn into the Source key, which would reset the MCU into the bootloader.
-
-Every other command behaves exactly as in stock, including the ones the remote never sends.
-The mechanism is described in `features/direct-select/direct_select.py`; `direct_select.asm`
-is the generated listing.
+The project's own code and documentation are under the [MIT licence](LICENSE). The fonts the
+themes draw with are under the SIL Open Font License, and SMSL's firmware is not part of this
+project at all: [NOTICE.md](NOTICE.md) has the details.
