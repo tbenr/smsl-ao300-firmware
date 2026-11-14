@@ -256,16 +256,17 @@ INCLUDES (a fix linked into that image):
 
 ```
 stock                       85e8ac50…
-├── direct-select           'v1.4 tbenr ds3'    0x9400..0x9469  425460c3… known  [fix, hook 0x5D10; included by house-numerals, phosphor-panel]
+├── direct-select           'v1.4 tbenr ds4'    0x9400..0x9473  4b5dcfce… known  [fix, hook 0x5D10; included by house-numerals, phosphor-panel]
+│     = config              WAKE_ON_INPUT 0..1 (default 1)
 ├── fast-lcd                'v1.4 tbenr fast3'  0x9700..0x977C  30c1e6fe… known
-│   ├── house-numerals      'v1.4 tbenr hn18'   0x9800..0xDD37  b3455f2b… known
+│   ├── house-numerals      'v1.4 tbenr hn19'   0x9800..0xDD41  8cf34756… known
 │   │     + direct-select   fix linked into house-numerals
 │   │     + fix-auto-off    fix linked into house-numerals
 │   │     + strings         fix linked into house-numerals
 │   │     + start-volume    fix linked into house-numerals
 │   │     + fix-volume-pop  fix linked into house-numerals
 │   │     + fix-menu-input  fix linked into house-numerals
-│   └── phosphor-panel      'v1.4 tbenr pp3'    0x9800..0xDC2A  273edf8f… known
+│   └── phosphor-panel      'v1.4 tbenr pp4'    0x9800..0xDC34  cc2292e7… known
 │         + direct-select   fix linked into phosphor-panel
 │         + fix-auto-off    fix linked into phosphor-panel
 │         + strings         fix linked into phosphor-panel
@@ -351,7 +352,8 @@ checks, in that feature's image, what must stay true wherever it is built on or 
 "direct-select in house-numerals" and "fix-auto-off in house-numerals":
 
 - direct-select: the six direct commands, the two power commands (on the whole firmware:
-  from standby, when on, twice, from a menu page) and the stock translation of the other 248.
+  from standby, when on, twice, from a menu page), an input command in standby powering the
+  amp on on that input with one source setup, and the stock translation of the other 248.
 - fix-auto-off: Auto OFF times out after power-on as after a key; Always ON is untouched.
 - strings: the corrected texts are in the image, and the status loader shows them.
 - start-volume: after a cold power-up and after standby the volume is at most the limit, on
@@ -394,6 +396,17 @@ power-up; the bootloader is in ROM and survives. Every run is appended to
 `tools/flash/flash_ao300.log`, with raw packets when `-D` is given.
 
 ## Status
+
+Built on 2026-11-14, emulator-verified, not flashed: direct-select ds4 (`v1.4 tbenr ds4`,
+sha256 `4b5dcfce…`). An input command (NEC 0x10..0x15) in standby now powers the amp on, on
+that input: the hook writes the input and returns the Power key, and stock's power-on does its
+one source setup on it. With the amp on nothing changed. It is a build-time config,
+`direct-select.WAKE_ON_INPUT` (default 1; 0 keeps ds3's "ignored in standby"), which the
+installer asks about. Rebuilt on it with nothing else changed: house-numerals hn19
+(`8cf34756…`), phosphor-panel pp4 (`cc2292e7…`), auto-switch as4 (`8e0602f5…`) and probe pr5
+(`0fc654e4…`), all in `KNOWN_IMAGES`. To confirm on the amp: no pop when it wakes onto an input
+other than the one it was left on (the emulator shows the input mux moving only while the
+outputs are muted, as at a cold power-up).
 
 Built on 2026-10-16, emulator-verified, not flashed: direct-select ds3 (`v1.4 tbenr ds3`,
 sha256 `425460c3…`) adds idempotent power over IR, NEC 0x16 (on) and 0x17 (off), each a no-op
@@ -572,10 +585,21 @@ Eight new NEC commands, sent with the stock remote's address bytes 0x12 0x34:
 | 0x16 | power on |
 | 0x17 | power off (standby) |
 
-The input commands act only when the amp is on and showing the home screen; otherwise they
-are ignored. A command for the input that is already selected is ignored as well (since
+With the amp on, the input commands act only on the home screen; on a menu page they are
+ignored. A command for the input that is already selected is ignored as well (since
 `v1.4 tbenr ds2`): re-applying an input runs the stock source switch again, which
 re-initialises it and interrupts the audio.
+
+In standby an input command powers the amp on, on that input (since `v1.4 tbenr ds4`), so
+one command is enough to get "on, playing HDMI" from any state. The hook only writes the input
+number and returns the stock Power key: the power-on sequence is stock, and its chip setup
+reads the input for its one source setup while the outputs are still muted. Selecting first
+and powering on second costs one source setup; the other order would run two and interrupt
+the audio a few seconds after the wake. The home screen shows the new input, and the settings
+save that follows every power-on stores it. This is the build-time config
+`direct-select.WAKE_ON_INPUT` (default 1): with 0 the input commands are ignored in standby
+and only 0x16 or the Power key wake the amp. The installer asks for it; by hand,
+`AO300_DIRECT_SELECT_WAKE_ON_INPUT=0` in the environment of a `build.variant()` build.
 
 The power commands (since `v1.4 tbenr ds3`) are for a controller that gets nothing back from
 the amp, so the stock Power toggle (0x01) would leave it guessing: 0x16 powers on and is
@@ -591,7 +615,7 @@ is the generated listing.
 
 ### Version string
 
-The RESET menu page shows `v1.4 tbenr ds3` instead of `v1.4`. Change `VERSION_TEXT` in
+The RESET menu page shows `v1.4 tbenr ds4` instead of `v1.4`. Change `VERSION_TEXT` in
 `build_patch.py` to alter it; the row fits 20 characters.
 
 ## Release for users
@@ -875,7 +899,7 @@ Measured from the images; the code/EEPROM split is the chip's own setting (0xF40
 
 | Region | Size | Used | Free |
 |---|---|---|---|
-| Code flash, 0x0000..0xF3FF | 62464 bytes | 56632 bytes (features/house-numerals hn18) | 5832 bytes after the image, plus 988 unused inside it (0x93A7..0x96FF and 0x977D..0x97FF: the fixes' standalone slots, which an image that includes them leaves as 0xFF) and 25 at 0x7DBA..0x7DD2 (the end of the stock big font's area, below) |
+| Code flash, 0x0000..0xF3FF | 62464 bytes | 56642 bytes (features/house-numerals hn19) | 5822 bytes after the image, plus 988 unused inside it (0x93A7..0x96FF and 0x977D..0x97FF: the fixes' standalone slots, which an image that includes them leaves as 0xFF) and 25 at 0x7DBA..0x7DD2 (the end of the stock big font's area, below) |
 | EEPROM area, 0xF400..0xFDFF | 2560 bytes, 5 sectors of 512 | sectors at offsets 0x0000, 0x0200, 0x0400 | 2 sectors, 1 KB |
 | Internal direct RAM, 0x00..0x7F | 128 bytes | all (registers, bit flags, variables up to 0x7F) | none |
 | Internal indirect RAM, 0x80..0xFF | 128 bytes | stack from 0x88 (`mov SP,#0x88` at 0x44A5) | stack headroom only |
@@ -886,7 +910,7 @@ since hn17 and in phosphor-panel: `big_text_render`'s hook goes straight to the 
 painter and the stock number painters are unreachable, so the theme keeps its own data there
 (house-numerals 5015 bytes of fonts, phosphor-panel 4520 bytes: the status and icon fonts and
 the cell map; `features/house-numerals/README.md`, "Memory"; the tests trap `big_glyph_paint`
-and `bignum_digit` on every run). Phosphor Panel pp3 ends at 0xDC2A (56363 bytes); its
+and `bignum_digit` on every run). Phosphor Panel pp4 ends at 0xDC34 (56373 bytes); its
 dot-matrix name font alone is 9711 bytes, three times the plain face, because the grid breaks
 the run-length runs every third row. The stock small font (0x5DAB..0x6A23, 3192 bytes) is still drawn
 by the menus, the Treble and Bass pages and the RESET page; drawing those with a theme font

@@ -6,7 +6,8 @@ flashed on 2026-10-05 and replaced the same day by pr2 (the FN button), which wa
 and gave thirteen dumps, the first 1204 bytes as the emulator predicted (`docs/bus-map.md`,
 "Hardware read-back"). pr3 adds the FS line, the first write of layer 3; emulator-verified,
 not yet flashed. pr4 (2026-10-16) is pr3 rebuilt on direct-select v3, whose power commands
-take NEC 0x16 and 0x17; the dump stays on the FN button. Not flashed.
+take NEC 0x16 and 0x17; the dump stays on the FN button. pr5 (2026-11-14) is pr4 on
+direct-select v4 (an input command in standby powers on, on that input). Neither is flashed.
 
 ## What it does
 

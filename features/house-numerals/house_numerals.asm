@@ -20,10 +20,10 @@
 ; 0x1047: e5 45 64 -> 02 cf 8a  (hn_mute_key)
 ; 0x3DD1: eb 64 1f -> 02 cf ad  (hn_key_p2)
 ; 0x5D10: af 6a ef -> 02 dc 79  (ds_select)
-; 0x55B9: 02 5d 42 -> 02 dc d4  (fx_auto_off)
-; 0x5596: 12 50 d1 -> 12 dc e2  (sv_limit)
-; 0x0F4A: 12 4d dc -> 12 dc f9  (vp_apply)
-; 0x5892: 12 58 d3 -> 02 dd 11  (mi_switch)
+; 0x55B9: 02 5d 42 -> 02 dc de  (fx_auto_off)
+; 0x5596: 12 50 d1 -> 12 dc ec  (sv_limit)
+; 0x0F4A: 12 4d dc -> 12 dd 03  (vp_apply)
+; 0x5892: 12 58 d3 -> 02 dd 1b  (mi_switch)
 ; 0x0D33: 12 5d 42 7b ff -> 12 cf 51 80 11  (lcall hn_enter_vol ; sjmp 0x0D49)
 ; 0x0DB3: 12 5d 42 7b ff -> 12 cf 51 80 11  (lcall hn_enter_vol ; sjmp 0x0DC9)
 ; 0x0E5A: 12 5d 42 7b ff -> 12 cf 51 80 11  (lcall hn_enter_vol ; sjmp 0x0E70)
@@ -34,7 +34,7 @@
 ; 0x0E36: 20 11 10 20 c2 02 80 -> 30 c2 10 c2 11 80 0f  (volume key 0x0E2A on Optical/Coaxial: no lock -> clear the mute flag only)
 ; 0x0EDE: 20 11 10 20 c2 02 80 -> 30 c2 10 c2 11 80 0f  (volume key 0x0ED2 on Optical/Coaxial: no lock -> clear the mute flag only)
 ; 0x6A23..0x7DB9: 5015 bytes of data in place of the stock bytes (sha256 268c9d5c)
-; version string 'v1.4 tbenr hn18' at 0xDD28, pointer 0x22CA repointed
+; version string 'v1.4 tbenr hn19' at 0xDD32, pointer 0x22CA repointed
 
             ; input-name pointers for inputs 1..6 (volume page), then the VOL label
 names:
@@ -6817,13 +6817,13 @@ ds_select:
   DC79: e5 6a                    mov A,0x6A                  ; raw NEC command byte
   DC7B: c3                       clr C
   DC7C: 94 10                    subb A,#0x10              ; A = cmd - 0x10 ; C=1 if cmd < 0x10
-  DC7E: 40 46                    jc ds_stock                 ; below range -> stock path
+  DC7E: 40 50                    jc ds_stock                 ; below range -> stock path
   DC80: b4 06 00                 cjne A,#6,ds_c1            ; never branches; sets C=1 if A < 6
 ds_c1:
   DC83: 50 23                    jnc ds_power                ; A >= 6 (cmd > 0x15) -> the power commands, or the stock path
   DC85: ff                       mov R7,A                    ; R7 = index 0..5
   DC86: e5 4f                    mov A,0x4F                  ; g_power_on
-  DC88: 60 18                    jz ds_eat                   ; standby -> ignore
+  DC88: 60 3c                    jz ds_wake                  ; standby -> power on on this input, or ignore (WAKE_ON_INPUT)
   DC8A: e5 45                    mov A,0x45                  ; g_ui_page
   DC8C: 64 01                    xrl A,#1                    ; zero iff page == 1 (home)
   DC8E: 70 12                    jnz ds_eat                  ; in a menu -> ignore
@@ -6848,7 +6848,7 @@ ds_power:
   DCAD: 70 f3                    jnz ds_eat                  ; already on -> ignore, whatever the page
   DCAF: 80 11                    sjmp ds_pwr                 ; standby -> the Power key: standby_key powers on
 ds_off:
-  DCB1: b4 07 12                 cjne A,#7,ds_stock         ; 7 is power off; above -> stock path ("no key" past the table)
+  DCB1: b4 07 1c                 cjne A,#7,ds_stock         ; 7 is power off; above -> stock path ("no key" past the table)
   DCB4: e5 4f                    mov A,0x4F                  ; power off: g_power_on
   DCB6: 60 ea                    jz ds_eat                   ; already in standby -> ignore (never key 0x10: the bootloader jump)
   DCB8: e5 45                    mov A,0x45                  ; g_ui_page
@@ -6859,25 +6859,32 @@ ds_off:
 ds_pwr:
   DCC2: 7f 1f                    mov R7,#0x1F              ; the stock Power key
   DCC4: 80 de                    sjmp ds_key
+ds_wake:
+  DCC6: 74 01                    mov A,#1                   ; WAKE_ON_INPUT (build-time config): 0 -> ignore in standby
+  DCC8: 60 d8                    jz ds_eat
+  DCCA: ef                       mov A,R7
+  DCCB: 04                       inc A                       ; input number 1..6
+  DCCC: f5 47                    mov 0x47,A                  ; g_input = target: the power-on sets the hardware up on it (audio_chips_init, 0x50F9)
+  DCCE: 80 f2                    sjmp ds_pwr                 ; the Power key: standby_key powers on
 ds_stock:
-  DCC6: e5 6a                    mov A,0x6A                  ; replay the displaced stock instructions
-  DCC8: b4 0f 00                 cjne A,#15,ds_c2            ; never branches; sets C=1 if cmd < 15
+  DCD0: e5 6a                    mov A,0x6A                  ; replay the displaced stock instructions
+  DCD2: b4 0f 00                 cjne A,#15,ds_c2            ; never branches; sets C=1 if cmd < 15
 ds_c2:
-  DCCB: 50 d5                    jnc ds_eat                  ; cmd >= 15: not in the table -> "no key" (stock read erased flash)
-  DCCD: 90 93 98                 mov DPTR,#0x9398            ; ir_cmd_to_key_table
-  DCD0: 93                       movc A,@A+DPTR              ; A = table[cmd]
-  DCD1: 02 5d 17                 ljmp 0x5D17                 ; ir_cmd_to_key's tail: mov R7,A ; clr A ; mov 0x6F,A ; ret
+  DCD5: 50 cb                    jnc ds_eat                  ; cmd >= 15: not in the table -> "no key" (stock read erased flash)
+  DCD7: 90 93 98                 mov DPTR,#0x9398            ; ir_cmd_to_key_table
+  DCDA: 93                       movc A,@A+DPTR              ; A = table[cmd]
+  DCDB: 02 5d 17                 ljmp 0x5D17                 ; ir_cmd_to_key's tail: mov R7,A ; clr A ; mov 0x6F,A ; ret
             ; fx_auto_off: replaces post_power_on's tail `ljmp ui_clear_screen` (0x55B9). With Dimmer on
             ; Auto OFF, arm the screen-off countdown as a key press would, then take the stock tail call.
             ; Arming before the jump keeps the stack depth as stock; the countdown is only read by the
             ; main loop (0x33DB), so the order against ui_clear_screen does not matter.
 fx_auto_off:
-  DCD4: e5 29                    mov A,0x29                  ; g_dimmer_mode: 1 Always ON, 2 Auto OFF
-  DCD6: b4 02 06                 cjne A,#0x02,fx_ao_done
-  DCD9: 75 2f 01                 mov 0x2F,#0x01            ; g_screen_off_hi
-  DCDC: 75 30 f4                 mov 0x30,#0xF4            ; g_screen_off_lo
+  DCDE: e5 29                    mov A,0x29                  ; g_dimmer_mode: 1 Always ON, 2 Auto OFF
+  DCE0: b4 02 06                 cjne A,#0x02,fx_ao_done
+  DCE3: 75 2f 01                 mov 0x2F,#0x01            ; g_screen_off_hi
+  DCE6: 75 30 f4                 mov 0x30,#0xF4            ; g_screen_off_lo
 fx_ao_done:
-  DCDF: 02 5d 42                 ljmp 0x5D42                 ; ui_clear_screen, the stock tail call
+  DCE9: 02 5d 42                 ljmp 0x5D42                 ; ui_clear_screen, the stock tail call
             ; sv_limit: replaces post_power_on's `lcall audio_chips_init` (0x5596). Cold power-up and the
             ; wake from standby both come through here with the outputs muted, before the first volume
             ; write (volume_apply at 0x510A). Cap g_volume (speakers) and g_volume_hp (headphones) at
@@ -6885,19 +6892,19 @@ fx_ao_done:
             ; to 0x5599: the stack depth is as stock. The capped value is what stock then shows, applies
             ; and saves; the volume keys are not touched.
 sv_limit:
-  DCE2: 74 19                    mov A,#0x19               ; g_volume, speakers limit 25
-  DCE4: c3                       clr C
-  DCE5: 95 31                    subb A,0x31               ; limit - volume
-  DCE7: 50 03                    jnc sv_hp                      ; volume <= limit: keep it
-  DCE9: 75 31 19                 mov 0x31,#0x19
-sv_hp:
-  DCEC: 74 14                    mov A,#0x14               ; g_volume_hp, headphones limit 20
+  DCEC: 74 19                    mov A,#0x19               ; g_volume, speakers limit 25
   DCEE: c3                       clr C
-  DCEF: 95 52                    subb A,0x52               ; limit - volume
-  DCF1: 50 03                    jnc sv_go                      ; volume <= limit: keep it
-  DCF3: 75 52 14                 mov 0x52,#0x14
+  DCEF: 95 31                    subb A,0x31               ; limit - volume
+  DCF1: 50 03                    jnc sv_hp                      ; volume <= limit: keep it
+  DCF3: 75 31 19                 mov 0x31,#0x19
+sv_hp:
+  DCF6: 74 14                    mov A,#0x14               ; g_volume_hp, headphones limit 20
+  DCF8: c3                       clr C
+  DCF9: 95 52                    subb A,0x52               ; limit - volume
+  DCFB: 50 03                    jnc sv_go                      ; volume <= limit: keep it
+  DCFD: 75 52 14                 mov 0x52,#0x14
 sv_go:
-  DCF6: 02 50 d1                 ljmp 0x50D1                 ; audio_chips_init
+  DD00: 02 50 d1                 ljmp 0x50D1                 ; audio_chips_init
             ; vp_apply: replaces vol_key_tail's `lcall volume_apply` (0x0F4A; R7 = g_volume), the one write
             ; of the volume to the NJW1194 that all four volume keys share. On Optical and Coaxial without
             ; lock the chip keeps its mute code; on any other input, and with lock, this is volume_apply.
@@ -6906,19 +6913,19 @@ sv_go:
             ; only this test saw it high, the volume would stay unwritten. With the request up, the main
             ; loop mutes and the unmute that follows writes the volume from RAM.
 vp_apply:
-  DCF9: e5 47                    mov A,0x47                  ; g_input
-  DCFB: 24 fe                    add A,#0xFE                 ; input - 2
-  DCFD: 60 03                    jz vp_digital               ; 2 Optical
-  DCFF: 14                       dec A
-  DD00: 70 0c                    jnz vp_go                   ; not 3 Coaxial either
+  DD03: e5 47                    mov A,0x47                  ; g_input
+  DD05: 24 fe                    add A,#0xFE                 ; input - 2
+  DD07: 60 03                    jz vp_digital               ; 2 Optical
+  DD09: 14                       dec A
+  DD0A: 70 0c                    jnz vp_go                   ; not 3 Coaxial either
 vp_digital:
-  DD02: 30 c2 09                 jnb 0xC2,vp_go              ; P4.2 low: lock
-  DD05: d2 0c                    setb 0x0C                   ; 0x21.4: re-mute request, served by main_tick_tasks
-  DD07: 75 43 00                 mov 0x43,#0x00              ; g_mute_timer = 100 ticks
-  DD0A: 75 44 64                 mov 0x44,#0x64
-  DD0D: 22                       ret                         ; no signal: the number changes, the chip does not
+  DD0C: 30 c2 09                 jnb 0xC2,vp_go              ; P4.2 low: lock
+  DD0F: d2 0c                    setb 0x0C                   ; 0x21.4: re-mute request, served by main_tick_tasks
+  DD11: 75 43 00                 mov 0x43,#0x00              ; g_mute_timer = 100 ticks
+  DD14: 75 44 64                 mov 0x44,#0x64
+  DD17: 22                       ret                         ; no signal: the number changes, the chip does not
 vp_go:
-  DD0E: 02 4d dc                 ljmp 0x4DDC                 ; volume_apply, returns to the tail
+  DD18: 02 4d dc                 ljmp 0x4DDC                 ; volume_apply, returns to the tail
             ; mi_switch: replaces input_menu_select's `lcall audio_apply_mute` (0x5892), reached with 0x22.4
             ; cleared and the settings save armed, as input_apply is at 0x5645. Do what input_step and
             ; input_apply do for the Source key: mute, format poll in 10 ticks, unmute countdown 200 ticks,
@@ -6927,14 +6934,14 @@ vp_go:
             ; A jump in and a jump back, so the stack is as deep as in stock when input_set_hw runs, one
             ; call below the key handler, as on the Source key's path.
 mi_switch:
-  DD11: 12 58 d3                 lcall 0x58D3                ; audio_apply_mute: NJW1194 mute code, DAC mute
-  DD14: 75 4b 00                 mov 0x4B,#0x00            ; g_format_poll: 10 ticks
-  DD17: 75 4c 0a                 mov 0x4C,#0x0A
-  DD1A: 75 43 00                 mov 0x43,#0x00            ; g_mute_timer: 200 ticks, then mute_timer_expired unmutes
-  DD1D: 75 44 c8                 mov 0x44,#0xC8
-  DD20: af 47                    mov R7,0x47                 ; g_input
-  DD22: 12 24 d6                 lcall 0x24D6                ; input_set_hw: NJW1194 selector, muxes, receiver, DAC clocking
-  DD25: 02 58 9d                 ljmp 0x589D                 ; input_menu_select's tail
+  DD1B: 12 58 d3                 lcall 0x58D3                ; audio_apply_mute: NJW1194 mute code, DAC mute
+  DD1E: 75 4b 00                 mov 0x4B,#0x00            ; g_format_poll: 10 ticks
+  DD21: 75 4c 0a                 mov 0x4C,#0x0A
+  DD24: 75 43 00                 mov 0x43,#0x00            ; g_mute_timer: 200 ticks, then mute_timer_expired unmutes
+  DD27: 75 44 c8                 mov 0x44,#0xC8
+  DD2A: af 47                    mov R7,0x47                 ; g_input
+  DD2C: 12 24 d6                 lcall 0x24D6                ; input_set_hw: NJW1194 selector, muxes, receiver, DAC clocking
+  DD2F: 02 58 9d                 ljmp 0x589D                 ; input_menu_select's tail
 
 ; data block at 0x6A23..0x7DB9
 

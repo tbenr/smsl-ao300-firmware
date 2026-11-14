@@ -3,12 +3,14 @@
 A reduced build of study 3 ("House Numerals", after SMSL's SU and DO series screens) from
 `features/ui-theme/ui_themes.html`. Built on top of fast-lcd, with direct-select, fix-auto-off,
 strings, start-volume, fix-volume-pop and fix-menu-input included. The RESET page shows
-`v1.4 tbenr hn18`.
+`v1.4 tbenr hn19`.
 
-hn18 (sha256 `b3455f2b…`, 2026-10-16) is hn17 rebuilt on direct-select v3, which adds the
-idempotent power commands NEC 0x16 (on) and 0x17 (off); nothing of the theme changed. It is
-emulator-verified and not flashed; the notes below describe hn17, the image on the amp
-until 2026-10-10.
+hn19 (sha256 `8cf34756…`, 2026-11-14) is hn18 rebuilt on direct-select v4: an input command in
+standby powers the amp on, on that input (build-time config `direct-select.WAKE_ON_INPUT`).
+hn18 (sha256 `b3455f2b…`, 2026-10-16) was hn17 rebuilt on direct-select v3, which added the
+idempotent power commands NEC 0x16 (on) and 0x17 (off). Nothing of the theme changed in
+either; both are emulator-verified and not flashed. The notes below describe hn17, the image
+on the amp until 2026-10-10.
 
 hn17 (sha256 `782eb508…`): hn16 with the stock big font's area reclaimed. The
 big-text hook (0x2A25) goes straight to `hm_name`, so no code path paints with the stock big
@@ -857,7 +859,8 @@ the volume page. Every stock byte is asserted by
 ## Memory
 
 hn17: the image is 56602 bytes (0x9800..0xDD19 with the version string), 5054 less than hn16;
-hn18 is 30 bytes longer (0xDD37), direct-select v3's power commands.
+hn18 is 30 bytes longer (0xDD37), direct-select v3's power commands; hn19 another 10 (0xDD41),
+v4's wake on input.
 The stock big font (`font_big_32x30`, 0x6A23..0x7DD3, 5040 bytes) is dead in this image, so
 `build_patch.py` puts the fonts that fill it best there (`hole_fonts`: pf_mono 3122, pf_vname
 943, pf_hvol 906, pf_box 44 = 5015 bytes at 0x6A23..0x7DB9; the last 25 bytes stay stock) as a

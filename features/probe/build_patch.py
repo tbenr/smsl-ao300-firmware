@@ -27,7 +27,7 @@ OUT_LISTING = os.path.join(HERE, "probe.asm")
 CODE_ADDR = 0xF100                  # above house-numerals (hn16 ends at 0xF0D7), below the EEPROM split 0xF400; the probe plus the six fixes take 0x200
 HOOKS = [probe.HOOK] + features.hooks(INCLUDES)
 PATCHES = features.patches(INCLUDES)
-VERSION_TEXT = "v1.4 tbenr pr4"      # pr1: the dump on NEC 0x16; pr2: on the FN button (0x08); pr3: the FS line
+VERSION_TEXT = "v1.4 tbenr pr5"      # pr1: the dump on NEC 0x16; pr2: on the FN button (0x08); pr3: the FS line
 
 
 def assemble():

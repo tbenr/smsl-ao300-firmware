@@ -20,7 +20,14 @@ past the table into erased flash -> "no key"). The hook replaces its first 3 byt
     key" (R7 = 0xFF) so the dispatcher does nothing else. A command for the input already
     selected is swallowed without the apply: re-applying it re-initialises the source and
     interrupts the audio (ds2);
-  * for 0x10..0x15 otherwise (standby, a menu page): "no key";
+  * for 0x10..0x15 in standby, with WAKE_ON_INPUT 1 (the default; ds4): writes the input
+    number to 0x47 and returns the stock Power key (0x1F). standby_key (0x59B2) powers on, and
+    stock's power-on sets the hardware up on that input itself (audio_chips_init reads 0x47 at
+    0x50F9 for its one input_set_hw call, outputs still muted), shows it on the home screen
+    and saves it with the settings. No apply here: selecting first and powering on second
+    costs one source setup, where the other order would run two. With WAKE_ON_INPUT 0 the
+    command is ignored in standby, as before ds4;
+  * for 0x10..0x15 on a menu page: "no key";
   * for 0x16 (on): in standby, the stock Power key (0x1F), which standby_key (0x59B2) turns
     into the power-on; when already on, "no key" on every page. For 0x17 (off): when on, the
     Power key, which the dispatcher turns into key_power_off (0x0CD2) on the home and volume
@@ -42,6 +49,15 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
                                 "tools", "patch"))
 from uikit import S  # noqa: E402
+import features      # noqa: E402
+
+# Build-time config (tools/patch/features.py): one immediate, tested by ds_wake
+CONFIG = {
+    "WAKE_ON_INPUT": features.Option(default=1, lo=0, hi=1, bytes=1,
+                                     help="an input command (NEC 0x10..0x15) in standby powers the amp on, "
+                                          "on that input (1: yes, 0: ignored)"),
+}
+WAKE_ON_INPUT = features.setting("direct-select", "WAKE_ON_INPUT", CONFIG)
 
 # ir_cmd_to_key's first instructions `mov R7,0x6A ; mov A,R7` become `ljmp ds_select`
 HOOK = (0x5D10, bytes([0xAF, 0x6A, 0xEF]), 0x02, "ds_select")
@@ -57,7 +73,8 @@ KEY_POWER = 0x1F              # the stock Power key (ir_cmd_to_key_table[0x01])
 GO_HOME = 0x0CE9              # key_exit_to_home: the dispatcher's Power on a menu page
 
 
-def emit(a):
+def emit(a, wake=WAKE_ON_INPUT):
+    wake = CONFIG["WAKE_ON_INPUT"].check(wake, "direct-select: WAKE_ON_INPUT")
     S(a, """
 ; ds_select: replaces ir_cmd_to_key's entry (0x5D10). Raw NEC command 0x6A -> internal key in R7.
 ; RAM: g_ir_cmd 0x6A, g_input 0x47, g_power_on 0x4F, g_ui_page 0x45, g_osd_timer 0x27:0x28, g_ir_key2 0x6F
@@ -71,7 +88,7 @@ ds_c1:
 jnc ds_power                ; A >= 6 (cmd > 0x15) -> the power commands, or the stock path
 mov R7,A                    ; R7 = index 0..5
 mov A,0x4F                  ; g_power_on
-jz ds_eat                   ; standby -> ignore
+jz ds_wake                  ; standby -> power on on this input, or ignore (WAKE_ON_INPUT)
 mov A,0x45                  ; g_ui_page
 xrl A,#1                    ; zero iff page == 1 (home)
 jnz ds_eat                  ; in a menu -> ignore
@@ -107,6 +124,13 @@ lcall 0x%04X                ; a menu page: key_exit_to_home first, as the dispat
 ds_pwr:
 mov R7,#0x%02X              ; the stock Power key
 sjmp ds_key
+ds_wake:
+mov A,#%d                   ; WAKE_ON_INPUT (build-time config): 0 -> ignore in standby
+jz ds_eat
+mov A,R7
+inc A                       ; input number 1..6
+mov 0x47,A                  ; g_input = target: the power-on sets the hardware up on it (audio_chips_init, 0x50F9)
+sjmp ds_pwr                 ; the Power key: standby_key powers on
 ds_stock:
 mov A,0x6A                  ; replay the displaced stock instructions
 cjne A,#%d,ds_c2            ; never branches; sets C=1 if cmd < 15
@@ -115,5 +139,5 @@ jnc ds_eat                  ; cmd >= 15: not in the table -> "no key" (stock rea
 mov DPTR,#0x%04X            ; ir_cmd_to_key_table
 movc A,@A+DPTR              ; A = table[cmd]
 ljmp 0x%04X                 ; ir_cmd_to_key's tail: mov R7,A ; clr A ; mov 0x6F,A ; ret
-""" % (CMD_LO, NINPUTS, APPLY_TAIL, CMD_ON - CMD_LO, CMD_OFF - CMD_LO, GO_HOME, KEY_POWER,
+""" % (CMD_LO, NINPUTS, APPLY_TAIL, CMD_ON - CMD_LO, CMD_OFF - CMD_LO, GO_HOME, KEY_POWER, wake,
        TABLE_LEN, TABLE_ADDR, HOOK_RESUME))

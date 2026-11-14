@@ -28,7 +28,7 @@ CODE_ADDR = 0xF000                  # the feature and the six fixes; overlaps ho
                                     # nothing else: a different chain, so only a build.py warning
 HOOKS = [auto_switch.HOOK] + features.hooks(INCLUDES)
 PATCHES = features.patches(INCLUDES)
-VERSION_TEXT = "v1.4 tbenr as3"      # as1: HDMI and Bluetooth enabled; as2: HDMI only (the module is off on other inputs)
+VERSION_TEXT = "v1.4 tbenr as4"      # as1: HDMI and Bluetooth enabled; as2: HDMI only (the module is off on other inputs)
 
 
 def assemble():

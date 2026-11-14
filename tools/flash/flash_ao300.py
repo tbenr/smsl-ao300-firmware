@@ -123,6 +123,11 @@ KNOWN_IMAGES = {
     "273edf8fbe362c78239e3e6d28fafdfbb828730034d24cc28a0bec6a6e5cfd35": "fast-lcd fast3 + Phosphor Panel pp3 (pp2 on direct-select v3: idempotent power commands 0x16/0x17) + the six fixes, 'v1.4 tbenr pp3' (features/phosphor-panel/build/flash_phosphor_panel.bin)",
     "aa43a3e5df82225646f4cdd0a4682e78f9cd75a3ef973f112a8715f624ca14f2": "stock + auto-switch stage 1 as3 (as2 on direct-select v3: idempotent power commands 0x16/0x17) + the six fixes, 'v1.4 tbenr as3' (features/auto-switch/build/flash_autoswitch.bin)",
     "e4a5bd1ed73bf35cf85ea03f3e4a4c87cbe1e9774ee6912cb14af51aed6c086e": "stock + probe pr4 (pr3 on direct-select v3: idempotent power commands 0x16/0x17; the dump stays on the FN button) + the six fixes, 'v1.4 tbenr pr4' (features/probe/build/flash_probe.bin)",
+    "4b5dcfce098b32fe6e90082d4e68b97ed7ce0c60e81e7d3e98f13d5185f84a00": "direct-select v4 (ds3 plus wake on input: an input command 0x10..0x15 in standby powers the amp on, on that input, with one source setup; build-time config WAKE_ON_INPUT, default 1), 'v1.4 tbenr ds4' (features/direct-select/build/flash_patched.bin)",
+    "8cf347560116da1f941d11ab361e485ea922b83c6c8901b81d3a1e37428cb3c6": "fast-lcd fast3 + House Numerals v19 (hn18 on direct-select v4: an input command in standby powers on, on that input), 'v1.4 tbenr hn19' (features/house-numerals/build/flash_house_numerals.bin)",
+    "cc2292e7f6f18b85e10957b666e653078e186ac70ac903969655b0429f12011b": "fast-lcd fast3 + Phosphor Panel pp4 (pp3 on direct-select v4: an input command in standby powers on, on that input) + the six fixes, 'v1.4 tbenr pp4' (features/phosphor-panel/build/flash_phosphor_panel.bin)",
+    "8e0602f5827374b65b891148d202e3bd0ee2aac692a1491d6856feb4a20b0b7d": "stock + auto-switch stage 1 as4 (as3 on direct-select v4: an input command in standby powers on, on that input) + the six fixes, 'v1.4 tbenr as4' (features/auto-switch/build/flash_autoswitch.bin)",
+    "0fc654e4a109b087ef30807f59442182377e37e04671e45df4bc61568c7a5620": "stock + probe pr5 (pr4 on direct-select v4: an input command in standby powers on, on that input) + the six fixes, 'v1.4 tbenr pr5' (features/probe/build/flash_probe.bin)",
 }
 
 

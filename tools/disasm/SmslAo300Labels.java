@@ -164,6 +164,7 @@ public class SmslAo300Labels extends GhidraScript {
         // Keil runtime
         {0x1EF5, "keil_cldptr"},       {0x1F91, "keil_ildptr"},
         // patch code, only in the images that carry it
+        {0x50F9, "audio_chips_init_input"}, // mov R7,g_input ; lcall input_set_hw: the power-on's one source setup, outputs still muted. direct-select ds4's wake writes g_input in standby for it
         {0x9400, "ds_select"},         // features/direct-select standalone image; builds that include the fix place it in their own code
         {0x9680, "fx_auto_off"},       // features/fix-auto-off standalone image; builds that include the fix place it in their own code
         {0x96B0, "sv_limit"},          // features/start-volume standalone image (hook 0x5596): g_volume and g_volume_hp capped at the build's limits, then audio_chips_init;

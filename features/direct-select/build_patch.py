@@ -26,7 +26,7 @@ OUT_IMAGE = os.path.join(HERE, "build", "flash_patched.bin")
 OUT_LISTING = os.path.join(HERE, "direct_select.asm")
 CODE_ADDR = 0x9400                  # just past the stock image (padded with 0xFF up to here)
 HOOKS = [direct_select.HOOK]
-VERSION_TEXT = "v1.4 tbenr ds3"
+VERSION_TEXT = "v1.4 tbenr ds4"
 
 
 def assemble():

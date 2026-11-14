@@ -7,7 +7,11 @@ simulating the audio hardware. So is key_exit_to_home (0x0CE9), which the power-
 calls on a menu page.
 Then the whole firmware on Amp (tools/emu/ao300.py, real Timer0 and Timer3 ISRs): the
 idempotent power commands 0x16 (on) and 0x17 (off) from standby, when on, twice in a row
-and from a menu page, and that neither ever reaches the bootloader jump in standby.
+and from a menu page, and that neither ever reaches the bootloader jump in standby; and an
+input command in standby, which powers the amp on on that input with one source setup.
+The build-time config WAKE_ON_INPUT is swept through emit(): 1 (the default) as above, 0
+leaves the input commands ignored in standby, as ds3 did; both build the same code but for
+the one byte.
 The NOTSEL resume stub at 0x5D17 (mov R7,A; clr A; mov 0x6F,A; ret) is real code
 and runs normally.
 """
@@ -24,6 +28,11 @@ _stock = os.path.join(_root, "original", "extracted", "flash.bin")
 sys.path.insert(0, os.path.join(_root, "tools", "emu"))
 from emu8051 import Emu8051  # noqa: E402
 from ao300 import Amp, NEC_POWER  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import build_patch as bp     # noqa: E402
+import features              # noqa: E402  (tools/patch, on the path through build_patch)
+from asm51 import Asm        # noqa: E402
+import direct_select as ds   # noqa: E402
 NEC_OPEN_MENU = 0x04         # opens the menu (page 3) from home; NEC_MENU 0x03 only navigates inside it
 INTEGRATION = True    # `emu_test.py --in <feature>`: direct-select's behaviour inside that image
 IN = sys.argv[2] if len(sys.argv) == 3 and sys.argv[1] == "--in" else None
@@ -36,7 +45,26 @@ else:
     IMG = bytearray(open(sys.argv[1] if len(sys.argv) > 1 else _default, "rb").read())
 CODE = bytes(IMG) + b"\xff" * (0x10000 - len(IMG))
 STOCK = bytes(open(sys.argv[2] if len(sys.argv) > 2 and not IN else _stock, "rb").read())
+STOCK_RAW = STOCK
 STOCK += b"\xff" * (0x10000 - len(STOCK))
+
+
+def build_with(wake):
+    """Stock plus the fix with this WAKE_ON_INPUT, in memory (no version string)."""
+    img = bytearray(STOCK_RAW)
+    addr, orig, op, label = ds.HOOK
+    assert bytes(img[addr:addr + 3]) == orig
+    a = Asm(bp.CODE_ADDR)
+    ds.emit(a, wake)
+    code = a.resolve()
+    img += b"\xFF" * (bp.CODE_ADDR - len(img)) + code
+    t = a.labels[label]
+    img[addr:addr + 3] = bytes([op, t >> 8, t & 0xFF])
+    return bytes(img)
+
+
+def padded(img):
+    return bytes(img) + b"\xff" * (0x10000 - len(img))
 
 
 class CPU:
@@ -127,8 +155,9 @@ class CPU:
         raise RuntimeError("runaway")
 
 
-def scenario(name, cmd, power, page, expect_input, expect_apply, expect_key, current=0x99, expect_home=False):
-    c = CPU(CODE)
+def scenario(name, cmd, power, page, expect_input, expect_apply, expect_key, current=0x99, expect_home=False,
+             code=None):
+    c = CPU(code or CODE)
     c.ram[0x6A] = cmd
     c.ram[0x4F] = power
     c.ram[0x45] = page
@@ -160,9 +189,15 @@ allok &= scenario("select input 3 while on input 2", 0x12, 1, 1,
                   expect_input=3, expect_apply=3, expect_key=0xFF, current=2)
 allok &= scenario("select input 1 while on input 6", 0x10, 1, 1,
                   expect_input=1, expect_apply=1, expect_key=0xFF, current=6)
-# standby: ignored
-allok &= scenario("select while standby", 0x10, 0, 1,
-                  expect_input=0x99, expect_apply=None, expect_key=0xFF)
+# standby (WAKE_ON_INPUT 1, the default): the input is written and the Power key returned, so
+# stock's power-on sets the amp up on that input; no apply here. The same input wakes as well.
+for k in range(6):
+    allok &= scenario("select input %d while standby: wake" % (k + 1), 0x10 + k, 0, 1,
+                      expect_input=k + 1, expect_apply=None, expect_key=KEY_POWER)
+allok &= scenario("select input 3 while standby on input 3: wake", 0x12, 0, 1,
+                  expect_input=3, expect_apply=None, expect_key=KEY_POWER, current=3)
+allok &= scenario("select input 5 while standby, page var 3: wake", 0x14, 0, 3,
+                  expect_input=5, expect_apply=None, expect_key=KEY_POWER)
 # not home: ignored
 allok &= scenario("select while in menu", 0x10, 1, 2,
                   expect_input=0x99, expect_apply=None, expect_key=0xFF)
@@ -218,20 +253,39 @@ if bad:
               % (cmd, power, page, sk, pk, ap))
 else:
     print("sweep 0x00..0xFF in 5 power/page states: patched == stock for all 248 other commands  OK")
-# in standby no command but the stock Source may become key 0x10: read_key's bootloader jump
-boot = [cmd for cmd in range(256) if cmd != 0x07 and
-        (lambda c: (c.run(0x5D10), c.r(7))[1])(CPU(CODE)) == KEY_SOURCE]
-if boot:
-    allok = False
-    print("commands %s translate to key 0x10 (bootloader in standby)  *** FAIL ***" % ["%02X" % c for c in boot])
+
+
+def source_keys(code, power):
+    """The commands that translate to key 0x10 (in standby: read_key's bootloader jump)."""
+    out = []
+    for cmd in range(256):
+        for page in (1, 2, 3):
+            c = CPU(code); c.ram[0x6A] = cmd; c.ram[0x4F] = power; c.ram[0x45] = page; c.ram[0x47] = 0x99
+            c.run(0x5D10)
+            if c.r(7) == KEY_SOURCE and cmd not in out:
+                out.append(cmd)
+    return out
+
+
+for power in (0, 1):
+    got = source_keys(CODE, power)
+    ok = got == [0x07]
+    allok &= ok
+    print("power %d: only the stock Source (0x07) becomes key 0x10: %s  %s"
+          % (power, ["%02X" % c for c in got], "OK" if ok else "*** FAIL ***"))
 
 # Whole firmware on Amp: the two power commands against the real standby and key paths.
 POST_POWER_ON_TAIL = 0x55B9      # post_power_on done, ~1 s after the standby key
 
 
-def amp_run():
-    amp = Amp(bytes(IMG))
+EEPROM_WRITE = 0x58AF            # R6:R7 address, R5 byte
+
+
+def amp_run(img=None):
+    amp = Amp(bytes(img or IMG))
     amp.power_ons = []
+    amp.ee_writes = {}
+    amp.e.hooks[EEPROM_WRITE] = lambda em: amp.ee_writes.__setitem__((em.R(6) << 8) | em.R(7), em.R(5))
     amp.e.hooks[POST_POWER_ON_TAIL] = lambda em: amp.power_ons.append(amp.t)
     amp.boot_resets = []
 
@@ -275,6 +329,83 @@ check("Menu again: the menu page is back", amp.powered and amp.page == menu_page
 amp.press(CMD_OFF); amp.wait(3.0)
 check("0x17 from the menu page: standby", not amp.powered)
 check("never reset into the bootloader", not amp.boot_resets)
+
+
+def set_hw(amp, since):
+    """input_set_hw's calls (the input each was given) since event index `since`."""
+    return [int(v.split("R7=")[1][:2], 16) for c, n, v in amp.events[since:] if n == "input_set_hw"]
+
+
+print("\nFull firmware: an input command in standby powers on, on that input")
+amp = amp_run()
+first = amp.e.iram[0x47]
+target = 5 if first != 5 else 6
+n0 = len(amp.events)
+amp.press(0x10 + target - 1); amp.wait(12.0)
+check("0x%02X in standby: powered on, home page, post_power_on ran once" % (0x10 + target - 1),
+      amp.powered and amp.page == 1 and len(amp.power_ons) == 1)
+check("the input is %d (was %d in standby)" % (target, first), amp.e.iram[0x47] == target)
+check("one source setup, on input %d: %s" % (target, set_hw(amp, n0)), set_hw(amp, n0) == [target])
+check("the settings save after the power-on stores input %d (EEPROM 0x0202)" % target,
+      amp.ee_writes.get(0x0202) == target)
+n1 = len(amp.events)
+amp.press(0x10 + target - 1); amp.wait(3.0)
+check("the same command while on: nothing (no source setup, no power-on)",
+      amp.powered and set_hw(amp, n1) == [] and len(amp.power_ons) == 1)
+other = 6 if target != 6 else 4
+amp.press(0x10 + other - 1); amp.wait(6.0)
+check("another input while on: a plain switch (one source setup, no power-on)",
+      amp.powered and amp.e.iram[0x47] == other and set_hw(amp, n1) == [other] and len(amp.power_ons) == 1)
+amp.press(CMD_OFF); amp.wait(3.0)
+n2 = len(amp.events)
+amp.press(0x10 + other - 1); amp.wait(12.0)
+check("standby, then the input it was on: powered on, one source setup",
+      amp.powered and amp.e.iram[0x47] == other and set_hw(amp, n2) == [other] and len(amp.power_ons) == 2)
+check("never reset into the bootloader", not amp.boot_resets)
+
+if not IN:
+    # WAKE_ON_INPUT, the build-time config, through emit(): the same code but for its one byte
+    print("\nWAKE_ON_INPUT 0 and 1 through emit()")
+    on_img, off_img = build_with(1), build_with(0)
+    built = bytes(IMG)
+    check("the built image carries the default's code (WAKE_ON_INPUT %d)" % ds.WAKE_ON_INPUT,
+          build_with(ds.WAKE_ON_INPUT)[bp.CODE_ADDR:] == built[bp.CODE_ADDR:len(on_img)])
+    opt = ds.CONFIG["WAKE_ON_INPUT"]
+    problems = features.config_diff(on_img, off_img, {("direct-select", "WAKE_ON_INPUT"): (1, 0, opt)})
+    check("0 and 1 build the same size and differ in one byte (config promise) %s" % problems[:2], not problems)
+    for bad in (2, -1, "1", 1.0, True, None):
+        try:
+            build_with(bad)
+            stopped = False
+        except SystemExit as ex:
+            stopped = "WAKE_ON_INPUT" in str(ex)
+        check("WAKE_ON_INPUT %r stops the build with a message" % (bad,), stopped)
+    off = padded(off_img)
+    for k in range(6):
+        allok &= scenario("wake 0: select input %d while standby" % (k + 1), 0x10 + k, 0, 1,
+                          expect_input=0x99, expect_apply=None, expect_key=NO_KEY, code=off)
+    allok &= scenario("wake 0: power on while standby", CMD_ON, 0, 1,
+                      expect_input=0x99, expect_apply=None, expect_key=KEY_POWER, code=off)
+    # powered on, the two builds translate every command alike, on every page
+    diff = []
+    for page in (1, 2, 3, 8):
+        for cmd in range(256):
+            a_, b_ = CPU(padded(on_img)), CPU(off)
+            for c in (a_, b_):
+                c.ram[0x6A] = cmd; c.ram[0x4F] = 1; c.ram[0x45] = page; c.ram[0x47] = 0x99
+                c.run(0x5D10)
+            if (a_.r(7), a_.ram[0x47], a_.applied, a_.home) != (b_.r(7), b_.ram[0x47], b_.applied, b_.home):
+                diff.append((cmd, page))
+    check("powered on, wake 0 and wake 1 translate all 256 commands alike on 4 pages", not diff)
+    got = source_keys(off, 0)
+    check("wake 0, standby: only the stock Source becomes key 0x10", got == [0x07])
+    amp = amp_run(off_img)
+    first = amp.e.iram[0x47]
+    amp.press(0x14); amp.wait(3.0)
+    check("wake 0: 0x14 in standby is ignored (standby, input still %d, no reset)" % first,
+          not amp.powered and amp.e.iram[0x47] == first and not amp.boot_resets)
+    amp.press(CMD_ON); amp.wait(12.0)
+    check("wake 0: 0x16 powers on, on the stored input", amp.powered and amp.e.iram[0x47] == first)
 
 # Version string on the RESET page: follow the R2:R1 pointer loaded at 0x22CA.
 ptr = (CODE[0x22CB] << 8) | CODE[0x22CD]

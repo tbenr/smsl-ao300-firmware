@@ -8,7 +8,9 @@ amp does and adds, on top of a new look for the display:
 - **No pop** from the volume keys on Optical and Coaxial when there is no signal, and no
   pop when an input is chosen in the menu.
 - **Auto OFF** of the display works after power-on, as on the AO300 PRO.
-- **Direct input selection** over infrared (six extra NEC commands for programmable remotes).
+- **Direct input selection and power** over infrared, for programmable remotes and home
+  automation: eight extra NEC commands, one per input, power on and power off. An input
+  command can also wake the amp from standby, on that input.
 - **Two looks** for the display: House Numerals (large, clean numerals and a sliding volume
   page) or Phosphor Panel (a VFD-style dot-matrix name, lamps and seven-segment digits).
 
@@ -43,7 +45,10 @@ you supply; it is not included.
 
    - which look you want;
    - the volume caps for speakers and for headphones (a step 0 to 60 as the display shows
-     it; 60 means no cap). Enter keeps the defaults.
+     it; 60 means no cap);
+   - whether an input command wakes the amp from standby (1: yes, 0: it is ignored there).
+
+   Enter keeps the defaults.
 
    It builds your firmware image and checks it against the known reference build.
 5. Choose **Flash** in the menu. The installer finds the serial adapter (or asks which one),
