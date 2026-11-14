@@ -1,12 +1,13 @@
-# Firmware stays out of the repo: vendor updaters, extracted and built images.
-*.bin
-*.exe
-*.hex
+# Firmware stays out of the repo: vendor updaters, extracted and built images, in any
+# letter case (git matches case on Linux).
+*.[bB][iI][nN]
+*.[eE][xX][eE]
+*.[hH][eE][xX]
 
-# The stock firmware in other forms: its full disassembly (regenerate with
-# tools/disasm/d51.py, see README "Workflow") and the Ghidra project that holds
-# the imported image.
-original/extracted/flash.asm
+# Vendor files and everything made from them: the updater, the extracted image, its full
+# disassembly (regenerate with tools/disasm/d51.py, see docs/development.md, "Workflow")
+# and the Ghidra project that holds the imported image.
+original/
 ghidraPRG/
 
 # Build outputs (images and emulator renders); rebuild with each feature's scripts.
@@ -18,11 +19,19 @@ tools/emu/build/
 # Local flasher log: chip UID, serial port, raw packets.
 tools/flash/flash_ao300.log
 
-# Python and OS clutter
+# Local notes that are not for the public repo: plans, the flash diary, one machine's setup.
+docs/internal/
+
+# A local override for the ser2net container (the bind address of one network).
+tools/flash/ser2net/docker-compose.override.yaml
+
+# Python, editor and OS clutter
 .venv/
+venv/
+.claude/
 __pycache__/
 .DS_Store
 
-# Release bundles (tools/release.py): built from the tree, never committed.
+# Release bundles (tools/release.py) and installer builds: built from the tree, never committed.
 dist/
 build/
