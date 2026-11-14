@@ -4,7 +4,7 @@
   "px": 33,
   "ascent": 33,
   "descent": 7,
-  "engine": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+  "engine": "Chrome 154 (macOS)",
   "coverage": "4-bit alpha, one hex digit per pixel",
   "glyphs": {
     " ": {"adv":6.5999908447265625,"x":0,"y":0,"rows":[]},

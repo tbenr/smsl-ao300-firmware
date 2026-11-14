@@ -4,7 +4,7 @@
   "px": 23,
   "ascent": 10,
   "descent": 2,
-  "engine": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Claude/2.9939.4 Chrome/152.0.7977.130 Safari/537.36",
+  "engine": "Chrome 152 (macOS)",
   "coverage": "4-bit alpha, one hex digit per pixel",
   "glyphs": {
     "H": {"adv":23,"x":0,"y":-21,"rows":["000000048bdfdb840000000","000003bfffffffffb300000","00006fffa73137afff60000","0006ffc300000003cff6000","003ff7000000000007ff300","00dfb0000000000000bfc00","05fe100000000000001ef50","0af80000000000000009fa0","0ef50000000000000005fe0","1ff20000000000000002ff0","1cc55550000000005555cc1","09ffffe000000000effff90","09ffffe000000000effff90","09ffffe000000000effff90","09ffffe000000000effff90","09ffffe000000000effff90","09ffffe000000000effff90","09ffffe000000000effff90","09ffffe000000000effff90","09ffffe000000000effff90","03555540000000004555530"]},

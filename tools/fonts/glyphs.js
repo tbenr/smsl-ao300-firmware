@@ -58,6 +58,15 @@ const DRAW = {
 };
 
 /* one glyph at a time on a transparent canvas, white ink: alpha = coverage (grey-scale, no subpixel AA) */
+// The browser that rendered a raster, as "Chrome 152 (macOS)". Rasters can differ by a pixel
+// between engines, so each file records it; the full user-agent string is not kept.
+function engineName() {
+  const ua = navigator.userAgent;
+  const m = /(Firefox|Edg|Chrome)\/(\d+)/.exec(ua) || /(Version)\/(\d+)/.exec(ua);
+  const os = /Mac OS X/.test(ua) ? 'macOS' : /Windows/.test(ua) ? 'Windows' : /Linux/.test(ua) ? 'Linux' : 'other';
+  return m ? `${m[1] === 'Version' ? 'Safari' : m[1]} ${m[2]} (${os})` : 'unknown';
+}
+
 function raster(sp){
   const chars = [...new Set([...sp.chars.replace('ascii', ASCII)])];
   const px = sp.draw ? sp.size : parseFloat(sp.font.match(/(\d+(?:\.\d+)?)px/)[1]);
@@ -88,7 +97,7 @@ function raster(sp){
   g.font = sp.font || '10px sans-serif';
   const m = g.measureText('Hxg');
   return {id: sp.id, font: sp.font || ('drawn: ' + sp.draw), px, ascent: m.fontBoundingBoxAscent,
-          descent: m.fontBoundingBoxDescent, engine: navigator.userAgent,
+          descent: m.fontBoundingBoxDescent, engine: engineName(),
           coverage: '4-bit alpha, one hex digit per pixel', glyphs};
 }
 

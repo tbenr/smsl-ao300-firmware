@@ -7,7 +7,10 @@ under the SIL Open Font License 1.1:
 - Barlow Condensed (the numerals)
 - IBM Plex Mono (status lines, tags, captions)
 
-The OFL allows this use: bitmaps rendered from the faces and embedded in firmware.
+The OFL allows this use: bitmaps rendered from the faces and embedded in firmware. The
+rendered glyphs in `raster/` are derived from those fonts and stay under the OFL, not under
+this project's licence; `licenses/` holds the three licence texts with their copyright
+notices, and `NOTICE.md` at the top of the repository lists them.
 
 `specs.json` lists the faces and sizes the themes use, as canvas font strings. `raster.html`
 renders every character of each spec with the browser's text engine, the same way the mock
@@ -41,7 +44,7 @@ To add a face or size by hand: add a spec, then run
 and open `tools/fonts/raster.html?only=<id>`. The page reports a font that failed to load and
 writes nothing for it, so a fallback face never gets saved by mistake. Rasters from
 different browsers or systems can differ by a pixel here and there, and `engine` in each
-file records which browser made it. Only re-render existing rasters on purpose: every theme
+file records which browser made it (name, major version and system). Only re-render existing rasters on purpose: every theme
 built from them changes.
 
 These are rasters of the open fonts above, not of the stock firmware's fonts, which never
