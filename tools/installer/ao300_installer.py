@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """The AO300 custom firmware installer: from the vendor updater to a flashed amp, one step at a time.
 
-    ./install.sh                      (the bundle's entry point: venv, dependencies, then this)
+    ./install.sh                      (the entry point: venv, dependencies, then this)
     python3 tools/installer/ao300_installer.py [options]
 
 Steps: find and check the stock firmware in original/, choose a UI theme and the build-time
 configs (the volume caps), build the image, then flash it through tools/flash/flash_ao300.py
-on the serial adapter it finds. Every answer can be given up front, so the same script runs
+on the serial port it finds. Every answer can be given up front, so the same script runs
 unattended (the tests and tools/release.py's self-test do that):
 
     --theme NAME                      house-numerals or phosphor-panel
@@ -236,19 +236,19 @@ def choose_port(preset):
     while True:
         found = ports.scan()
         if len(found) == 1:
-            print("\nSerial adapter: %s" % ports.label(found[0]))
+            print("\nSerial port: %s" % ports.label(found[0]))
             answer = ask("Enter to use it, or type another device path or rfc2217:// URL: ", found[0].device)
         elif found:
             pick = ports.suggested(found)
             items = [(ports.label(p) + ("  <- suggested" if p is pick else ""), p.device) for p in found]
-            answer = menu("Which serial adapter is on the amp?", items + [("another device path or rfc2217:// URL", "?")],
+            answer = menu("Which serial port is the amp?", items + [("another device path or rfc2217:// URL", "?")],
                           str(found.index(pick) + 1) if pick else None)
             if answer == "?":
                 answer = ask("Device path or URL: ")
         else:
-            print("\nNo USB serial adapter found. Plug the adapter into this computer (and onto the amp's\n"
-                  "4-pin header), then press Enter to look again. Or type a device path or an\n"
-                  "rfc2217://host:port URL for an adapter on another machine.")
+            print("\nNo USB serial port found. Connect the amp's USB-C socket to this computer with a data\n"
+                  "cable and power the amp, then press Enter to look again. Or type a device path, or an\n"
+                  "rfc2217://host:port URL for an amp connected to another machine.")
             answer = ask("[Enter: look again] ")
             if not answer:
                 continue
@@ -293,10 +293,11 @@ def make_updater(bin_path):
         return 1
     out = stock.rebuild_updater(vendor, bin_path, bin_path[:-4] + ".exe")
     print("\nWindows updater: %s (%d bytes)" % (os.path.relpath(out, ROOT), os.path.getsize(out)))
-    print("Copy it to a Windows PC with the serial adapter and use it like SMSL's updater: start it,\n"
+    print("Copy it to the Windows PC the amp is connected to and use it like SMSL's updater: start it,\n"
           "click its start button, then put the amp in STANDBY and press SOURCE on the remote.\n"
           "It carries the image built above. It runs none of this installer's chip checks: use it\n"
-          "only on an AO300.")
+          "only on an AO300. It contains SMSL's program and firmware code: keep it for your own amp,\n"
+          "do not share or publish it.")
     return 0
 
 

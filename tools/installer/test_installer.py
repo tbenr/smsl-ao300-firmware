@@ -371,7 +371,10 @@ class ReleaseTest(unittest.TestCase):
         top = zips[0][:-4] + "/"
         self.assertTrue(all(n.startswith(top) for n in names), names[:5])
         rel = [n[len(top):] for n in names]
-        for want in ("install.sh", "README.md", "requirements.txt", "VERSION", "original/README.txt",
+        for want in ("install.sh", "README.md", "LICENSE", "NOTICE.md", "docs/install.md", "docs/status.md",
+                     "docs/images/house-numerals-home.png", "docs/images/phosphor-panel-volume.png",
+                     "tools/fonts/licenses/IBMPlexMono-OFL.txt",
+                     "requirements.txt", "VERSION", "original/README.txt",
                      "tools/installer/ao300_installer.py", "tools/installer/ports.py", "tools/installer/stock.py",
                      "tools/patch/features.py", "tools/patch/uikit.py", "tools/patch/asm51.py", "tools/patch/pfont.py",
                      "tools/pe/stc_release.py", "tools/flash/flash_ao300.py", "tools/build.py",
@@ -388,8 +391,24 @@ class ReleaseTest(unittest.TestCase):
             self.assertNotIn("extracted", bad)
             self.assertNotIn("probe", bad)
             self.assertNotIn("auto-switch", bad)
-        info = zipfile.ZipFile(os.path.join(self.dist, zips[0])).getinfo(top + "install.sh")
+            self.assertFalse(bad.startswith("features/") and bad.endswith(".md"), bad)   # developer docs stay out
+        z = zipfile.ZipFile(os.path.join(self.dist, zips[0]))
+        info = z.getinfo(top + "install.sh")
         self.assertTrue(info.external_attr >> 16 & 0o111, "install.sh must be executable")
+        # The bundled docs link only to files that are in the bundle. The README's developer section
+        # is the exception: it points into the repository, and says so.
+        import posixpath
+        import re
+        for doc in ("README.md", "docs/install.md", "docs/status.md", "NOTICE.md"):
+            text = z.read(top + doc).decode()
+            if doc == "README.md":
+                self.assertIn("\n## For developers\n", text)
+                text = text.split("\n## For developers\n")[0]
+            for link in re.findall(r"\]\(([^)#\s]+)", text):
+                if re.match(r"[a-z]+:", link):
+                    continue
+                target = posixpath.normpath(posixpath.join(posixpath.dirname(doc), link))
+                self.assertIn(target, rel, "%s links to %s, which is not in the bundle" % (doc, link))
 
     def test_release_refuses_firmware_in_the_whitelist(self):
         import subprocess

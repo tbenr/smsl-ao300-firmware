@@ -6,13 +6,15 @@
     python3 tools/release.py --dist DIR      write the zip there (default dist/)
     python3 tools/release.py --also PATH     add a file (repeatable; refused if it is firmware)
 
-The bundle holds install.sh (tools/installer/install.sh), the user guide (README-release.md
-as README.md), requirements.txt, a VERSION file, an empty original/ folder with a note, the
-wizard (tools/installer/), the build tools (tools/patch, tools/pe/stc_release.py,
-tools/flash/flash_ao300.py, tools/build.py, tools/fonts/raster) and, for each theme the wizard
-offers, the features it stacks on or links in: their build_patch.py, fix module, data (*.json)
-and READMEs. No emu_test.py, no build/ output, no listings, and never firmware (*.bin, *.exe,
-*.hex): the user supplies the vendor updater. The script refuses to write otherwise.
+The bundle is a subset of the repository, every file at its own path: install.sh, README.md,
+the user guide docs/install.md, docs/status.md, the README's screenshots, LICENSE, NOTICE.md and
+the fonts' licences, requirements.txt, the wizard (tools/installer/), the build tools (tools/patch,
+tools/pe/stc_release.py, tools/flash/flash_ao300.py, tools/build.py, tools/fonts/raster) and, for
+each theme the wizard offers, the features it stacks on or links in: their build_patch.py, fix
+module and data (*.json). Added to it: a VERSION file and an empty original/ folder with a note.
+No emu_test.py, no build/ output, no listings, no feature READMEs, and never firmware (*.bin,
+*.exe, *.hex): whoever installs it supplies the vendor updater. The script refuses to write
+otherwise.
 
 The self-test extracts the zip into a temp folder, copies original/extracted/flash.bin in and
 builds both themes there with the wizard's flags (python: this interpreter, which has pefile
@@ -36,8 +38,10 @@ from ao300_installer import THEMES  # noqa: E402
 
 FIRMWARE = (".bin", ".exe", ".hex")
 FORBIDDEN_PARTS = ("build", "extracted", "ghidraPRG", "__pycache__")
-FEATURE_FILES = ("*.py", "*.json", "*.md")
+FEATURE_FILES = ("*.py", "*.json")
 FEATURE_EXCLUDE = ("emu_test.py",)
+# What a user reads and runs, at the paths the repository has them: README.md links to the others.
+DOCS = ("install.sh", "README.md", "LICENSE", "NOTICE.md", "requirements.txt", "docs/install.md", "docs/status.md")
 
 
 def version():
@@ -55,10 +59,9 @@ def rel(path):
 
 def files():
     """[(source path, path inside the bundle)] from the whitelist."""
-    out = [(os.path.join(ROOT, "tools", "installer", "install.sh"), "install.sh"),
-           (os.path.join(ROOT, "tools", "installer", "README-release.md"), "README.md"),
-           (os.path.join(ROOT, "requirements.txt"), "requirements.txt")]
-    for pattern in ("tools/installer/*.py", "tools/patch/*.py", "tools/fonts/raster/*.json"):
+    out = [(os.path.join(ROOT, p), p) for p in DOCS]
+    for pattern in ("tools/installer/*.py", "tools/patch/*.py", "tools/fonts/raster/*.json",
+                    "tools/fonts/licenses/*.txt", "docs/images/*.png"):
         out += [(p, rel(p)) for p in sorted(glob.glob(os.path.join(ROOT, pattern)))
                 if not os.path.basename(p).startswith("test_") and not os.path.basename(p).endswith("_test.py")]
     for p in ("tools/pe/stc_release.py", "tools/flash/flash_ao300.py", "tools/build.py"):
@@ -109,7 +112,7 @@ def pack(dist, extra=()):
             total += os.path.getsize(src)
         z.writestr("%s/VERSION" % top, ver + "\n")
         z.writestr("%s/original/README.txt" % top,
-                   "Put the vendor updater here:\n\n    SMSL_AO300_UPDATE_VER0A5_EN.EXE  (AO300 firmware v1.4, from SMSL's support pages)\n\n"
+                   "Put the vendor updater here:\n\n    SMSL_AO300_UPDATE_VER0A5_EN (an .exe; AO300 firmware v1.4, from SMSL's support pages)\n\n"
                    "The installer extracts the stock firmware from it into original/extracted/.\n"
                    "Nothing in this folder is part of the package: the firmware is SMSL's.\n")
     print("wrote %s: %d files, %d bytes before compression" % (rel(out), len(paths) + 2, total))

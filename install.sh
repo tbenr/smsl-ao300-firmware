@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# SMSL AO300 custom firmware: the one-step installer. Creates a Python virtual environment next
-# to this script, installs the dependencies into it and runs the installer wizard
-# (tools/installer/ao300_installer.py). Arguments are passed on to the wizard (see --help).
+# SMSL AO300 custom firmware: the one-step installer, for a clone of the repository or a release
+# bundle. Creates a Python virtual environment next to this script (.venv), installs the
+# dependencies into it and runs the installer wizard (tools/installer/ao300_installer.py).
+# Arguments are passed on to the wizard (see --help). The guide is docs/install.md.
 #
 # Do not run this with sudo: on macOS the serial port needs no elevation, and on Linux add
 # yourself to the serial group instead (sudo usermod -aG dialout "$USER", then log in again).
@@ -9,7 +10,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 if [ "$(id -u)" = 0 ] && [ -z "${AO300_ALLOW_ROOT:-}" ]; then
-    echo "Please run this as your normal user, not with sudo (see the README)." >&2
+    echo "Please run this as your normal user, not with sudo (see docs/install.md)." >&2
     exit 1
 fi
 
