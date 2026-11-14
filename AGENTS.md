@@ -16,9 +16,9 @@ where every other topic lives. These rules apply to anyone working here, human o
 - Annotated listings of our own patch code (`features/*/*.asm`) are fine, as are short
   quotes of stock instructions in docs to explain a hook.
 - The flasher log `tools/flash/flash_ao300.log` stays local. It holds the chip UID.
-- Release bundles (`tools/release.py`, in `dist/`) and installer builds (`build/out/`) stay
-  local too. A bundle never contains firmware: whoever installs it supplies the vendor
-  updater.
+- Installer builds (`build/out/`) stay local too. Release bundles (`tools/release.py`, in
+  `dist/`) are never committed; they are published as GitHub Releases. A bundle never
+  contains firmware: whoever installs it supplies the vendor updater.
 - Nothing of one person's setup goes into tracked files: no home paths, host names, network
   addresses, device names of one machine or chip UIDs. Such notes, and working plans and
   specs, go in `docs/internal/`, which git ignores. No tracked file links into it.
@@ -119,6 +119,9 @@ where every other topic lives. These rules apply to anyone working here, human o
   self-test builds both themes from the extracted zip. Run it (and `tools/run_tests.py`)
   before publishing a bundle; a bundle whose reference images are not in `KNOWN_IMAGES`
   refuses to flash.
+- A release is a tag on `main` and the bundle built from a clean checkout of that tag, so the
+  bundle's `VERSION` names the tag. Its notes say which images it builds (their
+  `VERSION_TEXT`) and that SMSL's updater is not included. Nothing but the bundle is attached.
 - The wizard hard-codes no default, option name or variable: it reads every feature's
   `CONFIG`. When a feature gains a config, the wizard asks for it with no change of its own.
 - The wizard never opens the serial port itself: it runs `tools/flash/flash_ao300.py` as a

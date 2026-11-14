@@ -64,7 +64,8 @@ refuses to write unless it reports what a factory AO300 reports.
 You need a Mac or a Linux computer with Python 3.8 or newer, a USB-C data cable and the
 amp's remote.
 
-1. Clone this repository, or download it as a ZIP and unzip it.
+1. Download the package from the [latest release](https://github.com/tbenr/smsl-ao300-firmware/releases/latest) and unzip it, or clone this
+   repository.
 2. Get SMSL's updater `SMSL_AO300_UPDATE_VER0A5_EN.exe` and put it in the `original` folder.
    SMSL's website no longer offers it; the [install guide](docs/install.md) says where it was
    published and how to check the file.

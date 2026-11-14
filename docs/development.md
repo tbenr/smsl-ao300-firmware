@@ -404,7 +404,8 @@ each theme the wizard offers, the code and data of the features it stacks on or 
 tests, no listings, no feature READMEs and never firmware: the script refuses to write
 otherwise. It ends with a self-test that extracts the zip and builds both themes from inside
 it. A clone of the repository works the same way as the bundle (`./install.sh`); the bundle
-is the same thing without the development files. Bundles stay local, in `dist/`.
+is the same thing without the development files. `dist/` is never committed; a bundle built
+from a tag is attached to a GitHub Release (the rule is in [AGENTS.md](../AGENTS.md)).
 
 The wizard (`tools/installer/ao300_installer.py`) asks for the vendor updater (to be put in
 `original/`), checks its sha, asks for the theme and for every build-time config the theme's
