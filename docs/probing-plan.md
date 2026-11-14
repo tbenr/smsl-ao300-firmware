@@ -31,15 +31,15 @@ nothing is measured.
 
 ## Layer 2: a read-only probe build (done: flashed and the first dump captured 2026-10-05)
 
-`features/probe/`, on stock, including the six fixes every image for the amp carries, version
-`v1.4 tbenr pr1`. The design below is what was built; its README has the dump format and the
+`features/probe/`, on stock, including the six fixes every image for the amp carries (first
+version `v1.4 tbenr pr1`). The design below is what was built; its README has the dump format and the
 steps on the amp.
 
 - **Trigger.** The remote's FN button (NEC 0x08; pr1 used the free code 0x16), home page,
   amp on. Nothing runs unless that command arrives.
-- **Channel.** The programming header, 115200 baud, to the USB-serial adapter used for
-  flashing. With the amp on, UART1 sits on P3.6/P3.7, and P3.7 is the bus data line: the
-  routine must switch P_SW1 to the header pins, send, wait for the last byte to leave, and
+- **Channel.** The serial port used for flashing (the bootloader's pins P3.0/P3.1, which
+  the computer sees through the amp's USB-C socket), 115200 baud. With the amp on, UART1 sits on P3.6/P3.7, and P3.7 is the bus data line: the
+  routine must switch P_SW1 to those pins, send, wait for the last byte to leave, and
   switch back. It must never write SBUF while UART1 is on P3.6/P3.7. `uart1_isr` clears TI,
   so the sender either turns ES off for the dump or does not wait on TI. XMOS bytes that
   arrive during a dump are lost; the next message repairs the display.
@@ -75,8 +75,8 @@ off): its reference comes with the input, probably from the receiver. Seven dump
 2026-10-05 (HDMI and Optical, TV in standby, muted and playing, then an optical stream too)
 and the PCM9211 datasheet gave the receiver's wiring: the HDMI receiver's I2S on AUXIN0 and
 its S/PDIF on RXIN3, the DIR parked on RXIN3 on USB and AUX. Deferred: USB and AUX dumps
-(the adapter drops off the Linux box on those two inputs while the amp's USB cable is in
-that box; unplug the cable or isolate the adapter first), which would confirm that
+(the amp's serial port drops off the host computer on those two inputs, see
+`docs/bus-map.md`), which would confirm that
 register 0x39 shows the ARC stream there. Taken the same day: Bluetooth playing, paused and
 disconnected (the module's codec and connection lines), Coaxial with a stream, and
 headphones in (no jack sense exists). Thirteen dumps in all. Still open: a second read of
@@ -85,7 +85,7 @@ inputs.
 
 ## Layer 3: single writes
 
-Item 1, built 2026-10-05 as probe pr3 (not yet flashed): the receiver's rate calculator
+Item 1, built 2026-10-05 as probe pr3: the receiver's rate calculator
 pointed at each of its eight ports in turn and restored (`features/probe`, the FS line). If
 AUXIN0 and AUXIN1 report a rate when the HDMI source or the USB host plays while another
 input is selected, stream presence on HDMI and USB is readable from any input without

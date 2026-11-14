@@ -4,9 +4,11 @@ services:
     container_name: firmware-tunnel
     restart: unless-stopped
     ports:
-      - "4000:4000"            # "127.0.0.1:4000:4000" to reach it over an SSH tunnel only
+      # No authentication: whoever reaches this port can flash the amp. The default listens on
+      # this machine only (use an SSH tunnel); AO300_BIND=0.0.0.0 in .env opens it to the network.
+      - "${AO300_BIND:-127.0.0.1}:4000:4000"
     devices:
-      # Stable path from `ls /dev/serial/by-id/`; adjust to your adapter. Mapped to the
+      # Stable path from `ls /dev/serial/by-id/`; adjust to what the amp shows as. Mapped to the
       # fixed name ser2net.yaml expects. The container waits (restarting) until it exists.
       - /dev/serial/by-id/usb-1a86_USB_Serial-if00-port0:/dev/ttyUSB0
     volumes:

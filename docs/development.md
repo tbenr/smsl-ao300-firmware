@@ -8,9 +8,11 @@ in [AGENTS.md](../AGENTS.md).
 
 - Python 3.8 or newer.
 - `pefile` for the container tools (`tools/pe/stc_release.py`).
-- `stcgal` 1.10 or newer for the flasher (`tools/flash/flash_ao300.py`); it pulls in
-  `pyserial`. A USB-to-serial adapter (3.3 V logic) on the amp's 4-pin header.
-- The disassembler, the patch builder and the emulator test need only the standard
+- `stcgal` 1.10 for the flasher (`tools/flash/flash_ao300.py`); it pulls in `pyserial`. Both
+  are pinned in `requirements.txt`.
+- A USB-C data cable to the amp. The amp's USB socket carries the serial port the flasher
+  uses (the computer sees a CH340) as well as USB audio.
+- The disassembler, the patch builder and the emulator tests need only the standard
   library, plus a C compiler (`cc`; on macOS the Xcode command-line tools) for the
   emulator's C core. Without one the emulator falls back to the Python reference,
   about 100 times slower.
@@ -25,8 +27,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-`requirements.txt` pins stcgal and pefile (pyserial comes with stcgal); the release bundle
-installs the same file.
+`./install.sh` creates the same `.venv` from the same `requirements.txt`, so either way works.
 
 Activate it (`source .venv/bin/activate`) in every new shell before running the commands
 below; `python3` then resolves to the venv's interpreter. `deactivate` leaves it. The
@@ -39,27 +40,26 @@ once instead (`sudo usermod -aG dialout "$USER"`, `uucp` on Arch) and log in aga
 elevation is ever unavoidable, call the venv interpreter by path, which works without
 activation: `sudo .venv/bin/python tools/flash/flash_ao300.py ...`.
 
-The rebuilt vendor updater (`.exe`) needs Windows, real or in a VM with the serial
-adapter passed through; nothing else here does.
-
 ## Workflow
 
-Download the vendor updater `SMSL_AO300_UPDATE_VER0A5_EN.exe` (firmware v1.4) from
-SMSL's support pages and put it in `original/`. Then extract the stock firmware:
+Firmware is not in this repository and never goes into it (see [AGENTS.md](../AGENTS.md)).
+Download SMSL's updater for AO300 firmware v1.4, `SMSL_AO300_UPDATE_VER0A5_EN` (an `.exe`),
+from SMSL's support pages and put it in `original/`, which git ignores. Then extract the stock
+firmware, using the file's name as you saved it:
 
 ```bash
 python3 tools/pe/stc_release.py unpack original/SMSL_AO300_UPDATE_VER0A5_EN.exe original/extracted
 ```
 
-Disassemble it:
+The extracted `flash.bin` must have sha256 `85e8ac50ffcf47ea…` (full value in
+`KNOWN_IMAGES` in `tools/flash/flash_ao300.py`); every address in these docs and in the
+patches refers to that image. `tools/build.py` stops with a message when it is missing.
+
+Disassemble it, if you want the listing:
 
 ```bash
 python3 tools/disasm/d51.py original/extracted/flash.bin original/extracted/flash.asm 106d 0fc8 10fc 0f93 1006 10be 0ce9 0d03 0ed2 1047 0cd2 10e1 0f62 0d83 0e2a 144e 126f 135a 14e3
 ```
-
-The extracted `flash.bin` must have sha256 `85e8ac50ffcf47ea…` (full value in
-`KNOWN_IMAGES` in `tools/flash/flash_ao300.py`); every address in these docs and in the
-patches refers to that image.
 
 The trailing addresses are the key handlers reached only through the dispatcher's
 inline switch table, which the disassembler cannot follow on its own.
@@ -72,172 +72,95 @@ python3 tools/run_tests.py
 ```
 
 `python3 tools/build.py house-numerals` builds only that image and the ones it stacks on.
-To package an image into the vendor updater:
+
+### Windows updater
+
+An image can be packed into a copy of the vendor updater, to flash from Windows:
 
 ```bash
 python3 tools/pe/stc_release.py rebuild original/SMSL_AO300_UPDATE_VER0A5_EN.exe features/direct-select/build/flash_patched.bin features/direct-select/build/SMSL_AO300_UPDATE_VER0A5_EN_directselect.exe
 ```
 
-The rebuilt updater is flashed exactly like the vendor one: connect the serial adapter,
-click the start button, then either power the amp on from cold or press Source on the
-remote while the amp is in standby.
+The installer's menu does the same for the image it built (`--action exe`, output in
+`build/out`). `rebuild` output was verified by unpacking it again and by checking the PE
+structure with `pefile`: only the firmware resource differs from the vendor updater. It is
+used exactly like the vendor one: connect the amp, click the start button, then put the amp
+in standby and press Source on the remote, or power it up from cold. It needs Windows, real or
+in a VM with the amp's USB serial port passed through.
+
+A rebuilt updater contains SMSL's program and firmware code. It is for your own amp: do not
+share it, and it never goes into git or into a bundle. A hand-made one was confirmed to start
+and validate its image on Windows; no amp has been flashed through one
+([status.md](status.md)).
 
 ## Layout
 
-Firmware is not in this repository. The vendor updater, the extracted and patched images
-(`*.bin`, `*.exe`, `*.hex`), the stock disassembly `flash.asm`, the Ghidra project and
-all `build/` outputs are ignored by git. "Workflow" above recreates them.
-Entries marked * in this tree exist only locally.
+Entries marked * exist only locally: git ignores them, and "Workflow" above recreates them.
 
 ```
-original/                       * vendor files and what was extracted from them
-  SMSL_AO300_UPDATE_VER0A5_EN.exe * vendor updater (STC-ISP "release project", v0A5, Dec 2023)
-  extracted/container.bin         * decrypted record container from the updater
-  extracted/flash.bin             * stock firmware image (37799 bytes, loads at 0x0000)
-  extracted/flash.asm             * disassembly of the stock image (d51.py output)
+original/                       * the vendor updater and what was extracted from it
+  extracted/flash.bin           * stock firmware image (37799 bytes, loads at 0x0000)
+  extracted/flash.asm           * its disassembly (d51.py output)
+ghidraPRG/                      * Ghidra project (import flash.bin as 8051:BE:16:default,
+                                  block CODE at 0)
+
+install.sh                      one-step installer: venv, dependencies, then the wizard
+docs/                           install guide, this file, hardware and research notes
+docs/internal/                  * local notes, not for the repository
 
 tools/
-  pe/stc_release.py               unpack / repack / rebuild the updater's firmware container
-  disasm/d51.py                   small recursive 8051 disassembler
-  disasm/SmslAo300Labels.java     Ghidra script that names routines, globals and tables
-  flash/flash_ao300.py            guarded stcgal-based flasher for macOS/Linux ("Flashing by hand")
-  flash/ser2net/                  ser2net in Docker: forward a remote adapter as rfc2217://
-  emu/emu8051.py                  full 8051 emulator with STC8 clock counts and an ST7789
-                                  model of the LCD bus (renders the screen to PNG); the
-                                  Python reference implementation
-  emu/core8051.c, emu/cemu8051.py the same emulator in C, loaded through ctypes and
-                                  compiled on first use; what Emu8051() runs, ~100x faster
-  emu/test_core.py                differential test: C core against the Python reference
-  build.py                        builds every feature image in dependency order and checks
-                                  them; --graph prints the feature tree (see "Feature graph")
-  run_tests.py                    builds, then runs every features/*/emu_test.py, the UI
-                                  kit's test and the installer's test in parallel
-  release.py                      packs the user-facing bundle, dist/ao300-custom-*.zip, and
-                                  self-tests it (see "Release bundle")
-  installer/                      the bundle's wizard (ao300_installer.py: stock check, theme
-                                  and config questions, build, port detection, flash through
-                                  flash_ao300.py), install.sh, the bundle's README and tests
-  emu/ao300.py                    harness: boot the whole firmware, press remote keys, log
-                                  audio-chip writes and pins per 10 ms tick
-  emu/i2c.py                      I2C slave model for the harness: the chips answer, and
-                                  every transfer is logged with its call site
-  emu/bus_trace.py                runs stock through every input and setting and prints the
-                                  registers and pins it touches (source of docs/bus-map.md)
-  emu/panel_video.py              60 fps video of what the glass shows: samples panel memory
-                                  line by line at the 60 Hz refresh (needs ffmpeg)
-  emu/uitest.py                   shared helpers for UI tests: screen access, the stock
-                                  glyph painters, uk_paint calls, the firmware's strings
-  patch/asm51.py                  label-resolving 8051 assembler used by the build scripts
-  patch/uikit.py                  shared building blocks for UI themes (docs/ui-kit.md)
-  patch/features.py               the feature graph: each feature's BASE and INCLUDES
-  patch/uikit_test.py             the kit's own emulator tests, on fast-lcd + the kit
-  patch/pfont.py                  proportional fonts for uk_text, packed from tools/fonts/raster
-  fonts/                          the UI mock's typefaces as glyph coverage, the font bench
-                                  server and the shared rasteriser glyphs.js (see its README)
+  build.py                      builds every feature image in dependency order and checks
+                                them; --graph prints the feature tree
+  run_tests.py                  builds, then runs every test in parallel
+  release.py                    packs and self-tests the bundle, dist/ao300-custom-*.zip
+  installer/                    the wizard (ao300_installer.py), port detection, stock
+                                detection, its tests
+  flash/flash_ao300.py          guarded stcgal-based flasher ("Flashing by hand")
+  flash/ser2net/                ser2net in Docker: reach the amp's serial port from another
+                                computer as rfc2217://
+  pe/stc_release.py             unpack / repack / rebuild the updater's firmware container
+  disasm/d51.py                 small recursive 8051 disassembler
+  disasm/SmslAo300Labels.java   Ghidra script that names routines, globals and tables
+  patch/asm51.py                label-resolving 8051 assembler used by the build scripts
+  patch/features.py             the feature graph: BASE, INCLUDES, CONFIG
+  patch/uikit.py                shared building blocks for UI themes (ui-kit.md)
+  patch/uikit_test.py           the kit's own emulator tests, on fast-lcd + the kit
+  patch/pfont.py                proportional fonts for uk_text, packed from tools/fonts/raster
+  fonts/                        the themes' typefaces as glyph rasters, the font bench
+                                server and the shared rasteriser glyphs.js (see its README)
+  emu/emu8051.py                8051 emulator with STC8 clock counts and an ST7789 model of
+                                the LCD bus (renders the screen to PNG); the Python reference
+  emu/core8051.c, cemu8051.py   the same emulator in C, loaded through ctypes and compiled
+                                on first use; what Emu8051() runs, about 100 times faster
+  emu/test_core.py              differential test: C core against the Python reference
+  emu/ao300.py                  harness: boot the whole firmware, press remote keys, log
+                                audio-chip writes and pins per 10 ms tick
+  emu/i2c.py                    I2C slave model for the harness: the chips answer, and
+                                every transfer is logged with its call site
+  emu/bus_trace.py              runs stock through every input and setting and prints the
+                                registers and pins it touches (source of bus-map.md)
+  emu/panel_video.py            60 fps video of what the glass shows (needs ffmpeg)
+  emu/uitest.py                 shared helpers for UI tests
 
-features/
-  status-line-flicker/            analysis of the "flickering C" display bug (no build yet)
-    NOTES.md, evidence/           findings, ruled-out causes, fix candidate, video crops
-  direct-select/                  direct input selection and idempotent power over IR: a fix,
-                                  included by the images meant for the amp; standalone on
-                                  stock (see its README)
-    direct_select.py              the fix: HOOK and emit(a), for any build pipeline
-    build_patch.py                the standalone image, build/flash_patched.bin
-    direct_select.asm             generated listing of the routine placed at 0x9400
-    emu_test.py                   emulator test of the standalone image, or of the fix in
-                                  any image that includes it (--in)
-    build/flash_patched.bin     * patched firmware image
-    build/SMSL_AO300_UPDATE_VER0A5_EN_directselect.exe * rebuilt updater carrying it
-  ui-theme/                       design stage: visual themes for the home and volume
-                                  screens; two of them are built (house-numerals, phosphor-panel)
-    ui_themes.html                interactive theme designs and the stock screen map
-  fast-lcd/                       the stock UI through the tuned pixel path, on top of
-                                  stock; emulator-verified, see its README
-    build_patch.py, emu_test.py   build build/flash_fastlcd.bin, lockstep UI tour vs stock
-  phosphor-panel/                 Phosphor Panel (study 2 of the mock: a VFD look) home and
-                                  volume page, on top of fast-lcd, built with tools/patch/uikit.py;
-                                  pp1 on the amp since 2026-10-10 (works), pp2 fixes the dot
-                                  matrix's O and C edges; see its README
-    build_patch.py, emu_test.py   build build/flash_phosphor_panel.bin (the dot-matrix name,
-                                   the row of lamps, the seven-segment cells with afterglow,
-                                   the bar, the sequenced fades driven by a per-tick level
-                                   engine), home, page and engine models, lockstep tour,
-                                   keys during the transitions, INT1 sweep, 256-command sweep
-    phosphor_panel.asm            generated listing
-  house-numerals/                 House Numerals home and volume page, on top of fast-lcd,
-                                  built with tools/patch/uikit.py; hn10 to hn12 tried on the amp
-                                  on 2026-09-30, hn13 and the pop fixes' builds (hn14, hn15)
-                                  on 2026-10-02, hn16 the same day; see its README
-    build_patch.py, emu_test.py   build build/flash_house_numerals.bin (hn10: the mock's home
-                                   and volume page in its own typefaces, non-blocking wipes
-                                   with the mock's cubic ease, the number roll and the line's spring), home and
-                                   page models, lockstep UI tour, keys during wipes and on the
-                                   page, INT1 sweep, 256-command sweep vs fast-lcd plus the
-                                   same fixes (the reference the test builds)
-    layout.json, sizing.html      the home layout the build reads, and the page that edits it
-                                   (preview exact to the firmware; served by tools/fonts/rasterize.py)
-    house_numerals.asm            annotated listing of the patch code at 0x9800
-  strings/                        stock texts corrected in place ("Disconnected" for ARC's
-                                  "No Connected"), includable like a fix; see its README
-  fix-auto-off/                   stock-bug fix, ported from the AO300 PRO V1.2: Dimmer Auto
-                                  OFF also times out after a cold power-up. Standalone on
-                                  stock; other builds include it (see its README)
-    fix_auto_off.py               the fix: HOOK and emit(a), for any build pipeline
-    build_patch.py, emu_test.py   build build/flash_fixautooff.bin, hook test, 256-command
-                                   sweep, cold power-up / standby scenarios vs stock
-    fix_auto_off.asm              generated listing
-  start-volume/                   the volume at power-on capped at limits set at build time,
-                                  one for speakers and one for headphones. Standalone on
-                                  stock; house-numerals includes it (see its README)
-    start_volume.py               the config (SPEAKER_LIMIT, HEADPHONE_LIMIT) and the fix:
-                                   HOOK and emit(a)
-    build_patch.py, emu_test.py   build build/flash_startvolume.bin; hook and config tests,
-                                   256-command sweep, cold power-up / standby scenarios vs
-                                   stock on an EEPROM model
-    start_volume.asm              generated listing
-  fix-volume-pop/                 stock-bug fix: a volume key on Optical or Coaxial without
-                                  a signal no longer moves the mute pins or opens the
-                                  NJW1194 (the pop on the first key). Standalone on stock;
-                                  house-numerals includes it (see its README)
-    fix_volume_pop.py             the fix: HOOK, PATCHES and emit(a)
-    build_patch.py, emu_test.py   build build/flash_fixvolumepop.bin; the four handlers
-                                   against stock, 256-command sweep through dispatch_key,
-                                   no-signal / signal-drop / mute-key scenarios vs stock
-    fix_volume_pop.asm            generated listing
-  fix-menu-input/                 stock-bug fix: an input chosen in the menu is switched as
-                                  the Source key switches it, without stock's 3 s supply
-                                  cycle on P4.0 and second chip setup (a pop). Standalone
-                                  on stock; house-numerals includes it (see its README)
-    fix_menu_input.py             the fix: HOOK and emit(a)
-    build_patch.py, emu_test.py   build build/flash_fixmenuinput.bin; hook test, 256-command
-                                   and 256-key sweeps, all 30 input pairs through the menu
-                                   against stock and against the Source key
-    fix_menu_input.asm            generated listing
-  auto-switch/                    stage 1 of the auto-switch (docs/probing-plan.md): to HDMI
-                                  when the TV comes on, from any input, only while the
-                                  selected input is silent (Bluetooth sensed, not enabled). A
-                                  fix on stock with the six fixes; as1 flashed and the TV wake
-                                  confirmed on 2026-10-05 (see its README)
-    auto_switch.py                the fix: ENABLED, HOLD, HOOK and emit(a)
-    build_patch.py, emu_test.py   build build/flash_autoswitch.bin; the tick hook per phase,
-                                   256-command sweep vs stock + the same fixes, whole-firmware
-                                   scenarios against direct-select's switches
-    auto_switch.asm               generated listing
-  probe/                          layer 2 of docs/probing-plan.md: FN on the home page sends
-                                  a read-only register dump (I2C address scan, expander,
-                                  receiver and clock-generator registers, ports, RAM) over the
-                                  programming header at 115200 baud. Standalone on stock with
-                                  the six fixes; pr1 flashed 2026-10-05, pr2 (FN) emulator-
-                                  verified (see its README)
-    probe.py                      the fix: HOOK and emit(a)
-    build_patch.py, emu_test.py   build build/flash_probe.bin; hook test on the I2C model,
-                                   256-command sweep vs stock + the same fixes, cold power-up
-                                   scenario with the dump, standby and a menu
-    probe.asm                     generated listing
-
-ghidraPRG/                    * Ghidra project (import original/extracted/flash.bin as
-                                8051:BE:16:default, block CODE at 0)
+features/                       one folder per feature
+  direct-select/                fix: input selection and power over IR
+  fix-auto-off/                 fix: Dimmer Auto OFF also times out after a cold power-up
+  fix-menu-input/               fix: an input chosen in the menu, without the supply cycle
+  fix-volume-pop/               fix: no pop from the volume keys without a signal
+  start-volume/                 fix: the volume at power-on capped at build-time limits
+  strings/                      fix: stock texts corrected in place
+  fast-lcd/                     the stock UI through a faster pixel path; the themes' base
+  house-numerals/               theme: large numerals, a sliding volume page
+  phosphor-panel/               theme: a VFD look
+  ui-theme/                     the themes' design mock (ui_themes.html)
+  auto-switch/                  experimental: to HDMI when the TV comes on
+  probe/                        research: a read-only register dump on the FN button
+  status-line-flicker/          analysis of a stock display bug (no build)
 ```
+
+A feature folder holds `build_patch.py` (builds `build/flash_*.bin` *), the generated
+listing `<name>.asm`, `emu_test.py` and `README.md`. A fix also has `<name>.py` with `HOOK`
+and `emit(a)`, so other builds can include it.
 
 ## Feature graph
 
@@ -257,7 +180,14 @@ INCLUDES (a fix linked into that image):
 
 ```
 stock                       85e8ac50…
-├── direct-select           'v1.4 tbenr ds4'    0x9400..0x9473  4b5dcfce… known  [fix, hook 0x5D10; included by house-numerals, phosphor-panel]
+├── auto-switch             'v1.4 tbenr as4'    0xF000..0xF202  8e0602f5… known  [fix, hook 0x3438; included by none yet]
+│     + direct-select       fix linked into auto-switch
+│     + fix-auto-off        fix linked into auto-switch
+│     + strings             fix linked into auto-switch
+│     + start-volume        fix linked into auto-switch
+│     + fix-volume-pop      fix linked into auto-switch
+│     + fix-menu-input      fix linked into auto-switch
+├── direct-select           'v1.4 tbenr ds4'    0x9400..0x9473  4b5dcfce… known  [fix, hook 0x5D10; included by auto-switch, house-numerals, phosphor-panel, probe]
 │     = config              WAKE_ON_INPUT 0..1 (default 1)
 ├── fast-lcd                'v1.4 tbenr fast3'  0x9700..0x977C  30c1e6fe… known
 │   ├── house-numerals      'v1.4 tbenr hn19'   0x9800..0xDD41  8cf34756… known
@@ -274,11 +204,19 @@ stock                       85e8ac50…
 │         + start-volume    fix linked into phosphor-panel
 │         + fix-volume-pop  fix linked into phosphor-panel
 │         + fix-menu-input  fix linked into phosphor-panel
-├── fix-auto-off            'v1.4 tbenr aof3'   0x9680..0x969D  1fb64470… known  [fix, hook 0x55B9; included by house-numerals, phosphor-panel]
-├── fix-menu-input          'v1.4 tbenr mi1'    0x9650..0x9675  693bdef6… known  [fix, hook 0x5892; included by house-numerals, phosphor-panel]
-├── fix-volume-pop          'v1.4 tbenr vp1'    0x96D6..0x96FC  e2075861… known  [fix, hook 0x0F4A, patch 0x0D0F, patch 0x0D8F, patch 0x0E36, patch 0x0EDE; included by house-numerals, phosphor-panel]
-├── start-volume            'v1.4 tbenr sv1'    0x96B0..0x96D5  50ad4119… known  [fix, hook 0x5596; included by house-numerals, phosphor-panel]
-└── strings                 'v1.4 tbenr str3'   0x96A0..0x96AF  6c5611ad… known  [fix, patch 0x91ED; included by house-numerals, phosphor-panel]
+├── fix-auto-off            'v1.4 tbenr aof3'   0x9680..0x969D  1fb64470… known  [fix, hook 0x55B9; included by auto-switch, house-numerals, phosphor-panel, probe]
+├── fix-menu-input          'v1.4 tbenr mi1'    0x9650..0x9675  693bdef6… known  [fix, hook 0x5892; included by auto-switch, house-numerals, phosphor-panel, probe]
+├── fix-volume-pop          'v1.4 tbenr vp1'    0x96D6..0x96FC  e2075861… known  [fix, hook 0x0F4A, patch 0x0D0F, patch 0x0D8F, patch 0x0E36, patch 0x0EDE; included by auto-switch, house-numerals, phosphor-panel, probe]
+├── probe                   'v1.4 tbenr pr5'    0xF100..0xF37F  0fc654e4… known  [fix, hook 0x3DA9; included by none yet]
+│     + direct-select       fix linked into probe
+│     + fix-auto-off        fix linked into probe
+│     + strings             fix linked into probe
+│     + start-volume        fix linked into probe
+│     + fix-volume-pop      fix linked into probe
+│     + fix-menu-input      fix linked into probe
+├── start-volume            'v1.4 tbenr sv1'    0x96B0..0x96D5  50ad4119… known  [fix, hook 0x5596; included by auto-switch, house-numerals, phosphor-panel, probe]
+│     = config              HEADPHONE_LIMIT 0..60 (default 20), SPEAKER_LIMIT 0..60 (default 25)
+└── strings                 'v1.4 tbenr str3'   0x96A0..0x96AF  6c5611ad… known  [fix, patch 0x91ED; included by auto-switch, house-numerals, phosphor-panel, probe]
 ```
 
 Stacking (BASE) is for code that changes how the stock UI is drawn: fast-lcd on stock, a
@@ -288,11 +226,9 @@ them is expected. Everything else is a fix on stock, with its own small standalo
 and is linked into the image meant for the amp through INCLUDES. House-numerals then
 depends on fast-lcd (its base, and so on down to stock) and on direct-select, fix-auto-off,
 strings, start-volume, fix-volume-pop and fix-menu-input (included). An image has exactly one BASE, because
-images stack, but can include any number of fixes. Including a fix uses the fix's source, not its standalone
-image; that image stays a separate branch of the tree, and a change to a fix only moves
-the shas of the images that include it. (Until 2026-09-30 every image stacked on
-direct-select instead, so a change to it rebuilt everything: hn11 and hn11.1 are from
-that shape, hn12 is the same firmware in this one.)
+images stack, but can include any number of fixes. Including a fix uses the fix's source, not
+its standalone image; that image stays a separate branch of the tree, and a change to a fix
+only moves the shas of the images that include it.
 
 A fix is a feature whose folder also holds `<name>.py` (dashes as underscores) exporting
 `HOOK` and `emit(a)` (code at a hook), or `PATCHES` (in-place byte changes of the same
@@ -346,60 +282,53 @@ images this way.
 
 ## Testing
 
-`emu_test.py` runs the patched image's IR-translate routine in a small 8051 interpreter:
-
-- the six new commands select the right input, and only when on and on the home screen;
-- all 256 possible commands are compared against the stock image, and must match outside
-  the six new ones;
-- the version pointer resolves to a valid string;
-- the only bytes changed inside the stock image range are the three-byte hook at 0x5D10
-  and the two pointer bytes at 0x22CB and 0x22CD.
-
-The other feature tests run their images in the full emulator (`tools/emu/emu8051.py`).
-It executes the stock routines with clocks counted from the STC8 instruction table. The
-LCD bus is decoded into an ST7789 model and saved as PNG.
+Every feature has an `emu_test.py`. It runs the patched image in the emulator
+(`tools/emu/emu8051.py`), which executes the stock routines with clocks counted from the STC8
+instruction table and decodes the LCD bus into an ST7789 model that can be saved as PNG. Each
+test covers the new behaviour at the hook, a sweep of all 256 IR commands against the base
+image in every power and page state the patch reads, and an image diff limited to the bytes
+the patch is meant to change. [AGENTS.md](../AGENTS.md) has the rules.
 
 `python3 tools/run_tests.py` builds every image (`tools/build.py`), then runs all the feature
-tests, the integration tests (below) and the UI kit's test at once, on
-the C core, in about 3 minutes, most of it the two themes' 256-command sweeps (before
-house-numerals the run took about 5 s; the Python reference, `EMU8051=py`, took about 8
-minutes). `python3 tools/run_tests.py uikit` runs only the kit's test (about 3 s). After changing
-the emulator, `python3 tools/emu/test_core.py` checks the C core against the Python
-reference: every opcode from random states, random programs, and a boot scenario of
-the stock firmware compared at every 10 ms tick.
+tests, the integration tests (below), the UI kit's test and the installer's test at once, on
+the C core, in about 3 minutes; most of that is the two themes' 256-command sweeps.
+`python3 tools/run_tests.py uikit` runs only the kit's test (about 3 s), and a feature's name
+runs only that feature's jobs. The Python reference (`EMU8051=py`) gives the same results
+about 100 times slower. After changing the emulator, `python3 tools/emu/test_core.py` checks
+the C core against the Python reference: every opcode from random states, random programs,
+and a boot scenario of the stock firmware compared at every 10 ms tick.
 
-Whole-firmware scenarios run on `Amp` (`tools/emu/ao300.py`), which fires both timer
-interrupts the stock firmware enables: the Timer0 ISR every 10 ms and `timer3_isr` (0x5040)
-every 0.5 ms, on one grid with Timer0 first when both are due. Until 2026-09-29 `Amp` ran
-Timer0 only. The encoder key 0x2D then stayed 0 instead of 0xFF, and `read_key` handed
-`dispatch_key` a phantom key 0 on every idle main-loop pass on every powered page. Among
-other things that re-armed the Auto OFF countdown 0x2F:0x30 (0x0BBD) on every pass and made
-each idle pass about 640 clocks instead of about 85. With Timer3 the idle home page makes
-about 280,000 main passes a second, not 38,000. A test hook on a per-pass address (such as
-house-numerals' wipe watcher on 0x5B2D) costs 7.5 times as much, so arm such hooks only
-while they are needed. Absolute times in the scenarios moved by up to about 0.07 s (the ISR
-takes about 131 clocks every 12,000, about 1% of the CPU). The fast-lcd and house-numerals
-comparisons against their base images came out the same. The deepest stack in the
-house-numerals tour went from 0xAF to 0xB3: stock's own delay leaves at SP 0xA0 with
-`timer3_isr`'s deeper frame on top. Running Timer3 at the real rate costs about 7% more
-emulator time than not running it.
+Without the stock image nothing builds, so only `tools/emu/test_core.py --no-firmware` and the
+parts of `tools/installer/test_installer.py` that do not need it can run.
+
+### Whole-firmware scenarios
+
+Scenarios run on `Amp` (`tools/emu/ao300.py`), which boots the firmware from reset and fires
+both timer interrupts stock enables: the Timer0 ISR every 10 ms and `timer3_isr` (0x5040)
+every 0.5 ms, on one grid with Timer0 first when both are due. Timer3 matters. Without it the
+encoder key 0x2D stays 0 instead of 0xFF, and `read_key` hands `dispatch_key` a phantom key 0
+on every idle main-loop pass on every powered page; among other things that re-arms the Auto
+OFF countdown 0x2F:0x30 (0x0BBD) on every pass, which hides the bug fix-auto-off fixes.
+
+With Timer3 the idle home page makes about 280,000 main passes a second. A test hook on a
+per-pass address (such as house-numerals' wipe watcher on 0x5B2D) is therefore expensive: arm
+such hooks only while they are needed. The ISR takes about 131 clocks every 12,000, about 1%
+of the CPU, and costs about 7% of emulator time. The deepest stack in the house-numerals tour
+is 0xB3: stock's own delay leaves at SP 0xA0 with `timer3_isr`'s frame on top.
 
 `Amp.press` sets what a finished frame leaves for the main loop: the command in 0x6A and bit
 0x20.4. It does not run the decoder, so the release timer 0x34 is not armed and 0x6A keeps the
 command until the next press or settings save. A press on the tick of a settings save (50 main
-ticks after a setting change: 0.50 s after a Vol+ on hn16, 0.52 s on fast-lcd, 0.67 s on stock)
-is lost to a stock race, see `docs/open-questions.md`; a wait of whole ticks ends just after a Timer0
-tick, inside the window, so in a scenario this is not rare but certain. Keep presses off that
-tick unless the race is what the test is about.
+ticks after a setting change: 0.50 s after a Vol+ on house-numerals, 0.52 s on fast-lcd, 0.67 s
+on stock) is lost to a stock race, see [open-questions.md](open-questions.md); a wait of whole
+ticks ends just after a Timer0 tick, inside the window, so in a scenario this is not rare but
+certain. Keep presses off that tick unless the race is what the test is about.
 
 `Amp` has no EEPROM: reads return 0, so the emulated amp boots into standby with every
 setting at its clamp. Tests seed single reads through a hook on 0x5970 (fix-auto-off), or
 model the whole EEPROM behind the stock IAP routines (start-volume: read 0x5970, write
 0x58AF, erase 0x59D0), which also makes a cold power-up turn the amp on by itself, as the
 real one does.
-
-`stc_release.py rebuild` output was verified by unpacking it again and by checking the
-PE structure with `pefile`. Only the firmware resource differs from the vendor updater.
 
 ### Integration tests
 
@@ -411,7 +340,7 @@ checks, in that feature's image, what must stay true wherever it is built on or 
 `run_tests.py` runs it for every image that contains the feature, as jobs such as
 "direct-select in house-numerals" and "fix-auto-off in house-numerals":
 
-- direct-select: the six direct commands, the two power commands (on the whole firmware:
+- direct-select: the six input commands, the two power commands (on the whole firmware:
   from standby, when on, twice, from a menu page), an input command in standby powering the
   amp on on that input with one source setup, and the stock translation of the other 248.
 - fix-auto-off: Auto OFF times out after power-on as after a key; Always ON is untouched.
@@ -425,66 +354,115 @@ checks, in that feature's image, what must stay true wherever it is built on or 
 
 ## Flashing by hand
 
+[install.md](install.md) is the guide for putting an image on an amp; this section is the
+flasher underneath it. Never start anything that opens the serial port without the person at
+the amp ready for it (see [AGENTS.md](../AGENTS.md)).
+
 `tools/flash/flash_ao300.py` wraps [stcgal](https://github.com/grigorig/stcgal) and
 refuses to write unless the chip reports exactly what a factory AO300 reports: magic
 0xF7DC, bootloader 7.2 or newer, 24 MHz clock, option bytes `FF BF BC F7 F4`, code area
 ending at 0xF400, no download password, and bootloader pin detection off. Those values
 were read from a real amp and match the vendor container. Options are written back
-unchanged; the clock is calibrated to 24.000 MHz like the vendor tool does.
+unchanged; the clock is calibrated to 24.000 MHz like the vendor tool does. It checks the
+image too (size, reset vector) and says whether its sha256 is in `KNOWN_IMAGES`.
 
 ```bash
-python3 tools/flash/flash_ao300.py -p /dev/cu.usbserial-10 identify     # read-only
-python3 tools/flash/flash_ao300.py -p /dev/cu.usbserial-10 dryrun       # read-only, full handshake
-python3 tools/flash/flash_ao300.py -p /dev/cu.usbserial-10 flash features/direct-select/build/flash_patched.bin
-python3 tools/flash/flash_ao300.py -p /dev/cu.usbserial-10 recover original/extracted/flash.bin
+python3 tools/flash/flash_ao300.py -p PORT identify     # read-only
+python3 tools/flash/flash_ao300.py -p PORT dryrun       # read-only, full handshake
+python3 tools/flash/flash_ao300.py -p PORT flash features/house-numerals/build/flash_house_numerals.bin
+python3 tools/flash/flash_ao300.py -p PORT recover original/extracted/flash.bin
 ```
 
-When it says "Waiting for MCU", put the amp in standby and press Source on the remote,
-or unplug and replug the mains. `flash` asks you to type FLASH first, before it waits
-for the bootloader, so there is no pause between the handshake and the erase; `-y`
-after the image path skips the question. On Linux the port is usually `/dev/ttyUSB0`;
-if it vanishes mid-run (`Errno 5`), check `dmesg` for brltty or ModemManager
-grabbing the CH340. `-p` also takes a pyserial URL, so an adapter on another machine
-can be reached through a forwarder such as `rfc2217://host:4000` (stock stcgal opens
-device paths only; the flasher routes URLs through `serial_for_url`). A ready-made
-ser2net setup in Docker is in `tools/flash/ser2net/`. `identify` passed this way on
-2026-10-05 (ser2net 4.6 on a Linux box, flasher on a Mac on the same LAN), and so did
-`dryrun` and `flash` the same day (hn17, 56832 bytes in 15 s at about 3.8 kB/s): the switch to
-115200 baud travels as an RFC 2217 control command and works through ser2net. If a
-flash fails after the erase, the amp has no firmware until `recover` is run from a cold
-power-up; the bootloader is in ROM and survives. Every run is appended to
-`tools/flash/flash_ao300.log`, with raw packets when `-D` is given.
+`PORT` is the amp's serial device: `/dev/cu.usbserial-XXXX` on macOS (`ls /dev/cu.usbserial*`),
+usually `/dev/ttyUSB0` on Linux. When the flasher says "Waiting for MCU", put the amp in
+standby and press Source on the remote, or unplug and replug the mains. `flash` asks you to
+type FLASH first, before it waits for the bootloader, so there is no pause between the
+handshake and the erase; `-y` after the image path skips the question.
+
+- **The port vanishes mid-run on Linux** (`Errno 5`): check `dmesg` for brltty or
+  ModemManager grabbing the CH340.
+- **The amp is on another computer.** `-p` also takes a pyserial URL such as
+  `rfc2217://host:4000` (stock stcgal opens device paths only; the flasher routes URLs
+  through `serial_for_url`). `tools/flash/ser2net/` has a ready-made ser2net setup in Docker.
+  The switch to 115200 baud travels as an RFC 2217 control command and works through it.
+- **A flash fails after the erase.** The amp has no firmware until `recover` is run from a
+  cold power-up; the bootloader is in ROM and survives.
+- **The log.** Every run is appended to `tools/flash/flash_ao300.log`, with raw packets when
+  `-D` is given. It holds the chip's unique ID and stays local.
+- **The vendor updater against this flasher.** The updater sends no download password and
+  uses no user key, which is why stcgal's `stc8d` protocol can talk to the chip. The vendor
+  tool rewrites the option bytes and the clock trim from its own container every time; this
+  flasher reads the chip first, checks it, and writes the options back unchanged.
 
 ## Release bundle
 
-`tools/release.py` packs `dist/ao300-custom-<version>.zip`, a bundle for someone who only
-wants the firmware on their amp: `install.sh` creates a venv, installs `requirements.txt`
-and runs the wizard `tools/installer/ao300_installer.py`, which asks for the vendor updater
-(to be put in `original/`), checks its sha, asks for the theme and the build-time configs,
-builds the image, finds the USB serial adapter and runs `tools/flash/flash_ao300.py` with the
-terminal attached (with `-y`: the menu choice is the confirmation). The bundle holds the wizard, the build tools and the features the two
-themes need, and no firmware; the user guide inside it is `tools/installer/README-release.md`.
-The wizard trusts a build by rebuilding the theme with its defaults (the sha must be in
-`KNOWN_IMAGES`) and checking that the user's image differs from it only in the configs'
-bytes (`features.config_diff`); the flasher then reports it as "not a registered image",
-which the wizard explains. `release.py` ends with a self-test that extracts the zip and builds
-both themes from inside it. `python3 tools/run_tests.py installer` runs the wizard's tests
-(`tools/installer/test_installer.py`: the config API, port filtering, stock detection, the
-release contents, and unattended builds of both themes checked against the default images).
-The menu's fourth item, "Make a Windows updater (.exe)" (`--action exe`), opens no port: it
-writes a copy of the vendor updater carrying the built image next to it in `build/out`
-(`stock.rebuild_updater`, through `stc_release.rebuild_exe`), unpacks it again and requires
-the image back byte for byte. It needs the vendor `.exe` in `original/`. An updater made by
-the wizard has not been run on Windows yet. The hand-made direct-select one was confirmed
-to start and validate its image there on 2026-09-28 (`docs/status.md`); no flash through a
-rebuilt updater is on record.
-Every answer has a flag (`--theme`, `--set FEATURE.OPTION=VALUE`, `--port`, `--action`,
-`--build-only`), so the wizard also serves as a one-line build tool. The bundle
-`ao300-custom-1c4dbd4-dirty-20261011` was run on a Linux machine on 2026-10-11 and worked
-end to end (the user's report). When several ports are listed, the wizard proposes the only
-known adapter among them (a CH340 next to an Arduino, say).
+`tools/release.py` packs `dist/ao300-custom-<version>.zip` from a whitelist: `install.sh`,
+`README.md`, `docs/install.md`, the licence and notices, the wizard, the build tools and, for
+each theme the wizard offers, the code and data of the features it stacks on or links in. No
+tests, no listings, no feature READMEs and never firmware: the script refuses to write
+otherwise. It ends with a self-test that extracts the zip and builds both themes from inside
+it. A clone of the repository works the same way as the bundle (`./install.sh`); the bundle
+is the same thing without the development files. Bundles stay local, in `dist/`.
+
+The wizard (`tools/installer/ao300_installer.py`) asks for the vendor updater (to be put in
+`original/`), checks its sha, asks for the theme and for every build-time config the theme's
+features declare, builds the image, finds the amp's serial port and runs
+`tools/flash/flash_ao300.py` as a child process with the terminal attached (with `-y`: the
+menu choice is the confirmation). It hard-codes no option name or default: a feature that
+gains a `CONFIG` entry is asked for with no change to the wizard.
+
+- **Trust in the build.** The wizard rebuilds the theme with its defaults (that sha must be
+  in `KNOWN_IMAGES`) and checks that the user's image differs from it only in the configs'
+  bytes (`features.config_diff`). The flasher then reports the image as "not a registered
+  image", which the wizard explains.
+- **Flags.** Every answer has one (`--theme`, `--set FEATURE.OPTION=VALUE`, `--port`,
+  `--action`, `--build-only`), so the wizard also serves as a one-line build tool.
+- **Ports.** When several serial ports are listed, the wizard proposes the only known USB
+  serial chip among them (a CH340 next to an Arduino, say).
+- **Windows updater.** The menu item "Make a Windows updater (.exe)" (`--action exe`) opens no
+  port: it writes a copy of the vendor updater carrying the built image into `build/out`
+  (`stock.rebuild_updater`, through `stc_release.rebuild_exe`), unpacks it again and requires
+  the image back byte for byte. It needs the vendor `.exe` in `original/`. See "Windows
+  updater" above for what may be done with the result.
+- **Tests.** `python3 tools/run_tests.py installer` runs `tools/installer/test_installer.py`:
+  the config API, port filtering, stock detection, the bundle's contents, and unattended
+  builds of both themes checked against the default images.
 
 ## Version string
 
-The RESET menu page shows `v1.4 tbenr ds4` instead of `v1.4`. Change `VERSION_TEXT` in
-`build_patch.py` to alter it; the row fits 20 characters.
+The RESET menu page shows the image's `VERSION_TEXT` instead of stock's `v1.4`: `v1.4 tbenr`
+and a build tag, for example `v1.4 tbenr hn19`. Each `build_patch.py` sets its own, 20
+characters at most, so the page always says which image is running. A new image gets a new
+tag and a `KNOWN_IMAGES` entry; an image that differs only by build-time config values does
+not ("Build-time configs").
+
+## The screenshots in the README
+
+`docs/images/*.png` are emulator renders of the built themes, written by the unit tests:
+
+```bash
+python3 features/house-numerals/emu_test.py unit    # build/unit_home.png, build/unit_volpage.png
+python3 features/phosphor-panel/emu_test.py unit    # build/unit_home.png, build/unit_volume.png
+```
+
+Copy them to `docs/images/` under the names the README uses when a theme's look changes.
+
+## Where each topic lives
+
+Each topic has one home. Other files link to it and do not restate it.
+
+| Topic | Home |
+|---|---|
+| What the firmware adds, the IR commands, the disclaimer | [README.md](../README.md) |
+| Installing, flashing with the wizard, recovery | [install.md](install.md) |
+| Build, test, flash by hand, the bundle | this file |
+| Rules for changing anything | [AGENTS.md](../AGENTS.md) |
+| What was verified on hardware | [status.md](status.md) |
+| Hardware map, volume scale, memory budget, stock firmware facts | [hardware.md](hardware.md) |
+| Registers and pins, read back from the amp | [bus-map.md](bus-map.md) |
+| What is not known yet | [open-questions.md](open-questions.md), [probing-plan.md](probing-plan.md) |
+| The stock menu's internals | [menu-system.md](menu-system.md) |
+| The theme kit, sizing a home screen | [ui-kit.md](ui-kit.md) |
+| How one feature works | `features/<name>/README.md` |
+| Reaching the amp's serial port from another computer | `tools/flash/ser2net/README.md` |
+| Fonts and their licences | `tools/fonts/README.md`, [NOTICE.md](../NOTICE.md) |

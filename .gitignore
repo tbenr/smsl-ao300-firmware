@@ -22,8 +22,8 @@ tools/flash/flash_ao300.log
 # Local notes that are not for the public repo: plans, the flash diary, one machine's setup.
 docs/internal/
 
-# A local override for the ser2net container (the bind address of one network).
-tools/flash/ser2net/docker-compose.override.yaml
+# Local settings of the ser2net container (the bind address on one network).
+tools/flash/ser2net/.env
 
 # Python, editor and OS clutter
 .venv/

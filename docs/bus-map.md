@@ -9,7 +9,8 @@ two ways:
 - **Static**: every call site of the bus routines and every port-pin instruction in the
   disassembly.
 
-Nothing here was measured on the amp (traced 2026-10-01). Register and bit values are what
+The trace and static sections were not measured on the amp (traced 2026-10-01); "Hardware
+read-back" and "Layer 3, item 1" below were, on 2026-10-05. Register and bit values are what
 the firmware sends. Chip identities and the roles of pins are inferred from them, and are
 marked as such. Register names come from the chips' datasheets as remembered and need a
 check against the documents before a patch relies on a bit that stock never sets.
@@ -397,14 +398,14 @@ sits on RXIN1 (0x34 = 01) and reads unlocked (0x39 = 89: bit 7 set, the last rat
 held), 0x38 = 00, channel status bytes 00: the HDMI stream is invisible on an input whose
 own S/PDIF is selected, as the model says. The clock generator's status read 0x61.
 
-**The adapter and the USB and AUX inputs.** Every attempt to dump on USB or AUX ended with
-the USB-serial adapter dropping off the Linux box (the host itself gets an I/O error on
-the device; it comes back on Coaxial). USB and AUX are the two inputs on which the XMOS
-path is selected (P0.2 and P4.6 low). The amp's USB cable was plugged into the same Linux
-box throughout, so the likeliest cause is the XMOS enumerating on that box whenever those
-inputs are selected; whether the adapter's 5V pin is wired to the header is not known. Not
-in the firmware. The USB and AUX dumps are deferred (user's call, 2026-10-05) until the
-cable is moved or the adapter isolated.
+**The serial port and the USB and AUX inputs.** Every attempt to dump on USB or AUX ended
+with the amp's serial port dropping off the host computer (the host itself gets an I/O error
+on the device; it comes back on Coaxial). USB and AUX are the two inputs on which the XMOS
+path is selected (P0.2 and P4.6 low). The amp has one USB-C socket for both the serial port
+and USB audio, so the likeliest cause is that the socket goes to the XMOS whenever those
+inputs are selected; what switches it is not known (`docs/open-questions.md`). Not in the
+firmware. The USB and AUX dumps are deferred until there is another way to read the serial
+port on those inputs.
 
 **Ninth dump, Bluetooth selected, a Bluetooth stream playing.** The receiver sits on RXIN0
 (0x34 = 00), locked at 44.1 kHz (0x38 = 08, 0x39 = 08), channel status bytes 04 .. 0B,
@@ -454,8 +455,8 @@ MCU can read; the speaker/headphone choice is the Output menu only, as the stock
 
 Probe pr3 adds the FS line: register 0x37 pointed at each of the receiver's eight ports in
 turn, register 0x38 read until it names that port, stock's target written back. First dump,
-Optical selected with no optical stream, TV playing over ARC, the amp's USB cable still in
-the Linux box:
+Optical selected with no optical stream, TV playing over ARC, the amp's USB socket connected
+to the host computer:
 
 | Port | 0x38 | Reading |
 |---|---|---|

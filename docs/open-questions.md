@@ -1,35 +1,23 @@
 # Open questions
 
 Things still worth investigating to complete the picture of what the MCU code can do.
-`docs/probing-plan.md` has the plan for finding out on the amp: a read-only probe build
-first (`features/probe`; pr1 flashed on 2026-10-05, no dump captured yet), single writes after it.
+[probing-plan.md](probing-plan.md) has the plan for finding out on the amp: a read-only probe
+build first (`features/probe`, which has run on the amp), single writes after it. An item
+leaves this list when it is answered; the answer goes where the subject lives.
 
-- **HDMI auto-switch feasibility.** The ARC receiver's signal-present line reaches the
-  MCU through expander pin 0x1C and is already polled for the status display. The first
-  probe dumps of 2026-10-05 read it high on Optical and on HDMI with the TV in standby
-  and on, while the screen said "Digital Input" throughout, with a brief "Disconnected" as
-  the TV woke: the line is the ARC link, which the TV keeps up in standby, not audio
-  activity. An auto-switch on it would switch to HDMI whenever the TV is plugged in. An
-  activity signal exists: with HDMI selected, the receiver's register 0x7D read 0x00 with
-  the TV in standby, 0x10 with the TV on and muted, 0x50 with ARC audio arriving, and
-  nothing else in the dump moved; and on Optical it read 0x00 with the TV muted and 0x60
-  with the TV playing; but by the PCM9211 datasheet 0x7D samples the pin levels of its AUX
-  output port, toggling clock and data lines, and the seventh dump read the bit 0 with ARC
-  playing: those matches were chance, and no ARC activity indicator exists on Optical
-  (`docs/bus-map.md`, "Hardware read-back"). What does exist: the HDMI receiver's S/PDIF
-  output is wired to the receiver's RXIN3, and on USB and AUX the firmware parks the DIR
-  there, so register 0x39 reports lock and rate when ARC audio arrives, with no write. An
-  auto-switch from USB or AUX is therefore a read-only poll. Better, and settled by probe
-  pr3 on 2026-10-05 (`docs/bus-map.md`, "Layer 3, item 1"): the receiver's sample-rate
-  calculator, pointed at the HDMI receiver's I2S port with one register write outside the
-  audio path, reports 44.1 kHz from Optical whenever the TV is awake (muted or playing) and
-  no result when the TV is in standby. "TV on" is readable from any input; an auto-switch to
-  HDMI can poll it every tick at under 1 ms of main-loop time, with the target restored
-  before stock's own read of the result register on Bluetooth, and left alone on HDMI.
-  Built as `features/auto-switch` stage 1 (the HDMI activation, a 1 s hold-off, no switch
-  away from a playing input); the TV wake confirmed on the amp on 2026-10-05. Bluetooth
-  stays out: its module is off on the other inputs, and keeping it on would let phones
-  reconnect on their own.
+- **The USB-C socket's two roles.** One socket carries the serial port used for flashing
+  (the computer sees a CH340) and USB audio (the XMOS). The serial port drops off the host
+  when USB or AUX is selected, the two inputs on which the XMOS path is selected, and comes
+  back on the others (`docs/bus-map.md`, "Hardware read-back"). What switches the socket, and
+  whether the MCU drives it, is not known. It decides whether the probe can ever dump on USB
+  and AUX, and whether serial output is possible while USB audio plays.
+- **Auto-switch beyond HDMI.** "TV on" is readable from any input (the receiver's rate
+  calculator on the HDMI receiver's I2S port; `docs/bus-map.md`, "Layer 3, item 1"), and
+  `features/auto-switch` stage 1 uses it. Open: whether the same reading on the XMOS port
+  shows a USB host starting to play (untested, see the item above), and stage 2, moving the
+  S/PDIF receiver onto Optical or Coaxial while another input is selected. Bluetooth stays
+  out: its module is off on the other inputs, and keeping it on would let phones reconnect on
+  their own.
 - **Pin roles on the board.** `docs/bus-map.md` lists every expander and MCU pin the
   firmware drives or reads, with roles inferred from when they change. Matching them to
   the silkscreen nets (MUTE_AMP, MUTE_PRE, MUTE_HP, DIR_RST, DAC_MCK_SEL, relays) needs a
@@ -50,12 +38,6 @@ first (`features/probe`; pr1 flashed on 2026-10-05, no dump captured yet), singl
 - **UART1 message values.** A message is two bytes and a 0xFF terminator: format class,
   then rate index 1..12 (`uart1_isr`, `xmos_format_take` 0x408B). The meaning of each class
   and index is in the jump tables after 0x408B and still to be tabulated.
-- **Key handlers, resolved in the emulator.** 0x1047 (key 0x1C, NEC 0x09) is the mute
-  toggle (it goes home first; it runs on page 1 only: in a menu `dispatch_key` turns the key
-  into "home" at 0x0C23, and on the volume page `read_key` does at 0x3DD6, so there the key
-  closes the page without muting; house-numerals hn14 changes both, see its README), 0x10BE (key 0x14, NEC 0x08) toggles Dimmer, 0x106D (key 0x0A, NEC 0x0E) is "BT
-  Reconnect", 0x10E1 (four-press combo 0x38) is "BT list clear", 0x0F62 (key 0x59) steps
-  the EQ. None is a hidden service function.
 - **Pop on an input change through the menu.** Heard on the amp on 2026-10-02 (the `d39d321c…`
   build; stock code). `input_menu_select` (0x588B), unlike the Source key, mutes by register only, sets
   P4.0 low for 3 s and then runs `expander_init` and `audio_chips_init` again (main loop,
@@ -119,8 +101,8 @@ first (`features/probe`; pr1 flashed on 2026-10-05, no dump captured yet), singl
   keeps a pending command.
 - **Power-on sequence timing.** The delays in `post_power_on` (0x5585), `audio_chips_init`
   (0x50D1), 0x24D6 and 0x5D66 govern switching speed and the click that SMSL fixed once;
-  worth tabulating if faster switching is wanted. (0x5AAB, named here before, has no delay:
-  it only rewrites EEPROM sector 0.)
+  worth tabulating if faster switching is wanted. (0x5AAB has no delay: it only rewrites
+  EEPROM sector 0.)
 - **Input-name flicker root cause.** See `features/status-line-flicker/NOTES.md`: the code never writes the
   big line during status refreshes, so the transient is at the panel/interface level.
   Candidates: chip-select toggled per byte on the 8-bit bus, or writes landing during
