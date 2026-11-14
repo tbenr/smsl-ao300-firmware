@@ -16,7 +16,8 @@ integration jobs), not flashed.
 
 pp3 (sha256 `273edf8f…`, 2026-10-16): pp2 rebuilt on direct-select v3, which adds the idempotent
 power commands NEC 0x16 (on) and 0x17 (off); nothing of the theme changed. Emulator-verified
-(all groups and the six fixes' integration jobs), not flashed. The amp runs pp2.
+(all groups and the six fixes' integration jobs), not flashed. pp2 ran on the amp until
+2026-11-14, when house-numerals hn19 replaced it.
 
 pp2 (sha256 `f5ca8bba…`): pp1 with the name's glyphs placed on the dot grid where they keep the
 most ink. Emulator-verified on 2026-10-10 (all groups: unit, tour, int1, sweep, and the six

@@ -48,11 +48,14 @@ the routine at 0x9400 and the RESET page showing `v1.4 tbenr ds4`.
   has not been flashed; it is byte-identical whether built by the old direct build or by the
   kit (checked on 2026-09-30).
 - ds3 (the power commands, sha `425460c3…`), built on 2026-10-16: emulator-verified standalone
-  and inside house-numerals hn18 and phosphor-panel pp3; not flashed yet.
+  and inside house-numerals hn18 and phosphor-panel pp3, none of which was flashed. Verified on
+  the amp on 2026-11-14 inside hn19 (below).
 - ds4 (wake on input, sha `4b5dcfce…`), built on 2026-11-14: emulator-verified standalone and
-  inside house-numerals hn19, phosphor-panel pp4, auto-switch as4 and probe pr5; not flashed
-  yet. To confirm on the amp: no pop when it wakes onto an input other than the one it was
-  left on. In the emulator the wake ends in the same audio state as a stock power-on with that
+  inside house-numerals hn19, phosphor-panel pp4, auto-switch as4 and probe pr5. Verified on
+  the amp on 2026-11-14 inside house-numerals hn19 (flashed over the ser2net tunnel, confirmed
+  by the user the same day): the power commands and the wake on an input command all work, and
+  no pop on the wake was reported. The standalone ds4 image, pp4, as4 and pr5 have not been
+  flashed. In the emulator the wake ends in the same audio state as a stock power-on with that
   input already stored (15 pairs of previous and new input, 2026-11-14); the only difference
   is that the input mux pins move during the chip setup, outputs muted, as at a cold power-up.
 

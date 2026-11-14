@@ -9,8 +9,10 @@ hn19 (sha256 `8cf34756…`, 2026-11-14) is hn18 rebuilt on direct-select v4: an 
 standby powers the amp on, on that input (build-time config `direct-select.WAKE_ON_INPUT`).
 hn18 (sha256 `b3455f2b…`, 2026-10-16) was hn17 rebuilt on direct-select v3, which added the
 idempotent power commands NEC 0x16 (on) and 0x17 (off). Nothing of the theme changed in
-either; both are emulator-verified and not flashed. The notes below describe hn17, the image
-on the amp until 2026-10-10.
+either. hn18 was not flashed. hn19 was flashed on 2026-11-14 over the ser2net tunnel and
+confirmed by the user the same day: the RESET page, the power commands and the wake on an
+input command all work. It is the image on the amp. The notes below describe hn17, the image
+on the amp until 2026-10-10 (pp1 and pp2 ran in between).
 
 hn17 (sha256 `782eb508…`): hn16 with the stock big font's area reclaimed. The
 big-text hook (0x2A25) goes straight to `hm_name`, so no code path paints with the stock big

@@ -397,23 +397,31 @@ power-up; the bootloader is in ROM and survives. Every run is appended to
 
 ## Status
 
-Built on 2026-11-14, emulator-verified, not flashed: direct-select ds4 (`v1.4 tbenr ds4`,
+Flashed on 2026-11-14 over the ser2net tunnel and confirmed by the user the same day:
+`features/house-numerals/build/flash_house_numerals.bin` (hn19, `v1.4 tbenr hn19`, sha256
+`8cf34756…`), House Numerals with direct-select ds4. It all works: the RESET page, the
+idempotent power commands 0x16 and 0x17 (ds3, on the amp for the first time), and an input
+command waking the amp from standby on that input (ds4). No pop on the wake was reported. The
+amp runs hn19; before it, pp2. pp4, as4, pr5 and the standalone ds3 and ds4 images have not
+been flashed.
+
+Built on 2026-11-14 and emulator-verified: direct-select ds4 (`v1.4 tbenr ds4`,
 sha256 `4b5dcfce…`). An input command (NEC 0x10..0x15) in standby now powers the amp on, on
 that input: the hook writes the input and returns the Power key, and stock's power-on does its
 one source setup on it. With the amp on nothing changed. It is a build-time config,
 `direct-select.WAKE_ON_INPUT` (default 1; 0 keeps ds3's "ignored in standby"), which the
 installer asks about. Rebuilt on it with nothing else changed: house-numerals hn19
 (`8cf34756…`), phosphor-panel pp4 (`cc2292e7…`), auto-switch as4 (`8e0602f5…`) and probe pr5
-(`0fc654e4…`), all in `KNOWN_IMAGES`. To confirm on the amp: no pop when it wakes onto an input
-other than the one it was left on (the emulator shows the input mux moving only while the
-outputs are muted, as at a cold power-up).
+(`0fc654e4…`), all in `KNOWN_IMAGES`. In the emulator the input mux moves only while the
+outputs are muted, as at a cold power-up; on the amp (hn19, above) the wake works.
 
-Built on 2026-10-16, emulator-verified, not flashed: direct-select ds3 (`v1.4 tbenr ds3`,
+Built on 2026-10-16 and emulator-verified: direct-select ds3 (`v1.4 tbenr ds3`,
 sha256 `425460c3…`) adds idempotent power over IR, NEC 0x16 (on) and 0x17 (off), each a no-op
 in the state it names ("Direct input selection and idempotent power over IR" below). Every
 image that includes the fix was rebuilt on it with nothing else changed: house-numerals hn18
 (`b3455f2b…`), phosphor-panel pp3 (`273edf8f…`), auto-switch as3 (`aa43a3e5…`) and probe pr4
-(`e4a5bd1e…`), all in `KNOWN_IMAGES`. The amp still runs pp2.
+(`e4a5bd1e…`), all in `KNOWN_IMAGES`. None of these was flashed; the power commands reached
+the amp with hn19 (above).
 
 Flashed on 2026-10-10 over the ser2net tunnel and confirmed by the user the same day:
 `features/phosphor-panel/build/flash_phosphor_panel.bin` (pp1, `v1.4 tbenr pp1`, sha256
