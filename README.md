@@ -115,8 +115,9 @@ Eight NEC commands, sent with the stock remote's address bytes 0x12 0x34:
 This firmware runs on the author's amplifier: House Numerals `hn19` since 2026-11-14, and
 Phosphor Panel `pp2` for the month before it. The current Phosphor Panel build (`pp4`) adds
 only the power and wake commands to `pp2`; it is tested in the emulator and has not been on
-an amp. Flashing has been done from macOS and from Linux. The Windows route has not been
-used to flash. [docs/status.md](docs/status.md) lists what was verified on hardware and when.
+an amp. Flashing has been done from macOS and from Linux with the installer's flasher, and
+from Windows with a rebuilt updater, on the author's amp and on one other owner's.
+[docs/status.md](docs/status.md) lists what was verified on hardware and when.
 
 ## For developers
 

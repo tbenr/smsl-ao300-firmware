@@ -90,8 +90,8 @@ put the amp in standby and press Source on the remote.
 - It contains SMSL's program and firmware code: it is for your own amp. Do not share or
   publish it.
 - It does not run the checks the installer's own flasher runs, so use it only on an AO300.
-- This route is less tested than the flasher: a rebuilt updater has been checked to start
-  and to validate its image on Windows, but no amp has been flashed with one so far.
+- This route is less tested than the flasher: two amps have been flashed with a rebuilt
+  updater, far fewer times than with the flasher (`docs/status.md`).
 - To go back to stock from Windows, run SMSL's original updater.
 
 ## If something goes wrong

@@ -2,8 +2,8 @@
 
 A row is added here only after the person who flashed an image confirms the result on the
 amp, with the date of that confirmation. Emulator results never appear in tables A and B.
-Everything was done on one AO300 (stock firmware v1.4), the author's. Shas are the first eight
-digits of the image's sha256; the full values are in `KNOWN_IMAGES` in
+Tables A to C are from one AO300, the author's; a report from someone else's amp is marked as
+theirs. Shas are the first eight digits of the image's sha256; the full values are in `KNOWN_IMAGES` in
 `tools/flash/flash_ao300.py`.
 
 **On the amp now:** House Numerals `v1.4 tbenr hn19` (`8cf34756`), since 2026-11-14.
@@ -82,4 +82,6 @@ hn17.
 | The RFC 2217 route (`tools/flash/ser2net/`, ser2net 4.6) | identify, dryrun and flash; 56832 bytes in 15 s; the switch to 115200 baud works through it | 2026-10-05 |
 | The release bundle, end to end on Linux | `install.sh`, the wizard, build and flash (bundle `ao300-custom-1c4dbd4-dirty-20261011`) | 2026-10-11 |
 | A rebuilt Windows updater (made by hand with `stc_release.py rebuild`) | starts and validates its image on Windows | 2026-09-28 |
-| A rebuilt Windows updater flashing an amp | **not done**, neither a hand-made one nor one made by the wizard | — |
+| A rebuilt Windows updater flashing an amp | done on the author's amp; the image and the date were not recorded | confirmed 2026-11-14 |
+| The same, on another amp | one other owner flashed their amp from Windows with a rebuilt updater (their report; image and date not recorded) | noted 2026-11-14 |
+| An updater made by the installer's menu item, flashing an amp | not on record: the item dates from 2026-11-13, and its output is checked to unpack back to the image byte for byte | — |
