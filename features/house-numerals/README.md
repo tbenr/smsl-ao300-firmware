@@ -1,225 +1,36 @@
 # House Numerals
 
 A reduced build of study 3 ("House Numerals", after SMSL's SU and DO series screens) from
-`features/ui-theme/ui_themes.html`. Built on top of fast-lcd, with direct-select, fix-auto-off,
-strings, start-volume, fix-volume-pop and fix-menu-input included. The RESET page shows
-`v1.4 tbenr hn19`.
+`features/ui-theme/ui_themes.html`: a home screen in the mock's own typefaces and a volume
+page that wipes in and out, with a rolling number and a spring on the position line. Built on
+top of fast-lcd, with direct-select, fix-auto-off, strings, start-volume, fix-volume-pop and
+fix-menu-input included. The RESET page shows `v1.4 tbenr hn19`.
 
-hn19 (sha256 `8cf34756…`, 2026-11-14) is hn18 rebuilt on direct-select v4: an input command in
-standby powers the amp on, on that input (build-time config `direct-select.WAKE_ON_INPUT`).
-hn18 (sha256 `b3455f2b…`, 2026-10-16) was hn17 rebuilt on direct-select v3, which added the
-idempotent power commands NEC 0x16 (on) and 0x17 (off). Nothing of the theme changed in
-either. hn18 was not flashed. hn19 was flashed on 2026-11-14 over the ser2net tunnel and
-confirmed by the user the same day: the RESET page, the power commands and the wake on an
-input command all work. It is the image on the amp. The notes below describe hn17, the image
-on the amp until 2026-10-10 (pp1 and pp2 ran in between).
-
-hn17 (sha256 `782eb508…`): hn16 with the stock big font's area reclaimed. The
-big-text hook (0x2A25) goes straight to `hm_name`, so no code path paints with the stock big
-glyphs any more (the tests trap both stock painters on every run, and a walk through every
-stock page ran clean on hn16 before anything moved), and the fonts that fill the area best
-(pf_mono, pf_hvol, pf_box, pf_vname: 5015 bytes) sit at 0x6A23..0x7DB9 in its place. The image
-ends at 0xDD19, 5054 bytes earlier than hn16; nothing on the screen changed. Flashed on
-2026-10-05 (the first flash over the ser2net tunnel) and checked on the amp: the RESET page,
-every big text at home, the moved fonts, every menu page and a power cycle all look as before.
-
-hn16 (sha256 `7ee88992…`) was hn14 with `features/fix-volume-pop` and
-`features/fix-menu-input` linked in. Nothing in this layer changed, and the theme's code is at
-the same addresses as in hn14.
-- **fix-volume-pop.** On Optical and Coaxial without a signal the volume keys no longer move
-  the mute pins or open the NJW1194 (the pop on the first key).
-- **fix-menu-input.** An input chosen in the menu is switched as the Source key switches it,
-  without stock's 3 s supply cycle on P4.0 and second chip setup.
-- **Two images say hn14.** The two fixes were developed on hn13 while the MUTE state went
-  into main as hn14. Their branch builds show `v1.4 tbenr hn14` (sha256 `d39d321c…`: hn13 plus
-  fix-volume-pop) and `v1.4 tbenr hn15` (`7a4af92f…`: plus fix-menu-input) on the RESET page;
-  neither has the MUTE state. hn16 is the merge.
-
-hn14 (sha256 `3bef4bb7…`) is hn13 with the mock's MUTE state on the volume page.
-- **The muted volume page.** While the amp is muted (RAM bit 0x22.1) the page shows the home's
-  muted speaker in red in place of "VOL", "MUTE" in red in place of the number, and the position
-  line's fill in dark red, going back to 0. "MUTE" rolls in and out as a number does. See "The
-  MUTE state".
-- **The mute key shows the page.** Stock goes home on the mute key and toggles there; on the
-  open volume page the key only closed the page and did not mute. Now it toggles the same way
-  and shows the volume page (the entry wipe from home, in place on the open page), which goes
-  home after 2 s as after a volume key. The volume keys still unmute first, as stock; in a menu
-  the key still only goes home, as stock. Two new hooks: the key's handler (0x1047) and
-  `read_key`'s page-2 filter (0x3DD1).
-- No new font: "MUTE" is drawn in the home name's face (disp54, already in the image); the mock
-  uses the numerals' face at 64 px, which would cost 503 bytes for the four letters.
-- **Two images say hn13.** The MUTE state was developed on hn12 while start-volume went into
-  main as hn13. Its branch build (sha256 `1e5691d8…`: hn12 plus the MUTE state, without
-  start-volume) also shows `v1.4 tbenr hn13` on the RESET page. hn14 is the two merged: the same
-  MUTE code at the same addresses, start-volume's 23 bytes after it.
-
-hn13 (sha256 `e91e3a20…`) is hn12 with `features/start-volume` linked in. The volume
-at power-on is capped at the limits set in `features/start-volume/start_volume.py` (speakers 25,
-headphones 20).
-hn12 (`5f406b5d…`) is hn11.1 with direct-select linked in as a fix (its code
-at the end of this image's own code) instead of stacked under fast-lcd; the same firmware
-otherwise. hn11.1 (`3aa0f2d6…`) is hn10.1 rebuilt on direct-select v2, which ignores a
-direct command for the input already selected (hn11, `6050a846…`, was hn10 on the same base).
-Nothing in this layer changed. hn10.1 (`89a6ed99…`) is hn10 with one fix and one more fix linked in:
-- **The status line's tint after an input change.** Seen on the amp with hn8: after Source from
-  an input without a signal, the next input's status showed reddish too, until a refresh turned
-  it grey. `input_apply` (0x5640) draws the new input's placeholder ("Digital input",
-  "initializing", "Analog input") through 0x4BC9 at once, but the periodic refresh, whose status
-  loader makes the signal check, comes 2 to 3 s after an input change. Until then the
-  placeholder was drawn in the tint of the previous input's check. The tint now belongs to the
-  loader's own text: only the refresh's draw after the loader keeps it, and every other status
-  draw on the home (the placeholder, the BT key's "BT Reconnect", the EQ key's description) is
-  grey. See "Colours" under "The home screen".
-- **`features/strings` included.** The stock "No Connected" of HDMI ARC without a link is
-  "Disconnected", patched in place in the stock string table (13 bytes at 0x91ED, no code).
-
-hn10 (`v1.4 tbenr hn10`, sha256 `45c22bf1…`) is hn9 with the mock's easing on both wipes:
-- **Cubic ease, 32 ticks each way.** The edge follows the mock's
-  `ease = t < .5 ? 4t³ : 1 − (−2t + 2)³ / 2`: x = round(318 (1 − ease(k / 32))) on the way in,
-  318 − x on the way out, one table for both (hn9: a cosine ease over 20 ticks). 32 ticks is the
-  mock's 0.32 s entry; its exit takes 0.42 s, but one length both ways keeps the reversal (step
-  k → 32 − k at the same x). The length is one constant, `STEPS` in `build_patch.py`; tables,
-  code, tests derive from it. The generator is the kit's `ease_cubic_in_out`.
-- **Steps that do not move.** The cubic barely moves at its ends: at 32 steps, 4 steps move the
-  edge 0 px and 4 move it 1 px. A step whose x equals the previous x now draws and reveals
-  nothing (it only counts); so the edge first appears with the first step that moves it (entry
-  step 3, x 317; exit step 3, x 1), and no band is ever 0 columns wide. 1-px steps keep a whole
-  2-px edge (the new edge first, then the one old column).
-- Not in this build (as hn9): the mock's 0.42 s exit, the MUTE state of the volume page, a
-  dB ↔ steps switch, sizing for the volume page, per-column reveal.
-
-hn9 (`v1.4 tbenr hn9`, sha256 `b45331a8…`) is hn8 with the volume page's two animations from
-the mock:
-- **Number roll.** On the open page a volume step rolls the number: the old one slides out and
-  fades, the new one slides in from the other side, 14 frames over 0.14 s (the mock's `this.k`,
-  cubic ease, 20 px). The panel is write-only and `uk_text` streams its cells, so two
-  translucent numbers cannot be mixed: each frame draws **one** number on black, the old one
-  while the mock's ease is below 0.5 (frames 1 and 2), then the new one, at the mock's offset
-  for it and in the mock's alpha as a grey, clipped to a box between "VOL" and the line. The
-  box is `uk_text`'s new row clip (`uk_textc`, in the kit). See "The number roll".
-- **Spring on the line.** The position line's fill follows the volume with the mock's spring
-  (k 200, damping 28): it grows from 0 when the page opens, follows each step, and retracts
-  while the edge wipes back home. One fixed-point tick per 10 ms, within 1.05 px of the mock's
-  float integrator, never past the target, still on the exact split at the end. See "The spring
-  on the line".
-- **Tick driver.** `uk_tasks` now serves `main_tick_tasks`' re-mute request itself before it
-  looks at the tick flag, so a tick that arrives meanwhile is no longer consumed without the
-  step (in the emulator 3 of the 17 ticks after a volume key went by without one; see "Driver").
-- Not in this build (as hn8): the MUTE state of the volume page, a dB ↔ steps switch, sizing
-  for the volume page, the mock's wipe timings and per-column reveal.
-
-hn8 (`v1.4 tbenr hn8`, sha256 `122a963c…`) is hn7 with the mock's volume page and two home
-details:
-- **The volume page in the mock's typefaces**, with the elements hn7 lacked: the input name at
-  36 px and the status line under it (loaded as the periodic refresh loads it, since page 2
-  never refreshes it), "VOL" letter-spaced in the accent, the volume right-aligned in 84-px
-  numerals, the position line 288 px wide, the level in dB below step 60 ("−39.5 dB", from the
-  stock NJW1194 code table) and "max 60". See "The volume page".
-- **Home:** the tag boxes have corners of radius 2 as the mock strokes them, and the status
-  line turns reddish when the input has no signal (the mock's `M(dim, '#ff5040', .5)`).
-- Not in hn8: the mock's MUTE state on the volume page (the firmware never shows the
-  page muted: the mute key goes home and the volume keys unmute first), a dB ↔ steps switch,
-  the number roll, the spring on the line, sizing for the volume page.
-
-hn7 (`v1.4 tbenr hn7`, sha256 `41ce9807…`) is hn6.1 with the sizes redone in `sizing.html`: icon 22 px, volume 33, tags 16 in 22-px boxes, name 54, status line 28,
-bar at y 156. The name and the wider status line no longer share a step of the wipe back home.
-Together they took 8.4 ms, over the 8 ms budget per 10 ms tick, so the status line now comes
-one step after the name (the last step still draws whatever is left).
-
-hn6.1 (`v1.4 tbenr hn6.1`, sha256 `8f0ab9b2…`) is hn6 with `features/fix-auto-off` linked in
-(`INCLUDES`), so with Dimmer on Auto OFF the display also goes dark after a cold power-up
-(5.1 s after the power-on routine in the emulator). Nothing else changed.
-
-hn6 (`v1.4 tbenr hn6`, sha256 `7b74e950…`) is hn5 with the larger sizes picked on the amp's feedback,
-the home layout now read from `layout.json`, which `sizing.html` writes (see "Layout" below).
-
-hn5 (`v1.4 tbenr hn5`, sha256 `510fd138…`) made the home screen the mock's, drawn in the mock's
-own typefaces: speaker icon and volume top left, the tags as accent boxes top right, the input
-name in the condensed display face, the status line in grey mono under it, the accent bar
-below. See "The home screen" below. The volume page and the wipes are hn4.1's.
-
-hn4.1 (`v1.4 tbenr hn4.1`, sha256 `5eddb6df…`) made the wipe into the volume page non-blocking:
-one step per 10 ms main-loop tick, eased, and a wipe back home too. It fixed three things found
-in hn4 (`v1.4 tbenr hn4`, sha256 `86aacb8b…`):
-- **The edge could vanish for a whole panel frame.** hn4 erased the old edge (with the band)
-  before it drew the new one. The new edge now comes first, and the old edge's columns are
-  erased last.
-- **The stock refresh's flag path could damage the exit.** After a Source press, the flag path
-  (0x3FF8) could run mid-exit and black out revealed parts at 0x412F. It now skips that fill
-  during a wipe.
-- **A name drawn during an exit left the screen incomplete.** Such a draw (Source,
-  direct-select, the BT key's home_refresh) cleared the screen in the middle of stock sequences
-  that had already drawn other parts. It now ends the exit with the whole home screen.
-
-Earlier images:
-- hn3 (`v1.4 tbenr hn3`, sha256 `2c4809ab…`) and hn2 (`2819e0b0…`) drew a 200 ms wipe inside the
-  volume-key handler, which stopped the main loop.
-- Flashed so far: the first image (`v1.4 tbenr hn`, `deada16a…`, 47 ms wipe) and hn4.1.
+Version tags in the text below (hn8, hn14, ...) say in which build something first appeared;
+all of it is in hn19.
 
 ## Status
 
-hn17: all tests pass (the stock big-font trap on every run, `stock_page_walk` added). Flashed on
-the amp on 2026-10-05 over the ser2net tunnel: the RESET page shows hn17, every big text at home,
-the fonts moved into the big font's area, every menu page and a power cycle look as before.
+hn19 (sha256 `8cf34756…`) is on the amp since 2026-11-14 and works. The theme first ran on
+the amp in September 2026 and has gone through many builds since; `docs/status.md` lists
+what was flashed and what was confirmed.
 
-hn16: emulator-verified (all tests pass, including "fix-volume-pop in house-numerals" and
-"fix-menu-input in house-numerals"). Flashed on the amp on 2026-10-02: the fixes work. Its two
-fixes were first flashed that day as the branch builds `d39d321c…` and `7a4af92f…` (hn13 plus the fixes,
-without the MUTE state): the pop on the first volume key on Optical without a signal is gone,
-and there is no pop on an input change any more, through the menu, the Source key or
-direct-select.
+## Not in this build (the mock)
 
-hn14: emulator-verified (all tests pass, including "direct-select in house-numerals",
-"fix-auto-off in house-numerals", "strings in house-numerals" and "start-volume in
-house-numerals"). Not yet tried on the amp as this image. Its MUTE state was tried on the amp
-on 2026-10-02 as the branch build `1e5691d8…` (hn12 plus the MUTE state, without start-volume):
-works.
-
-hn13: emulator-verified (all tests pass, including "start-volume in house-numerals": after a
-cold power-up and after standby the amp starts at 25 / 20 at most, and the home screen shows
-the capped volume). Flashed on the amp on 2026-10-02: works.
-
-hn12: emulator-verified (all tests pass, including "direct-select in house-numerals",
-"fix-auto-off in house-numerals" and "strings in house-numerals"). Flashed on the amp on
-2026-09-30: works.
-
-hn11.1: emulator-verified (all tests pass, including "direct-select in house-numerals",
-"fix-auto-off in house-numerals" and "strings in house-numerals"). Flashed on the amp on
-2026-09-30: works.
-
-hn11 (`6050a846…`, hn10 on direct-select v2, without hn10.1's fixes): emulator-verified. Tried on
-the amp on 2026-09-30: works, a direct command for the current input no longer interrupts the
-audio.
-
-hn10.1: emulator-verified (all tests pass, including "fix-auto-off in house-numerals" and
-"strings in house-numerals"). Tried on the amp on 2026-09-30: works.
-
-hn10: emulator-verified (all tests pass, including "fix-auto-off in house-numerals"). Tried on
-the amp on 2026-09-30: looks good.
-
-hn9: emulator-verified (all tests pass, including "fix-auto-off in house-numerals"). Tried on
-the amp on 2026-09-30, before hn10: good.
-
-hn8: emulator-verified (all tests pass, including "fix-auto-off in house-numerals"). Tried on
-the amp on 2026-09-30: works. One thing seen: after a Source change
-from an input whose status was reddish ("No Connected"), the next input's status shows reddish
-too for a while, until a refresh turns it grey. Reproduced in the emulator and fixed in hn10.1.
-
-hn7: emulator-verified (all tests pass, including "fix-auto-off in house-numerals"). Tried on
-the amp on 2026-09-29: looks good, and with Dimmer on Auto OFF the display goes dark after a cold
-power-up.
-
-hn6.1: emulator-verified (all tests pass, including "fix-auto-off in house-numerals"), not
-yet tried on the amp.
-
-hn6: emulator-verified (all tests pass), not yet tried on the amp.
-
-hn5: emulator-verified. Tried on the amp on 2026-09-29: looks great, and the
-anti-aliased text works well on the panel, but the tags, the status line (sample rate) and the
-volume are too small at the panel's size. A redesign of the sizes is next.
-
-Tried on the amp on 2026-09-29: hn4.1 (`v1.4 tbenr hn4.1`, `5eddb6df…`) looks OK. Longer use
-is still to come.
+- **dB mode.** The mock can show the volume in dB instead of steps. The build shows steps,
+  with the level in dB as a caption on the volume page. A switch would need a menu entry or
+  an IR command, and a place in the EEPROM if the choice is to survive a power cycle.
+- **A blended number roll.** The mock crossfades the old and the new number. The panel is
+  write-only and `uk_text` streams whole cells, so each frame draws one number on black
+  ("The number roll").
+- **The mock's wipe timings.** Both wipes take 0.32 s (`STEPS` in `build_patch.py`); the
+  mock's exit takes 0.42 s. One length both ways keeps a reversal on the same x.
+- **Per-column reveal.** The mock reveals the new page column by column at the edge; the
+  build draws an element once the edge has passed it.
+- **"MUTE" in the numerals' face.** It is drawn in the home name's face, which is already in
+  the image; the numerals' face at that size would cost about 500 bytes for four letters.
+- **Sizing for the volume page.** `sizing.html` covers the home only; the volume page's
+  positions are constants in `build_patch.py`.
 
 ## What the build shows
 
@@ -607,7 +418,7 @@ in `build_patch.py`, `V*`). Everything is drawn with `uk_text`; the kit's stock-
   blanking the number; the digits themselves redraw in place (each cell carries its background),
   so nothing flickers.
 - **dB caption.** The NJW1194 code table at 0x9289 (`code = table[60 - step]`, see the main
-  README, "Volume scale") gives the level below step 60 in half-dB: `code - 35`. `hv_cap`
+  `docs/hardware.md`, "Volume scale") gives the level below step 60 in half-dB: `code - 35`. `hv_cap`
   formats it as `_75.5 dB` .. ` _0.5 dB`, `  0.0 dB` (no sign at step 60), always 8 cells so
   a shorter value draws its own background; `_` and `~` are the minus sign and the infinity of
   the mono raster (`MONO_ALIAS`), and step 0 shows `  _~ dB ` from code. This is the mock's
@@ -1158,97 +969,12 @@ direct-select itself.
   held mute key is not modelled in the emulator: if the remote repeats the command, each
   dispatched repeat toggles again, as in stock at home.
 
-## What to look for on the amp
-
-hn14, the mute key:
-- Mute on home: the sound stops at once and the volume page wipes in with the red speaker,
-  "MUTE" in red and the line empty; 2 s later it wipes back and the home shows the red speaker.
-- Mute again on home: the page wipes in with "VOL" and the number, the line growing; the sound
-  is back about 0.1 s after the key.
-- Mute while the volume page is open (after Vol+): the number rolls out and "MUTE" rolls in,
-  the line turns dark red and retracts. Mute again within the 2 s: "MUTE" rolls out, the number
-  back in, the line grows in the accent. Is "MUTE" in the name's face right next to the numerals,
-  or should it get the numerals' face (503 bytes)?
-- Vol+ or Vol- while "MUTE" shows: unmuted at once, the number rolls in.
-- Hold the mute key: does it toggle once, or does the remote repeat and toggle again?
-- Mute in a menu: goes home without muting, as before.
-
-hn10.1, the status tint: on an input without a signal (status reddish), press Source or a direct
-input key. The next input's first status text ("Digital input", "initializing") is grey at once.
-It turns reddish 2 to 3 s later only if that input has no signal either. The BT key's
-"BT Reconnect" and the EQ key's description are grey too.
-
-hn9, the animations:
-- Vol+/Vol- on the open page: the old number slides out (up on Vol+, down on Vol-) and the new
-  one slides in from the other side, getting brighter, in about 0.14 s. Is one number per frame
-  enough, or does it read as a flicker? Is the old one's two frames (20 ms) visible at all?
-- Nothing of the number shows over "VOL" or the line while it slides, and nothing is left
-  behind (a step from 10 to 9, 9 to 10, fast knob turns).
-- The line's fill glides to the new position (about 0.3 s for a step, 0.6 s for 0 to 60)
-  without overshooting; opening the page, it grows from the left while the edge wipes in; on
-  the way home it shrinks while the edge wipes back.
-- Knob turned fast: the number keeps rolling to the latest value and the page ends clean.
-- Menu, Source or Power right after a volume step: the page goes as before, no half-drawn
-  number.
-
-hn8, the volume page:
-- Vol+/Vol- on home: the page is the mock's: input name and status line left, "VOL" and the
-  large number right, the line with the dB level and "max 60" under it. Are 36 px for the
-  name and 16 px for the small texts right next to hn7's home? (Sizing by eye is not in
-  `sizing.html` for this page yet.)
-- Turn the volume: only the number, the line and the dB value change; a step from 10 to 9 or
-  from 60 to 59 leaves nothing behind and nothing flickers.
-- The status line on the page is the one the home showed (sample rate, "No signal", ...),
-  reddish when there is no signal. On BT it shows "Searching..." / the codec.
-- Home: the tag boxes have soft corners; without a signal (optical with nothing connected)
-  the status line is reddish, grey again once the signal is back.
-- Vol+ while the edge is going back: the page comes back with the status line redrawn.
-
-hn10, the wipes: the edge now starts slowly, is fastest in the middle and slows into the far
-side (the mock's cubic), 0.32 s each way instead of 0.20 s. Does the slow start read as a delay
-after the key (the edge first moves on the entry's third tick)? Is 0.32 s too slow on the way
-home? A key during the slow ends (just after pressing, or just before the edge arrives) turns
-the wipe round cleanly.
-
-hn6: the volume, the tags and the status line larger than hn5's (36, 13 and 20 px against 22,
-10 and 12), the speaker larger with them, the bar 6 px lower. Readable at arm's length?
-
-hn5, the home screen:
-- The home looks like the mock's House Numerals home: speaker and volume top left, the tags
-  in thin accent boxes top right, the input name large in the condensed face, the status in
-  grey mono under it, the short accent bar below.
-- Mute (remote): the speaker turns red with an X. Headphone output: the headphones icon and
-  the headphone volume.
-- Change the input, the EQ and the format (play PCM, then DSD or MQA): the tags and texts
-  follow without leftovers of longer texts, and nothing flickers at the 0.5 s refreshes.
-- The EQ key on the home screen: the preset's name shows large, its description as the
-  status line, then the home comes back.
-- The first unmute after power-on may come a little earlier than before (0.1 to 0.2 s).
-
-From hn4.1, the wipes:
-
-- Vol+/Vol- on home: the volume changes at once. The accent edge sweeps in from the right,
-  slow at the ends and fast in the middle, about 200 ms. The number appears when the edge
-  has passed it, then VOL and the divider, then the line, the name and the captions, the
-  status line last.
-- 2 s after the last key: the edge sweeps back to the right. The icon, volume and bar
-  appear first, then the status line and name, the format tag, and the EQ tag last. The
-  finished screen must not change when the periodic refresh comes about 0.4 s later.
-- Vol+ while the edge is going back: it turns round and the volume page comes back with the
-  new value.
-- Menu, Source, Power or a direct input key during either wipe: the wipe stops and the
-  stock screen follows, without leftovers of the volume page.
-- On Bluetooth, optical without signal, headphones, right after power-on or an input
-  switch: the same wipes; the unmute comes at the same moment as without a key.
-- Digits sharp, no torn columns or colour shifts (a dropped bus byte shows as a colour
-  shift, see fast-lcd's README, Bus timing).
-- Accent: SMSL orange on the White theme, the theme colour otherwise.
-
 ## How to go back
 
-Flash `features/fast-lcd/build/flash_fastlcd.bin` (stock UI, fast pixel path) or
-`features/direct-select/build/flash_patched.bin` (stock UI, stock pixel path, direct
-input selection over IR).
+The installer's "Restore the stock firmware" writes SMSL's v1.4 back (`docs/install.md`). To
+keep the fixes and drop the theme, build and flash another image by hand
+(`docs/development.md`): `features/fast-lcd/build/flash_fastlcd.bin` is the stock UI through
+the fast pixel path, with no fixes.
 
 ## Files
 

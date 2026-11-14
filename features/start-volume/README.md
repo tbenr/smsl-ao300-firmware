@@ -7,9 +7,8 @@ the RESET page shows `v1.4 tbenr sv1`.
 
 ## Status
 
-Verified on the amp on 2026-10-02, as part of house-numerals hn13 (limits 25 / 20): works.
-Emulator-verified (all tests pass, including "start-volume in house-numerals"). The standalone
-image itself has not been flashed.
+On the amp inside the theme images since house-numerals hn13 (2026-10-02, limits 25 / 20):
+works. The standalone image has not been flashed. See `docs/status.md`.
 
 ## Setting the limits
 
@@ -39,7 +38,7 @@ installer, `tools/installer/`, builds a user's values through `build.variant()`.
 | 25 | 60 | min(last, 25) | last, as stock |
 | 60 | 60 | last, as stock | last, as stock |
 
-- The values are the steps the display shows. The main README's "Volume scale" section has
+- The values are the steps the display shows. `docs/hardware.md`, "Volume scale", has
   their dB values: step 25 is 39.5 dB below maximum, step 20 is 47 dB below.
 - The two limits need not be related; the headphone limit may be the higher one.
 - Any other value (61, -1, "25", 25.0, True) stops the build with a message.
@@ -88,7 +87,7 @@ sv_go:     ljmp 0x50D1                     ; audio_chips_init, returns to 0x5599
 ## Including it in another build
 
 `start_volume.py` holds the fix on its own (`HOOK`, `emit(a)`, `XDATA = []`); `build_patch.py`
-here is only its standalone image. A build lists it in `INCLUDES` (README, "Feature graph"),
+here is only its standalone image. A build lists it in `INCLUDES` (`docs/development.md`, "Feature graph"),
 as house-numerals does since hn13. `tools/build.py` checks that the hook is installed, and
 `run_tests.py` runs "start-volume in <that image>": this test's `integration()` on the
 including image.

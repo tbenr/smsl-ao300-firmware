@@ -7,14 +7,13 @@ image is stock plus the fix; the RESET page shows `v1.4 tbenr mi1`.
 
 ## Status
 
-Verified on the amp on 2026-10-02, in a house-numerals branch build (hn13 plus fix-volume-pop and
-this fix, sha256 `7a4af92f…`, `v1.4 tbenr hn15`): no pop on an input change
-any more, through the menu, the Source key or direct-select. Emulator-verified (all tests
-pass, including "fix-menu-input in house-numerals"). The standalone image itself has not been
-flashed.
+On the amp inside the theme images since 2026-10-02 (first in a house-numerals branch build,
+sha256 `7a4af92f…`): no pop on an input change any more, through the menu, the Source key or
+direct-select. The standalone image has not been flashed. See `docs/status.md`.
 
-The pop was heard on the amp the same day on an input change through the menu (the branch
-build before it, `d39d321c…`; stock code). Whether it came at the key or 3 to 4 s later was not noted.
+The pop was heard on the amp the same day on an input change through the menu, on stock code
+(the build before it, `d39d321c…`). Whether it came at the key or 3 to 4 s later was not
+noted.
 
 ## What stock does
 
@@ -101,7 +100,7 @@ use it).
 ## Including it in another build
 
 `fix_menu_input.py` holds the fix on its own (`HOOK`, `emit(a)`, `XDATA = []`);
-`build_patch.py` here is only its standalone image. A build lists it in `INCLUDES` (README,
+`build_patch.py` here is only its standalone image. A build lists it in `INCLUDES` (`docs/development.md`,
 "Feature graph"), as house-numerals does since hn16. `tools/build.py` checks that the hook is
 installed, and `run_tests.py` runs "fix-menu-input in <that image>": this test's
 `integration()` on the including image.

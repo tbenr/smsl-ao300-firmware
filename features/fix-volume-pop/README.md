@@ -6,12 +6,11 @@ stock plus the fix; the RESET page shows `v1.4 tbenr vp1`.
 
 ## Status
 
-Verified on the amp on 2026-10-02, in a house-numerals branch build (hn13 plus this fix, sha256
-`d39d321c…`; its RESET page says `v1.4 tbenr hn14`, as the MUTE state's hn14 does): the pop on the first
-volume key on Optical without a signal is gone. Emulator-verified (all tests pass, including
-"fix-volume-pop in house-numerals"). The standalone image itself has not been flashed.
+On the amp inside the theme images since 2026-10-02 (first in a house-numerals branch build,
+sha256 `d39d321c…`): the pop on the first volume key on Optical without a signal is gone. The
+standalone image has not been flashed. See `docs/status.md`.
 
-The pop itself was confirmed on the amp the same day, on hn13:
+The pop itself was confirmed on the amp the same day, on stock code:
 
 - Source to Optical with nothing connected, then a volume key: the first key pops, later
   keys do not.
@@ -94,12 +93,12 @@ vp_go:       ljmp 0x4DDC                  ; volume_apply, returns to the tail
 A volume key pressed with lock while the unmute countdown still runs (after power-on,
 after the stream starts) ends the mute early, through `unmute_now`. That is stock
 behaviour, seen in the emulator, and not reported as audible. It is listed in the main
-README's open questions.
+`docs/open-questions.md`.
 
 ## Including it in another build
 
 `fix_volume_pop.py` holds the fix on its own (`HOOK`, `PATCHES`, `emit(a)`, `XDATA = []`);
-`build_patch.py` here is only its standalone image. A build lists it in `INCLUDES` (README,
+`build_patch.py` here is only its standalone image. A build lists it in `INCLUDES` (`docs/development.md`,
 "Feature graph"), as house-numerals does since hn16. `tools/build.py` checks that the hook
 is installed and the four patches applied, and `run_tests.py` runs "fix-volume-pop in <that
 image>": this test's `integration()` on the including image.

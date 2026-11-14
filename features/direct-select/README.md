@@ -4,7 +4,7 @@ Eight new NEC commands (0x10..0x17, stock address bytes 0x12 0x34), so a home-au
 controller that gets nothing back from the amp can set its state without guessing: six select
 one input directly instead of stepping through the Source key, and two set the power state
 instead of toggling it. The command table, the conditions and the RAM they touch are in
-`direct_select.py`'s docstring; the README at the top of the repository lists the inputs.
+`direct_select.py`'s docstring; the README at the top of the repository has the command table.
 
 Since ds2 a command for the input already selected is ignored: re-applying it ran the stock
 source switch again, which re-initialises the source and interrupts the audio.
@@ -41,23 +41,14 @@ the routine at 0x9400 and the RESET page showing `v1.4 tbenr ds4`.
 
 ## Status
 
-- Verified on the amp on 2026-09-28: the standalone image (then `v1.4 tbenr`, the first custom
-  image). All six commands select the right input; the stock remote works unchanged.
-- ds2 (the same-input ignore) verified on the amp on 2026-09-30 inside house-numerals hn11,
-  hn11.1 and hn12 (the fix linked in through INCLUDES). The standalone ds2 image (sha `9b7e8b93…`)
-  has not been flashed; it is byte-identical whether built by the old direct build or by the
-  kit (checked on 2026-09-30).
-- ds3 (the power commands, sha `425460c3…`), built on 2026-10-16: emulator-verified standalone
-  and inside house-numerals hn18 and phosphor-panel pp3, none of which was flashed. Verified on
-  the amp on 2026-11-14 inside hn19 (below).
-- ds4 (wake on input, sha `4b5dcfce…`), built on 2026-11-14: emulator-verified standalone and
-  inside house-numerals hn19, phosphor-panel pp4, auto-switch as4 and probe pr5. Verified on
-  the amp on 2026-11-14 inside house-numerals hn19 (flashed over the ser2net tunnel, confirmed
-  by the user the same day): the power commands and the wake on an input command all work, and
-  no pop on the wake was reported. The standalone ds4 image, pp4, as4 and pr5 have not been
-  flashed. In the emulator the wake ends in the same audio state as a stock power-on with that
-  input already stored (15 pairs of previous and new input, 2026-11-14); the only difference
-  is that the input mux pins move during the chip setup, outputs muted, as at a cold power-up.
+All of it is verified on the amp inside house-numerals hn19 (2026-11-14): the six input
+commands, the same-input ignore, the power commands and the wake on an input command, with no
+pop reported on the wake. Only the first version of the standalone image was ever flashed
+(2026-09-28). See `docs/status.md`.
+
+In the emulator the wake ends in the same audio state as a stock power-on with that input
+already stored (15 pairs of previous and new input); the only difference is that the input
+mux pins move during the chip setup, outputs muted, as at a cold power-up.
 
 ## Tests
 

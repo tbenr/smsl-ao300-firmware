@@ -1,9 +1,10 @@
-# UI themes (design stage)
+# UI theme designs (the mock)
 
 Visual themes for the AO300's 320 × 170 colour LCD. A theme restyles the two screens
 the stock firmware shows most, the home screen and the volume screen, and the
 transitions between them. Menus, the RESET page and the standby screen stay stock.
-Nothing here is built into firmware yet.
+Two of the six designs here are built: House Numerals (`features/house-numerals/`) and
+Phosphor Panel (`features/phosphor-panel/`).
 
 A theme sits on top of the stock COLOR menu. The firmware's eight COLOR settings only
 choose the text colour (table 0x9241). Each theme uses that colour as its tint, so
@@ -21,35 +22,22 @@ access only for its web fonts. It contains:
 - controls for volume, mute, input, signal, the COLOR tint, a 0–60 or dB readout, and a
   frame rate throttled to the stock LCD driver or the fast pixel path.
 
-The fast pixel path the themes rely on is built. `features/fast-lcd` routes the stock UI
-through it, and its README has the bus timing the blit-test build verified on the amp.
-
 Constraints the designs follow:
 
 - no framebuffer, so screens are generated as they are sent;
 - transitions repaint the screen at most once, which is why they are wipes and reveals;
 - colours are RGB565.
 
-The screen layout, fonts and bus details are in the main README's hardware map. The
-steps-vs-dB mapping is in its "Volume scale" section.
+The screen layout, fonts and bus details are in `docs/hardware.md` (the hardware map's
+Display row); the steps-against-dB mapping is in its "Volume scale" section. The fast pixel
+path the themes rely on is `features/fast-lcd`, whose README has the bus timing.
 
-Next steps toward a build:
+## From a design to a build
 
-1. Pick a theme and a dB reference.
-2. Build on top of fast-lcd, so full repaints are cheap.
-3. Replace the home refresh at 0x5C8B, the two-digit volume draws at 0x5916 and 0x5936,
-   and the volume page renderer at 0x2167. Follow the feature pattern in `AGENTS.md`:
-   a build script, a listing, an emulator test that includes a full-firmware UI tour,
-   and a README.
-
-Phosphor Panel is built in `features/phosphor-panel/` (pp1 on the amp since 2026-10-10): the row of lamps, the dot-matrix name (baked into its
-font), the seven-segment cells with per-segment afterglow, the bar and the marks, and the
-afterglow crossfade as a sequenced fade (the name out, then the digits up) run by a per-tick
-level engine, since the panel cannot blend two screens. Its README lists what was reduced.
-
-House Numerals is built in `features/house-numerals/` and has been on the amp since
-2026-09-29 (hn17 since 2026-10-05). Step 3's hooks are done there: 0x5916 (`home_draw_volume`) stays
-stock, called as before from the new home-refresh tail; 0x5936 (`volpage_draw_volume`)
-is replaced outright; and the page-2 renderer (0x2167) is replaced too, though the tour
-found the volume keys actually open page 2 through four inline sites in the key
-handlers, not through that renderer — see the feature README for all ten hooks.
+A theme is built on top of fast-lcd with `tools/patch/uikit.py` (`docs/ui-kit.md`), following
+the feature pattern in `AGENTS.md`: a build script, a listing, an emulator test that includes
+a whole-firmware UI tour, and a README. The stock sites a theme takes over are the home
+refresh at 0x5C8B, the two-digit volume draws at 0x5916 and 0x5936, and the volume page:
+the page-2 renderer at 0x2167, and the four inline sites in the key handlers through which
+the volume keys actually open page 2. Each theme's README lists its hooks and what it
+reduced from the mock.

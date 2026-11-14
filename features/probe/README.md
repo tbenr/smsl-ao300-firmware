@@ -1,18 +1,21 @@
-# probe: a read-only register dump over the programming header
+# probe: a read-only register dump over the serial port
 
-Layer 2 of `docs/probing-plan.md`. One remote button makes the amp send what its chips
-hold, as text, through the 4-pin programming header. It only reads. pr1 (on NEC 0x16) was
-flashed on 2026-10-05 and replaced the same day by pr2 (the FN button), which was flashed
-and gave thirteen dumps, the first 1204 bytes as the emulator predicted (`docs/bus-map.md`,
-"Hardware read-back"). pr3 adds the FS line, the first write of layer 3; emulator-verified,
-not yet flashed. pr4 (2026-10-16) is pr3 rebuilt on direct-select v3, whose power commands
-take NEC 0x16 and 0x17; the dump stays on the FN button. pr5 (2026-11-14) is pr4 on
-direct-select v4 (an input command in standby powers on, on that input). Neither is flashed.
+Layer 2 of `docs/probing-plan.md`. One remote button makes the amp send what its chips hold,
+as text, through the serial port it is flashed over. It only reads, apart from one register
+of a measurement block (the FS line, below). A research tool: no image the installer builds
+contains it.
+
+## Status
+
+pr2 and pr3 ran on the amp on 2026-10-05: thirteen dumps with pr2, the first 1204 bytes as
+the emulator predicted, then the FS line with pr3 (`docs/bus-map.md`, "Hardware read-back"
+and "Layer 3, item 1"). pr5, the current image, is pr3 on the later direct-select versions
+and has not been flashed. See `docs/status.md`.
 
 ## What it does
 
 A short press of the remote's FN button (NEC command 0x08), with the amp on and on the home
-screen, sends at 115200 baud, 8N1, on the header's TXD:
+screen, sends at 115200 baud, 8N1, on the serial port:
 
 ```
 PROBE 1
@@ -59,7 +62,7 @@ any.
   so direct-select's hook on that routine still applies in the same image.
 - UART1 is the stock one, already set to 115200 baud. With the amp on, stock keeps it on
   P3.6/P3.7 (the XMOS line; P3.7 is also the bus data line). The dump switches P_SW1 to the
-  header pins for its duration and switches back, with ES off meanwhile because the stock
+  bootloader's pins P3.0/P3.1 for its duration and switches back, with ES off meanwhile because the stock
   UART handler clears TI, which the sender polls. SBUF is never written while P_SW1 selects
   P3.6/P3.7 (the test checks every byte). XMOS bytes that arrive during the dump are lost;
   the next message repairs the format display.
@@ -69,14 +72,15 @@ any.
 ## On the amp
 
 1. Flash `build/flash_probe.bin` (sha in `KNOWN_IMAGES`) the usual way.
-2. Keep the USB-serial adapter on the header after flashing and open a terminal on it at
+2. Leave the amp's USB cable in after flashing and open a terminal on its serial port at
    115200 baud, 8N1, for example `python3 -m serial.tools.miniterm <port> 115200`; a
    forwarded port works too (`serial.serial_for_url("rfc2217://host:4000", 115200)`). The
-   adapter's RX sees the header's TXD. The amp's TXD is idle while it is on and the stock
-   firmware never transmits, so nothing arrives until the command.
+   amp's TXD is idle while it is on and the stock firmware never transmits, so nothing
+   arrives until the command.
 3. Amp on, home screen, press FN on the remote. The dump arrives within a second.
 4. Take one dump per input, with and without a signal, headphones in and out, and keep them
-   outside the repository.
+   outside the repository. On USB and AUX the serial port drops off the host computer, so no
+   dump can be taken there (`docs/bus-map.md`).
 
 Reading status registers clears some flags (the receiver's error bits, the expander's
 interrupt): harmless, but two dumps in a row can differ there.
@@ -86,7 +90,7 @@ interrupt): harmless, but two dumps in a row can differ there.
 - the image differs from stock only in the hooks, the fixes' patches and the version pointer;
 - the hook from read_key with the I2C model answering for the four chips and a seeded register
   file: the text is exactly what the chips and the RAM hold, every byte leaves with P_SW1 on
-  the header and ES off, P_SW1 and IE come back, the bus saw reads and address probes only,
+  P3.0/P3.1 and ES off, P_SW1 and IE come back, the bus saw reads and address probes only,
   no audio chip was written, and the amp's state afterwards is the reference's;
 - all 256 commands through read_key and dispatch_key against stock plus the same fixes, on
   the home and volume pages, in a menu, in standby and on page 0: identical but for FN on

@@ -8,9 +8,8 @@ shows `v1.4 tbenr str3` (str1 and str2 were the same patch on direct-select).
 
 ## Status
 
-Emulator-verified (standalone, and as "strings in house-numerals"). Tried on the amp on
-2026-09-30 as part of house-numerals hn10.1: works. The standalone image itself has not been
-flashed.
+On the amp inside the theme images since house-numerals hn10.1 (2026-09-30): works. The
+standalone image has not been flashed. See `docs/status.md`.
 
 ## How it works
 
@@ -30,7 +29,7 @@ flashed.
 ## Including it
 
 A build lists `"strings"` in `INCLUDES` and takes the patches through
-`features.patches(INCLUDES)` (see the main README, "Feature graph"). `tools/build.py` checks
+`features.patches(INCLUDES)` (see `docs/development.md`, "Feature graph"). `tools/build.py` checks
 that every included patch is applied. House Numerals includes it from hn10.1.
 
 ## Tests

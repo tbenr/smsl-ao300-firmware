@@ -2,15 +2,15 @@
 
 The stock UI, unchanged, drawn through the tuned pixel path that the blit-test build
 verified on the panel (see Bus timing). Built on top of the stock image; it carries no
-fix of its own (an image for the amp includes those, see the main README's feature graph).
+fix of its own (an image for the amp includes those, see `docs/development.md`, "Feature graph").
 The RESET page shows `v1.4 tbenr fast3`.
 
 ## Status
 
-fast3 (on stock, 2026-09-30): emulator-verified, not flashed standalone. fast2 (the same
-layer on direct-select v2) is on the amp inside hn11 and hn11.1 since 2026-09-30. fast
-(`v1.4 tbenr fast`, on direct-select v1) was flashed on the amp on 2026-09-28 and working so far. Longer listening tests are still to
-come: power-on, input switching and the display flicker.
+The base of both themes, so it has been on the amp inside every theme image since
+2026-09-30, with no audible effect on power-on or input switching in daily use (confirmed
+2026-11-14). Its first version was flashed on its own on 2026-09-28; fast3, the current
+standalone image, has not been. See `docs/status.md`.
 
 ## What changes
 

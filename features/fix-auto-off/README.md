@@ -7,9 +7,9 @@ fix; the RESET page shows `v1.4 tbenr aof3` (aof1 and aof2 were the same fix on 
 
 ## Status
 
-Verified on the amp on 2026-09-29, as part of house-numerals hn7 (included since hn6.1): with
-Dimmer on Auto OFF the display goes dark after a cold power-up. The standalone image itself has
-not been flashed.
+On the amp inside every theme image since house-numerals hn7 (2026-09-29): with Dimmer on
+Auto OFF the display goes dark after a cold power-up. The standalone image has not been
+flashed. See `docs/status.md`.
 
 ## The bug
 
@@ -43,7 +43,7 @@ after (as the PRO does) makes no difference. There are no new variables.
 ## Including it in another build
 
 `fix_auto_off.py` holds the fix on its own. `build_patch.py` here is only its standalone
-image. A build includes it through the feature graph (README, "Feature graph"):
+image. A build includes it through the feature graph (`docs/development.md`, "Feature graph"):
 
 ```python
 INCLUDES = ["fix-auto-off"]

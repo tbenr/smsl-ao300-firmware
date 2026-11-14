@@ -8,28 +8,16 @@ RESET page shows `v1.4 tbenr pp4`.
 
 ## Status
 
-pp4 (sha256 `cc2292e7…`, 2026-11-14): pp3 rebuilt on direct-select v4, where an input command in
-standby powers the amp on, on that input (build-time config `direct-select.WAKE_ON_INPUT`,
-default 1); nothing of the theme changed. Emulator-verified (all groups and the six fixes'
-integration jobs), not flashed.
+pp4 (sha256 `cc2292e7…`) is emulator-verified and has not been flashed. It is pp2 rebuilt on
+the later direct-select versions (the power commands, the wake on an input command); nothing
+of the theme changed. pp2 ran on the amp from 2026-10-10 to 2026-11-14: it works, and the
+dot-matrix name reads well. See `docs/status.md`.
 
-pp3 (sha256 `273edf8f…`, 2026-10-16): pp2 rebuilt on direct-select v3, which adds the idempotent
-power commands NEC 0x16 (on) and 0x17 (off); nothing of the theme changed. Emulator-verified
-(all groups and the six fixes' integration jobs), not flashed. pp2 ran on the amp until
-2026-11-14, when house-numerals hn19 replaced it.
-
-pp2 (sha256 `f5ca8bba…`): pp1 with the name's glyphs placed on the dot grid where they keep the
-most ink. Emulator-verified on 2026-10-10 (all groups: unit, tour, int1, sweep, and the six
-fixes' integration jobs), flashed on the amp the same day over the ser2net tunnel and
-confirmed by the user: the O and C edges look right.
-
-pp1 (sha256 `38a1499e…`): flashed on the amp on 2026-10-10 over the ser2net tunnel and
-confirmed by the user: works, the dot-matrix name reads well. One thing seen: the left edge of
-O and C looked cut off. The grid dropped the full column right behind those glyphs' faint
-anti-aliased first column (their ink starts 1 px from the pen, P's and L's 2 px, so the grid's
-black column fell on a different ink column per letter). pp2 moves each glyph right by 0, 1 or
-2 px inside its cell to the position where the grid keeps the most ink (`dot_matrix` in
-`build_patch.py`): O and C keep their full edge column.
+pp1, the first image, showed the left edge of O and C cut off: the grid dropped the full
+column right behind those glyphs' faint anti-aliased first column (their ink starts 1 px from
+the pen, P's and L's 2 px, so the grid's black column fell on a different ink column per
+letter). Since pp2 each glyph is moved right by 0, 1 or 2 px inside its cell to the position
+where the grid keeps the most ink (`dot_matrix` in `build_patch.py`).
 
 ## What the build shows
 
@@ -59,7 +47,7 @@ segment. The screen is black (the mock's `#020504` is black on this panel).
 | Entry | about 0.3 s: tick 1 the slot and the status line go black, the marks and the ghost bar appear; the name falls a level every 2 ticks while the bar scans in 3 cells a tick; once the name is black "dB" and the ghost cells appear and the digit cells and "VOL" rise a level every 2 ticks |
 | Exit | about 0.33 s: the marks and "dB" go; every lit segment, bar cell and "VOL" fall a level every 2 ticks; then the ghost cells go; once every cell is black the name rises; then the slot and the status line |
 | Reversal | a key during an exit turns it round through the same targets, and the other way; any stock clear stops the engine; a page-1 name or status draw during an exit ends the exit with the whole home first |
-| Mute key | as House Numerals hn14: toggles as stock, then shows the volume page (also on the open page) |
+| Mute key | as in House Numerals: toggles as stock, then shows the volume page (also on the open page) |
 
 ## How it works
 
@@ -112,8 +100,8 @@ it; stock's refresh is about 45 ms).
 
 ## Memory
 
-Code and fonts 0x9800..0xDBFD, the version string after them (the image ends at 0xDC0C:
-56333 bytes), the hole 0x6A23..0x7BCA (4520 of 5040 bytes). The fonts: `pf_name` 9711 bytes (the
+Code and fonts from 0x9800, then the included fixes and the version string (pp4 ends at
+0xDC34: 56373 bytes), and the stock big font's area 0x6A23..0x7BCA (4520 of 5040 bytes). The fonts: `pf_name` 9711 bytes (the
 dot matrix breaks the run-length runs every third row: three times the plain face), `pf_row`
 2107, `pf_status` 3681, `pf_icon` 298, the cell map 541. XDATA 0x0100..0x01F8.
 

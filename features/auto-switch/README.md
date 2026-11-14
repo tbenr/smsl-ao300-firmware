@@ -1,16 +1,20 @@
-# auto-switch, stage 1: to HDMI when the TV comes on
+# auto-switch, stage 1: to HDMI when the TV comes on (experimental)
 
-The first stage of the auto-switch from `docs/probing-plan.md`, on what the probe dumps of
-2026-10-05 settled. Built, emulator-verified and flashed on 2026-10-05. The TV wake works on
-the amp: from Optical with nothing playing, the amp went to HDMI about a second after the TV
-came out of standby (user confirmed, 2026-10-05, as1). as2 enables HDMI only: the amp is not
-discoverable while another input is selected (the firmware holds the module's enable,
-expander P0_0, low off the Bluetooth input; `docs/bus-map.md`), and keeping the module on so
-that phones could connect from any input is not wanted, since devices would reconnect on
-their own. That stays an option for the stage 3 menu, off by default. as3 (2026-10-16) is as2
-rebuilt on direct-select v3 (the idempotent power commands 0x16/0x17), and as4 (2026-11-14)
-as3 on direct-select v4 (an input command in standby powers on, on that input); nothing else
-changed, neither is flashed.
+The first stage of the auto-switch from `docs/probing-plan.md`, on what the probe dumps
+settled. It is experimental: no image the installer builds contains it.
+
+## Status
+
+as1 was flashed on 2026-10-05 and the TV wake works on the amp: from Optical with nothing
+playing, the amp went to HDMI about a second after the TV came out of standby. The other
+inputs are emulator-only. as4, the current image, enables HDMI only and has not been flashed;
+it differs from as1 by that and by the later direct-select versions. See `docs/status.md`.
+
+Bluetooth is sensed but not enabled: the amp is not discoverable while another input is
+selected (the firmware holds the module's enable, expander P0_0, low off the Bluetooth input;
+`docs/bus-map.md`), and keeping the module on so that phones could connect from any input is
+not wanted, since devices would reconnect on their own. That stays an option for the stage 3
+menu, off by default.
 
 ## What it does
 
@@ -103,5 +107,4 @@ allows (about 210 bytes of code plus the rate table).
 
 Flash `build/flash_autoswitch.bin` (sha in `KNOWN_IMAGES`). The dump facility of the probe is
 not in this image. Try: Optical selected with nothing playing, TV in standby; wake the TV; the
-amp should go to HDMI about a second after the TV's ARC link comes up. Then, from Optical
-with nothing playing, connect a phone.
+amp should go to HDMI about a second after the TV's ARC link comes up.
