@@ -945,7 +945,7 @@ direct-select itself.
 ## Risks
 
 - **Panel timing: same as fast-lcd.** `uk_fill` and `uk_text` use fast-lcd's byte timing (the
-  WR pulse the blit-test build proved on the panel; see fast-lcd's README, Bus timing).
+  WR pulse the blit-test build proved on the panel; see `features/fast-lcd/README.md`, "Bus timing").
 - **The main loop now runs during the wipes.** A tick's step, spring and roll take at most
   7.2 ms (hn14, whole firmware; the limit the tests hold is 8), after the tick's own work. The volume keys, format poll, unmute and re-mute run as on fast-lcd (tested
   against it, including the INT1 case the hn3 review raised).

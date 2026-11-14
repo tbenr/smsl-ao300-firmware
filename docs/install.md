@@ -28,7 +28,7 @@ first" section before you flash anything.
    ./install.sh
    ```
 
-   The first run creates a private Python environment in `.venv` and downloads three small
+   (`bash install.sh` if unzipping dropped the file's executable bit.) The first run creates a private Python environment in `.venv` and downloads three small
    packages (stcgal, pefile, pyserial). Then the installer asks you:
 
    - which look you want;

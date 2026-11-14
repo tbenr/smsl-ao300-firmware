@@ -175,7 +175,7 @@ quasi-bidirectional; P5 quasi-bidirectional.
 | P2.5 | out | high in headphone mode, low on mute | headphone output enable |
 | P2.6 | in | read by the Timer0 handler (`t0_hold_mute_p26`) | a sense input used for the headphone mute |
 | P2.7 | out | high in headphone mode | speaker/headphone switch |
-| P3.0, P3.1 | UART1 | only in standby | the programming header |
+| P3.0, P3.1 | UART1 | only in standby | the serial update port (`docs/hardware.md`) |
 | P3.2 | INT0 | IR receiver | |
 | P3.3 | INT1 | on USB, optical, coaxial: re-mute, unmute after 0.3 s, format read again (`int1_isr`) | a stream-change line from the XMOS or the receiver |
 | P3.4 | out | low for 0.5 s before each DAC setup | DAC reset |

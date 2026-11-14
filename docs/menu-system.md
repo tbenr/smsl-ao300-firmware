@@ -1,7 +1,7 @@
 # The stock menu, and what adding a setting would take
 
 Notes from 2026-10-02, when a "start volume" menu entry was sized and then built as a
-build-time setting instead (`features/start-volume`). Nothing here is built. Addresses are
+build-time setting instead (`features/start-volume`). None of it is built. Addresses are
 the stock v1.4 image's. Items marked (read) come from decoding the routines once and were not
 re-checked instruction by instruction; the rest was checked in the disassembly.
 
