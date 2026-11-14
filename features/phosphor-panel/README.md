@@ -4,8 +4,7 @@ Study 2 ("Phosphor Panel", after Marantz, Pioneer and Accuphase VFDs) from
 `features/ui-theme/ui_themes.html`, built the way House Numerals is built: on top of fast-lcd,
 through `tools/patch/uikit.py`, with direct-select, fix-auto-off, strings, start-volume,
 fix-volume-pop and fix-menu-input included (auto-switch is not: still under development). The
-RESET page shows `v1.4 tbenr pp4`. The design and the reductions from the mock are in
-`docs/superpowers/specs/2026-10-10-phosphor-panel-design.md`.
+RESET page shows `v1.4 tbenr pp4`.
 
 ## Status
 

@@ -1253,7 +1253,6 @@ input selection over IR).
 ## Files
 
 - `layout.json` is the home layout; `sizing.html` edits it (see "Layout").
-- `TODO.md`: what is left against the mock, and what to investigate.
 - `build_patch.py` builds `build/flash_house_numerals.bin` from
   `features/fast-lcd/build/flash_fastlcd.bin` and writes the listing
   `house_numerals.asm`. It uses the text instructions added to `tools/patch/asm51.py`
